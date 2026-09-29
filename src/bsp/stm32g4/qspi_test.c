@@ -18,6 +18,7 @@
  */
 
 #include "qspi_test.h"
+#include "qspi_test_hw.h"
 #include "main.h"
 
 #if (QSPI_TEST_FEATURE_ENABLED != 0)
@@ -65,6 +66,7 @@
 #define QSPI_FLASH_SIZE_W25Q128 (23U)
 
 static QSPI_HandleTypeDef hqspi;
+static uint8_t g_qspiInitDone = 0U;
 
 void QspiTest_Init(void)
 {
@@ -106,6 +108,12 @@ void QspiTest_Init(void)
     {
         Error_Handler();
     }
+    g_qspiInitDone = 1U;
+}
+
+QSPI_HandleTypeDef *QspiTest_Handle(void)
+{
+    return (g_qspiInitDone != 0U) ? &hqspi : NULL;
 }
 
 uint8_t QspiTest_ReadId(uint8_t id[3])
@@ -200,6 +208,12 @@ uint8_t QspiTest_ReadId(uint8_t id[3])
        untouched. */
     (void)id;
     return 0U;
+}
+
+QSPI_HandleTypeDef *QspiTest_Handle(void)
+{
+    /* Feature disabled -- QUADSPI is never initialised. */
+    return NULL;
 }
 
 #endif /* QSPI_TEST_FEATURE_ENABLED */

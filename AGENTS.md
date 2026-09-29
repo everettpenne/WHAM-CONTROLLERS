@@ -584,7 +584,8 @@ src/
   config/           ctrlr_config.h -- compile-time configuration; any layer
   drivers/          hardware-independent interfaces, headers only:
                     uart.h, board_io.h, mcu.h, flash_bank.h, hrtim.h,
-                    pfm_input.h, qspi_test.h, boot_jump.h, boot_diag.h
+                    pfm_input.h, qspi_test.h, nvstore.h, boot_jump.h,
+                    boot_diag.h
   bsp/stm32g4/      the only code that touches the MCU (HAL, registers,
                     interrupts): implements drivers/; *_hw.h = BSP-private
   middleware/scpi/  scpi_parser.c -- protocol logic, no hardware, no

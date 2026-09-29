@@ -1,6 +1,34 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-09-29  —  Saved settings profiles, step 1: external-flash storage driver (nvstore)
+-----------------------------------------------------------------------
+  Goal (planned this session): *SAV / *RCL of the operator-configurable settings
+        into the board's W25Q128JVS (QUADSPI) so they survive a power cycle. Agreed
+        design: several slots, preview before recall (CONFig:PROFile:CATalog? /
+        PROFile? / PROFile:DIFF?), explicit load only (never at boot), *SAV and *RCL
+        only in IDLE; setpoints, channel enables, the EXTernal:ENAble interlock and
+        DEBUG:FAULT:BYPASS are never saved. Test on the simulator first.
+
+  Why the external chip: both internal flash banks belong to the dual-bank firmware
+        update (a swap would erase or strand settings kept there), and erasing an
+        internal page stalls instruction fetch, freezing the control-loop ISR.
+
+  Step 1 (this entry): src/drivers/nvstore.h + src/bsp/stm32g4/nvstore.c -- a plain
+        byte store (read, 4 KiB sector erase, program with page splitting and
+        read-back verify, status registers) using the same single-line QUADSPI
+        commands the verified Read ID uses. Checks the chip answers EF 40 18 before
+        the first operation, refuses to write when block-protect bits are set, and
+        bounds every busy-wait by the datasheet maxima. qspi_test.c gained
+        QspiTest_Handle() (declared in the new qspi_test_hw.h) so the one QUADSPI
+        peripheral is shared. NVSTORE_FEATURE_ENABLED removes it.
+
+  Status: BUILDS (both targets, zero warnings, layout check and host tests pass) but
+        nothing calls it yet, so the linker drops it and it has NEVER run against the
+        chip: erase, program and status polling are unproven on hardware. Only the
+        JEDEC Read ID has been verified (2026-09-08). Next: step 2, a bench self-test
+        on the simulator, then the record format and slot logic with host tests.
+
 2026-09-29  —  NRST pull-up is a required hardware modification (cured the post-swap
                hang on both boards); SOP Rev G; update-first workflow
 -----------------------------------------------------------------------
