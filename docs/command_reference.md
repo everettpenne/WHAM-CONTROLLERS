@@ -1537,7 +1537,7 @@ above are illustrative only. On failure: `ERR 7 selftest <step>: <reason>` namin
 that failed (`status`, `erase`, `program`, `read`, `compare`, `final erase`); a compare failure
 also gives the offset and the two byte values.
 
-**Not yet verified on hardware** — see the changelog for the result once it has run.
+**Verified on the simulator board** (2026-09-29): `OK PASS` 4 of 4 runs — erase ≈ 60 ms, 300-byte program 1–2 ms, sector read 8–9 ms, status registers `00,02,60`. Not yet run on the controller board.
 
 ### `PFMIN:CAPTURE`, `PFMIN:STATus?`, `PFMIN:DATA?`, `PFMIN:DMASTAT?`
 

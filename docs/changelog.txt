@@ -23,16 +23,20 @@ WHAM-XREX-PFMG474 Firmware Changelog
         QspiTest_Handle() (declared in the new qspi_test_hw.h) so the one QUADSPI
         peripheral is shared. NVSTORE_FEATURE_ENABLED removes it.
 
-  Step 2 (written, not yet run): QSPI:SELFtest (cmd_system.c) -- IDLE-only bench test on
-        the last sector of the chip: status registers, erase, a 300-byte pattern that
-        crosses a page boundary, whole-sector read-back (pattern + everything else
-        still 0xFF), erase. Reports OK PASS with the status registers and timings.
+  Step 2: QSPI:SELFtest (cmd_system.c) -- IDLE-only bench test on the last sector of
+        the chip: status registers, erase, a 300-byte pattern that crosses a page
+        boundary, whole-sector read-back (pattern + everything else still 0xFF), erase.
+        Reports OK PASS with the status registers and timings.
+        RESULT, SIMULATOR (flashed over the network with fw_update.py, v0.8i, bank 1
+        -> 2, banner ok): PASS 4 of 4 runs -- erase 58-63 ms, program of 300 bytes
+        1-2 ms, whole-sector read 8-9 ms; status registers 00,02,60 (no block
+        protection; SR2 bit 1 = Quad Enable already set; SR3 = 60 is the chip's
+        drive-strength default). QSPI:ID? still EF 40 18 afterwards. So erase, program,
+        page-boundary handling and status polling all work on real hardware. The
+        controller board has NOT been tested (not flashed).
 
-  Status: BUILDS (both targets, zero warnings, layout check and host tests pass) but
-        nothing calls it yet, so the linker drops it and it has NEVER run against the
-        chip: erase, program and status polling are unproven on hardware. Only the
-        JEDEC Read ID has been verified (2026-09-08). Next: step 2, a bench self-test
-        on the simulator, then the record format and slot logic with host tests.
+  Next: the record format and slot logic (host-tested against a fake flash), then the
+        *SAV / *RCL / CONFig:PROFile commands.
 
 2026-09-29  —  NRST pull-up is a required hardware modification (cured the post-swap
                hang on both boards); SOP Rev G; update-first workflow
