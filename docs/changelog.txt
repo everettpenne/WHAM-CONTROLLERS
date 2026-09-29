@@ -35,7 +35,7 @@ WHAM-XREX-PFMG474 Firmware Changelog
         page-boundary handling and status polling all work on real hardware. The
         controller board has NOT been tested (not flashed).
 
-  Steps 3 and 4 (written; hardware verification pending):
+  Steps 3 and 4:
         src/app/settings/settings_codec.{h,c}: the snapshot model and its tagged-record
         encoding [field id][channel][length][value] (unknown ids skipped, missing fields
         left alone, so newer/older firmware can read each other's saves), CRC-32, text
@@ -54,6 +54,18 @@ WHAM-XREX-PFMG474 Firmware Changelog
         checks, against a RAM NOR-flash fake with a power cut injected at EVERY unit of a
         save and of a clear: the slot always holds exactly the old or exactly the new
         data). Cost: about +9.8 KB flash (float printf paths, codec) and +1.2 KB RAM.
+        RESULT, SIMULATOR (v0.8i 1c9701fd, network update): every command exercised over
+        the broker -- CATalog? (8 empty), *SAV with label, PROFile? (all 32 values listed),
+        DIFF? (SAME right after a save; exactly the changed fields after edits), *RCL
+        (APPLIED=32 FAILED=0; the DIFF? afterwards SAME; values confirmed with the normal
+        query commands; a nickname cleared back to empty), error paths (empty slot, slot
+        0/9/missing, over-long label -> ERR 12/18 as designed), and the turn-on/max
+        frequency ordering fallback (saved 5000/10000 recalled over live 60000/90000).
+        Survival across a power cycle: see the next line once done.
+        FOUND, PRE-EXISTING, NOT FIXED: the shot timing is stored as loop TICKS, so
+        CONFig:PIDRate silently rescales it (SHOT:TIMing 3 3 3 reads back 1.5 1.5 1.5 after
+        PIDRate 2000, 6 6 6 after going back to 1000...). Recall applies PIDRate before the
+        timing, so profiles restore correctly; the bug itself is in pid.c.
 
 2026-09-29  —  NRST pull-up is a required hardware modification (cured the post-swap
                hang on both boards); SOP Rev G; update-first workflow

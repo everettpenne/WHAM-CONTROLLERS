@@ -1552,7 +1552,7 @@ timing has been set), and per channel: `PID:GAINS`, `PID:LOOPMODE`, `CONFig:MAXC
 > *RCL 1
 < OK APPLIED=43 FAILED=0
 ```
-(Values illustrative.) **Hardware verification pending** — see `docs/changelog.txt`.
+(Values illustrative.) Verified on the simulator board 2026-09-29 — see `docs/changelog.txt`.
 
 ### `QSPI:SELFtest`
 
