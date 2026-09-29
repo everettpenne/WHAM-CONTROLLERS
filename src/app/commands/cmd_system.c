@@ -11,6 +11,8 @@
 #include "ctrlr_config.h"
 #include "boot_jump.h"
 #include "qspi_test.h"
+#include "nvstore.h"
+#include "state_machine.h"
 #include "git_version.h"
 #include "mcu.h"
 #include "telemetry.h"
@@ -286,4 +288,131 @@ void cmd_qspi_id(uart_instance_t *inst, char *args)
              (unsigned int)id[0], (unsigned int)id[1], (unsigned int)id[2]);
     uart_send(inst, buf);
 }
+/* --------------------------------------------------------------------------
+ * QSPI:SELFtest
+ *
+ * Bench proof of the external-flash storage driver (nvstore.h) against the
+ * real W25Q128JVS, added 2026-09-29 before anything is built on top of it.
+ * An action, not a query (it erases and programs), so no '?'. Works only on
+ * the reserved scratch sector (NVSTORE_SCRATCH_ADDR, last sector of the
+ * chip) and leaves it erased. IDLE only: a sector erase blocks the main loop
+ * (serial link included) for tens of milliseconds.
+ *
+ * Steps: read the three status registers; erase the sector (the driver
+ * checks it reads back blank); program a 300-byte pattern that starts
+ * mid-page and crosses a 256-byte page boundary; read it back and compare;
+ * read the WHOLE sector and check every byte outside the pattern is still
+ * 0xFF (catches a page program that wrapped around inside its page and
+ * clobbered earlier bytes); erase again.
+ *
+ * Reply: "OK PASS sr=<SR1>,<SR2>,<SR3> erase=<ms> prog=<ms> read=<ms>" (hex
+ * status registers; times from the 1 ms tick, so +-1 ms), or
+ * "ERR 7 selftest <step>: <reason>" naming the first step that failed.
+ * ERR 13 if not IDLE.
+ * -------------------------------------------------------------------------- */
+#define SELFTEST_PATTERN_OFFSET   (200U)   /* 200..499: crosses the 256-byte page boundary */
+#define SELFTEST_PATTERN_LEN      (300U)
+#define SELFTEST_READ_CHUNK       (256U)
+
+static uint8_t SelftestPatternByte(uint32_t i)
+{
+    return (uint8_t)((i * 7U) + 0x5AU);
+}
+
+static void SelftestFail(uart_instance_t *inst, const char *step, nvstore_status_t st)
+{
+    char msg[64];
+
+    snprintf(msg, sizeof(msg), "selftest %s: %s", step, NvStore_StatusText(st));
+    SendErr(inst, ERR_QSPI_FAILED, msg);
+}
+
+void cmd_qspi_selftest(uart_instance_t *inst, char *args)
+{
+    uint8_t pattern[SELFTEST_PATTERN_LEN];
+    uint8_t chunk[SELFTEST_READ_CHUNK];
+    uint8_t sr[3];
+    uint32_t t0;
+    uint32_t eraseMs;
+    uint32_t progMs;
+    uint32_t readMs;
+    char buf[96];
+    nvstore_status_t st;
+    (void)args;
+
+    if (SM_GetState() != SM_STATE_IDLE)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "QSPI:SELFtest only in IDLE");
+        return;
+    }
+
+    if ((st = NvStore_ReadStatusRegs(sr)) != NVSTORE_OK)
+    {
+        SelftestFail(inst, "status", st);
+        return;
+    }
+
+    t0 = Mcu_GetTickMs();
+    if ((st = NvStore_EraseSector(NVSTORE_SCRATCH_ADDR)) != NVSTORE_OK)
+    {
+        SelftestFail(inst, "erase", st);
+        return;
+    }
+    eraseMs = Mcu_GetTickMs() - t0;
+
+    for (uint32_t i = 0U; i < SELFTEST_PATTERN_LEN; i++)
+    {
+        pattern[i] = SelftestPatternByte(i);
+    }
+    t0 = Mcu_GetTickMs();
+    if ((st = NvStore_Program(NVSTORE_SCRATCH_ADDR + SELFTEST_PATTERN_OFFSET, pattern,
+                              SELFTEST_PATTERN_LEN)) != NVSTORE_OK)
+    {
+        SelftestFail(inst, "program", st);
+        return;
+    }
+    progMs = Mcu_GetTickMs() - t0;
+
+    /* Read the whole sector back, independently of the driver's own
+       verify: the pattern where it belongs, 0xFF everywhere else. */
+    t0 = Mcu_GetTickMs();
+    for (uint32_t off = 0U; off < NVSTORE_SECTOR_BYTES; off += SELFTEST_READ_CHUNK)
+    {
+        if ((st = NvStore_Read(NVSTORE_SCRATCH_ADDR + off, chunk, SELFTEST_READ_CHUNK)) != NVSTORE_OK)
+        {
+            SelftestFail(inst, "read", st);
+            return;
+        }
+        for (uint32_t i = 0U; i < SELFTEST_READ_CHUNK; i++)
+        {
+            uint32_t pos = off + i;
+            uint8_t want = 0xFFU;
+
+            if (pos >= SELFTEST_PATTERN_OFFSET && pos < (SELFTEST_PATTERN_OFFSET + SELFTEST_PATTERN_LEN))
+            {
+                want = SelftestPatternByte(pos - SELFTEST_PATTERN_OFFSET);
+            }
+            if (chunk[i] != want)
+            {
+                snprintf(buf, sizeof(buf), "selftest compare: offset %u is %02X, expected %02X",
+                         (unsigned int)pos, (unsigned int)chunk[i], (unsigned int)want);
+                SendErr(inst, ERR_QSPI_FAILED, buf);
+                return;
+            }
+        }
+    }
+    readMs = Mcu_GetTickMs() - t0;
+
+    if ((st = NvStore_EraseSector(NVSTORE_SCRATCH_ADDR)) != NVSTORE_OK)
+    {
+        SelftestFail(inst, "final erase", st);
+        return;
+    }
+
+    snprintf(buf, sizeof(buf), "OK PASS sr=%02X,%02X,%02X erase=%lums prog=%lums read=%lums\r\n",
+             (unsigned int)sr[0], (unsigned int)sr[1], (unsigned int)sr[2],
+             (unsigned long)eraseMs, (unsigned long)progMs, (unsigned long)readMs);
+    uart_send(inst, buf);
+}
+
 #endif /* QSPI_TEST_FEATURE_ENABLED */

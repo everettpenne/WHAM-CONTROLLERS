@@ -1514,6 +1514,31 @@ instead, traced to a QUADSPI sample-timing setting
 bugfix comment for the full diagnosis (an exact 1-bit shift of the
 correct value, not random noise) and fix.
 
+### `QSPI:SELFtest`
+
+Bench proof of the external-flash storage driver (`src/drivers/nvstore.h`) against the real
+W25Q128JVS, added 2026-09-29 as step 2 of the saved-settings work (see `docs/changelog.txt`).
+An action, not a query, so no `?`. Works only on the reserved scratch sector (the last 4 KiB
+sector of the chip, `NVSTORE_SCRATCH_ADDR`) and leaves it erased. **IDLE only** (`ERR 13`
+otherwise): a sector erase blocks the main loop, serial link included, for tens of
+milliseconds. Removed with the rest of the QSPI test module (`QSPI_TEST_FEATURE_ENABLED`).
+
+It reads the three status registers, erases the sector, programs a 300-byte pattern that starts
+mid-page and crosses a 256-byte page boundary, reads the whole sector back and checks the
+pattern and that every other byte is still `0xFF`, then erases again.
+
+```
+> QSPI:SELFtest
+< OK PASS sr=00,00,60 erase=48ms prog=2ms read=7ms
+```
+
+The status registers are hex (SR1, SR2, SR3); times come from the 1 ms tick (±1 ms). The numbers
+above are illustrative only. On failure: `ERR 7 selftest <step>: <reason>` naming the first step
+that failed (`status`, `erase`, `program`, `read`, `compare`, `final erase`); a compare failure
+also gives the offset and the two byte values.
+
+**Not yet verified on hardware** — see the changelog for the result once it has run.
+
 ### `PFMIN:CAPTURE`, `PFMIN:STATus?`, `PFMIN:DATA?`, `PFMIN:DMASTAT?`
 
 Bounded-count period/duty capture on the 6 `PFM_Input_01`..`_06` pins

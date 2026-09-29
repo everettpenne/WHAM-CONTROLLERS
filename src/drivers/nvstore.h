@@ -50,6 +50,11 @@
 #define NVSTORE_SECTOR_BYTES    (4096UL)
 #define NVSTORE_PAGE_BYTES      (256UL)
 
+/* Last sector of the chip: reserved for the QSPI:SELFtest bench test, which
+   erases and rewrites it freely. Nothing else may store data here (saved
+   settings live at the low addresses). */
+#define NVSTORE_SCRATCH_ADDR    (NVSTORE_CAPACITY_BYTES - NVSTORE_SECTOR_BYTES)
+
 typedef enum
 {
     NVSTORE_OK = 0,

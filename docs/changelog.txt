@@ -23,6 +23,11 @@ WHAM-XREX-PFMG474 Firmware Changelog
         QspiTest_Handle() (declared in the new qspi_test_hw.h) so the one QUADSPI
         peripheral is shared. NVSTORE_FEATURE_ENABLED removes it.
 
+  Step 2 (written, not yet run): QSPI:SELFtest (cmd_system.c) -- IDLE-only bench test on
+        the last sector of the chip: status registers, erase, a 300-byte pattern that
+        crosses a page boundary, whole-sector read-back (pattern + everything else
+        still 0xFF), erase. Reports OK PASS with the status registers and timings.
+
   Status: BUILDS (both targets, zero warnings, layout check and host tests pass) but
         nothing calls it yet, so the linker drops it and it has NEVER run against the
         chip: erase, program and status polling are unproven on hardware. Only the

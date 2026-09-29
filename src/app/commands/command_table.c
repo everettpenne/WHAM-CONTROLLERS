@@ -234,6 +234,7 @@ static const scpi_command_t command_table[] = {
        cmd_qspi_id(). */
 #if (QSPI_TEST_FEATURE_ENABLED != 0)
     { "QSPI:ID?",            cmd_qspi_id      },
+    { "QSPI:SELFtest",       cmd_qspi_selftest },
 #endif
 
     /* PFM_Input period/duty capture -- excluded entirely when

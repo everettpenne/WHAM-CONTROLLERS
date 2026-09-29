@@ -29,7 +29,7 @@ extern "C" {
  * patterns and handlers is command_table.c.
  *
  * Handlers are implemented one file per subsystem (src/app/commands/cmd_*.c):
- *   cmd_system.c   *IDN?, BOOT, SYS:*, DIAGnostic:OPTBytes?/RSTCause, QSPI:ID?
+ *   cmd_system.c   *IDN?, BOOT, SYS:*, DIAGnostic:OPTBytes?/RSTCause, QSPI:ID?, QSPI:SELFtest
  *   cmd_table.c    legacy TABle:*, FIRE, PFM:DIAG?/GAPLOG?, max-carrier config
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, DEBUG:FAULT:BYPASS,
@@ -416,6 +416,7 @@ void cmd_pwmalt_enable_query(uart_instance_t *inst, char *args); /* PWMAlt:ENAbl
  * that module is disabled. */
 #if (QSPI_TEST_FEATURE_ENABLED != 0)
 void cmd_qspi_id(uart_instance_t *inst, char *args); /* QSPI:ID? -- OK <MFR> <TYPE> <CAP>, hex bytes */
+void cmd_qspi_selftest(uart_instance_t *inst, char *args); /* QSPI:SELFtest -- erase/program/read-back of the scratch sector, IDLE only */
 #endif
 
 /* PFM_Input period/duty capture (PA15/PD4/PB2/PC12/PB4/PD12, TIM2/TIM3/
