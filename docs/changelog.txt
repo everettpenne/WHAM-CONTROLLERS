@@ -61,7 +61,12 @@ WHAM-XREX-PFMG474 Firmware Changelog
         query commands; a nickname cleared back to empty), error paths (empty slot, slot
         0/9/missing, over-long label -> ERR 12/18 as designed), and the turn-on/max
         frequency ordering fallback (saved 5000/10000 recalled over live 60000/90000).
-        Survival across a power cycle: see the next line once done.
+        POWER CYCLE (simulator, real power loss): live settings came back at their defaults
+        (gains 0, no nickname, timing unset), CATalog? still listed both saved slots with
+        labels, DIFF? 1 listed exactly the saved-vs-default differences, *RCL 1 gave
+        APPLIED=32 FAILED=0 and DIFF? then said SAME, and slot 2 was intact. Saved
+        profiles survive a power cycle. (Cosmetic: DIFF? shows an unset live shot timing
+        as 0.) The controller board has not been tested (not flashed).
         FOUND, PRE-EXISTING, NOT FIXED: the shot timing is stored as loop TICKS, so
         CONFig:PIDRate silently rescales it (SHOT:TIMing 3 3 3 reads back 1.5 1.5 1.5 after
         PIDRate 2000, 6 6 6 after going back to 1000...). Recall applies PIDRate before the
