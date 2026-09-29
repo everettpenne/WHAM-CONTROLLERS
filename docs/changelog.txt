@@ -35,8 +35,25 @@ WHAM-XREX-PFMG474 Firmware Changelog
         page-boundary handling and status polling all work on real hardware. The
         controller board has NOT been tested (not flashed).
 
-  Next: the record format and slot logic (host-tested against a fake flash), then the
-        *SAV / *RCL / CONFig:PROFile commands.
+  Steps 3 and 4 (written; hardware verification pending):
+        src/app/settings/settings_codec.{h,c}: the snapshot model and its tagged-record
+        encoding [field id][channel][length][value] (unknown ids skipped, missing fields
+        left alone, so newer/older firmware can read each other's saves), CRC-32, text
+        formatting and comparison. profile_store.{h,c}: 8 slots x 2 alternating 4 KiB
+        sectors with header (magic, version, length, sequence, label, firmware, CRC);
+        a save writes the copy NOT holding the newest valid data, so a power cut leaves
+        the old data intact; clear erases the older copy first. settings.{h,c}: capture
+        the live values and apply them back through the existing setters (turn-on/max
+        frequency are tried in both orders because each is checked against the other).
+        cmd_profile.c: *SAV, *RCL, CONFig:PROFile:CATalog?/PROFile?/DIFF?/CLEar; new
+        ERR 18. *SAV/*RCL/CLEar IDLE-only, nothing loaded at boot. PID_ClearChannelNickname()
+        added so a profile with no nickname can be recalled over one that has one.
+        Not saved: setpoints, channel enables, EXTernal:ENAble, DEBUG:FAULT:BYPASS, run/arm
+        actions, and CONFig:MaxCarrierHz (its state is private to the legacy table code).
+        Host tests (tests/): test_settings_codec (461 checks) and test_profile_store (5269
+        checks, against a RAM NOR-flash fake with a power cut injected at EVERY unit of a
+        save and of a clear: the slot always holds exactly the old or exactly the new
+        data). Cost: about +9.8 KB flash (float printf paths, codec) and +1.2 KB RAM.
 
 2026-09-29  —  NRST pull-up is a required hardware modification (cured the post-swap
                hang on both boards); SOP Rev G; update-first workflow

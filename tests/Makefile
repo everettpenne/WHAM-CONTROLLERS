@@ -11,10 +11,13 @@ ROOT    := ..
 OUT     := $(ROOT)/build/tests
 CC      ?= cc
 CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
-           -I$(ROOT)/src/middleware/scpi -I$(OUT)
+           -I$(ROOT)/src/middleware/scpi \
+           -I$(ROOT)/src/app/settings -I$(ROOT)/src/config -I$(ROOT)/build/generated -I$(OUT)
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table
+SETTINGS := $(ROOT)/src/app/settings
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table \
+           $(OUT)/test_settings_codec $(OUT)/test_profile_store
 
 .PHONY: all run clean
 all: run
@@ -34,6 +37,14 @@ $(OUT)/command_patterns.inc: $(ROOT)/src/app/commands/command_table.c | $(OUT)
 
 $(OUT)/test_command_table: test_command_table.c $(OUT)/command_patterns.inc fake_uart.c $(SCPI) test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -o $@ test_command_table.c fake_uart.c $(SCPI)
+
+$(OUT)/test_settings_codec: test_settings_codec.c $(SETTINGS)/settings_codec.c $(SETTINGS)/settings_codec.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c
+
+$(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(SETTINGS)/profile_store.c \
+                           $(SETTINGS)/profile_store.h $(SETTINGS)/settings_codec.c test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -o $@ test_profile_store.c fake_nvstore.c $(SETTINGS)/profile_store.c \
+	    $(SETTINGS)/settings_codec.c
 
 clean:
 	rm -rf $(OUT)

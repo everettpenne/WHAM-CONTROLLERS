@@ -35,7 +35,9 @@ typedef enum
     ERR_INVALID_NICKNAME    = 14,  /* CHANnel:NICKname rules, see pid.h */
     ERR_EXT_ENABLE_LOW      = 15,  /* EXTernal:ENAble on and PF13 reads LOW */
     /* 16: retired 2026-09-17 (old EXTernal:TRIGger coupling) -- do not reuse */
-    ERR_FWUPDATE            = 17   /* FWUPdate:* flash/CRC/image/option-byte failure */
+    ERR_FWUPDATE            = 17,  /* FWUPdate:* flash/CRC/image/option-byte failure */
+    ERR_PROFILE             = 18   /* saved profiles (*SAV, *RCL, CONFig:PROFile) -- empty or
+                                      corrupt slot, or the external flash failed */
 } cmd_err_t;
 
 /* Send "ERR <code> <msg>\r\n". code is an int, not cmd_err_t, so every call

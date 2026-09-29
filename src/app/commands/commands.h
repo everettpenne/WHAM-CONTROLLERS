@@ -29,6 +29,7 @@ extern "C" {
  * patterns and handlers is command_table.c.
  *
  * Handlers are implemented one file per subsystem (src/app/commands/cmd_*.c):
+ *   cmd_profile.c  *SAV, *RCL, CONFig:PROFile:*
  *   cmd_system.c   *IDN?, BOOT, SYS:*, DIAGnostic:OPTBytes?/RSTCause, QSPI:ID?, QSPI:SELFtest
  *   cmd_table.c    legacy TABle:*, FIRE, PFM:DIAG?/GAPLOG?, max-carrier config
  *   cmd_config.c   CONFig:*
@@ -661,6 +662,14 @@ void cmd_fwup_swap(uart_instance_t *inst, char *args);      /* FWUPdate:SWAP */
 void cmd_fwup_rollback(uart_instance_t *inst, char *args);  /* FWUPdate:ROLLback */
 void cmd_fwup_abort(uart_instance_t *inst, char *args);     /* FWUPdate:ABORt */
 void cmd_fwup_status(uart_instance_t *inst, char *args);    /* FWUPdate:STATus? */
+
+/* Saved settings profiles (cmd_profile.c) -- see that file's header. */
+void cmd_sav(uart_instance_t *inst, char *args);              /* *SAV <slot> [label] */
+void cmd_rcl(uart_instance_t *inst, char *args);              /* *RCL <slot> */
+void cmd_profile_catalog(uart_instance_t *inst, char *args);  /* CONFig:PROFile:CATalog? */
+void cmd_profile_query(uart_instance_t *inst, char *args);    /* CONFig:PROFile? <slot> */
+void cmd_profile_diff(uart_instance_t *inst, char *args);     /* CONFig:PROFile:DIFF? <slot> */
+void cmd_profile_clear(uart_instance_t *inst, char *args);    /* CONFig:PROFile:CLEar <slot> */
 
 #ifdef __cplusplus
 }

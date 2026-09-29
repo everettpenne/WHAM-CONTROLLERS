@@ -48,6 +48,7 @@
 									<listOptionValue builtIn="false" value="../src/app/commands"/>
 									<listOptionValue builtIn="false" value="../src/app/control"/>
 									<listOptionValue builtIn="false" value="../src/app/protection"/>
+									<listOptionValue builtIn="false" value="../src/app/settings"/>
 									<listOptionValue builtIn="false" value="../src/app/sim"/>
 									<listOptionValue builtIn="false" value="../src/bsp/stm32g4"/>
 									<listOptionValue builtIn="false" value="../src/config"/>
@@ -135,6 +136,7 @@
 									<listOptionValue builtIn="false" value="../src/app/commands"/>
 									<listOptionValue builtIn="false" value="../src/app/control"/>
 									<listOptionValue builtIn="false" value="../src/app/protection"/>
+									<listOptionValue builtIn="false" value="../src/app/settings"/>
 									<listOptionValue builtIn="false" value="../src/app/sim"/>
 									<listOptionValue builtIn="false" value="../src/bsp/stm32g4"/>
 									<listOptionValue builtIn="false" value="../src/config"/>

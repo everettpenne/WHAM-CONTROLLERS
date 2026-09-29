@@ -594,6 +594,8 @@ src/
                     task_*.c (main-loop tasks, tasks.h), telemetry.c
     control/        pid, state_machine, pfm (legacy table engine)
     protection/     gate_driver, xrex_io (fault evaluation)
+    settings/       settings_codec (snapshot model + encoding), profile_store
+                    (flash slots), settings (capture/apply live values)
     sim/            sim_transrex (simulator build)
     commands/       command_table.c, commands.h, cmd_common.c/.h,
                     cmd_<subsystem>.c

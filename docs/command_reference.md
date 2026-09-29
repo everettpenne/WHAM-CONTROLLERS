@@ -33,6 +33,7 @@ Ported from the sibling PFM-STM32G474 project, per project decision:
 | 15 | `ARM`/`SOURce:RUN`/`SHOT:STARt` refused -- `EXTernal:ENAble` is on and the external-enable pin (`PF13` as of 2026-09-17, was `PF15`) does not currently read `HIGH` (see `EXTernal:ENAble`). `ARM` reporting this distinctly is new 2026-09-22 -- previously collapsed into `ARM`'s own generic `ERR 13` |
 | 16 | **RETIRED 2026-09-17** -- previously `EXTernal:TRIGger 1` refused unless `EXTernal:ENAble` was already on, back when enable and trigger shared one pin (`PF15`). No longer generated: enable moved to `PF13`, trigger stayed on `PF15`, and the two are no longer coupled (see `EXTernal:TRIGger`). Kept here, not reassigned, per this table's own "never renumbered or reused" convention |
 | 17 | Firmware update (`FWUPdate:*`) failed -- flash erase/program error, CRC mismatch, image sanity check (stack pointer, reset vector, or this build's product name missing), not in dual-bank mode, or option-byte programming failed. The running image is never touched by any of these |
+| 18 | Saved-profile failure (`*SAV`, `*RCL`, `CONFig:PROFile:*`): the slot is empty or corrupt, or the external flash failed |
 
 Codes are never renumbered or reused once assigned, matching the
 sibling project's convention.
@@ -1513,6 +1514,45 @@ instead, traced to a QUADSPI sample-timing setting
 (`SampleShifting`) — see `docs/changelog.txt` and `qspi_test.c`'s own
 bugfix comment for the full diagnosis (an exact 1-bit shift of the
 correct value, not random noise) and fix.
+
+### Saved settings profiles: `*SAV`, `*RCL`, `CONFig:PROFile:*`
+
+Added 2026-09-29. Eight numbered slots (1-8) in the external W25Q128 flash keep a snapshot of
+the operator-configurable settings, so they survive a power cycle. **Loading is always
+explicit — nothing is applied at boot.** `*SAV`, `*RCL` and `CONFig:PROFile:CLEar` work only in
+`IDLE` (`ERR 13` otherwise; they erase/write flash or change live settings); the read-only
+commands work in any state. Storage details: `src/app/settings/profile_store.h` (each slot is
+two alternating 4 KiB sectors, so a power cut during a save leaves the previous data intact).
+
+**Saved:** `CONFig:PIDRate`, `TURNONHz`, `MAXFREQHz`, `SLEWRate`, `FaultRampTime`, the four
+`FaultPolarity:*`, `GPOut:ENAble`, `PWMAlt:ENAble`, the `SHOT:TIMing` durations (only if a
+timing has been set), and per channel: `PID:GAINS`, `PID:LOOPMODE`, `CONFig:MAXCURRent`,
+`SHOT:CURRent`, `CHANnel:NICKname`.
+**Never saved:** setpoints, channel enables (`SOURce:ENAble`), the `EXTernal:ENAble` interlock,
+`DEBUG:FAULT:BYPASS`, run/arm/fault actions, and `CONFig:MaxCarrierHz` (legacy table mode only).
+
+| Command | Reply |
+|---|---|
+| `*SAV <slot> [label]` | `OK`. Label: 1-15 characters, no spaces (`-` is reserved). Saving over a used slot replaces it. |
+| `*RCL <slot>` | `OK APPLIED=<n> FAILED=<k> [<names>] [IGNORED=<m>]`. Applies through the normal setters, so every limit still applies; a rejected value is named in `<names>` (e.g. `PIDRate,ch2.MaxCurrent`) and the rest still load. `IGNORED` counts saved values this firmware does not know. `ERR 18` if the slot is empty or corrupt. |
+| `CONFig:PROFile:CATalog?` | `OK 1=<label>/<fw> 2=empty 3=corrupt ...` — one entry per slot (`-` for no label). |
+| `CONFig:PROFile? <slot>` | `OK label=<l> fw=<v> <name>=<value> ...` — the saved values; nothing is applied. |
+| `CONFig:PROFile:DIFF? <slot>` | `OK <name>=<live>><saved> ...` for every saved value that differs from the live one, or `OK SAME`; nothing is applied. Use it as the preview before `*RCL`. |
+| `CONFig:PROFile:CLEar <slot>` | `OK`. |
+
+```
+> *SAV 1 baseline
+< OK
+> CONFig:PROFile:DIFF? 1
+< OK SAME
+> PID:GAINS 1 0.5 100 0
+< OK
+> CONFig:PROFile:DIFF? 1
+< OK ch1.kp=0.5>0.1 ch1.ki=100>250 ch1.kd=0>0.001
+> *RCL 1
+< OK APPLIED=43 FAILED=0
+```
+(Values illustrative.) **Hardware verification pending** — see `docs/changelog.txt`.
 
 ### `QSPI:SELFtest`
 

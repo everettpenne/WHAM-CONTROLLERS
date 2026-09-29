@@ -363,6 +363,13 @@ uint8_t PID_GetChannelEnable(uint8_t channel);
 uint8_t PID_SetChannelNickname(uint8_t channel, const char *name);
 const char *PID_GetChannelNickname(uint8_t channel);
 
+/* Removes channel `channel`'s nickname (back to the empty "no nickname"
+ * state PID_Init() leaves). Added 2026-09-29 for recalling a saved
+ * settings profile whose channel had no nickname -- PID_SetChannelNickname()
+ * refuses an empty name by design. Returns 1 on success, 0 if `channel`
+ * is out of range. */
+uint8_t PID_ClearChannelNickname(uint8_t channel);
+
 /* --------------------------------------------------------------------------
  * General-Fault open-loop ramp-down -- added 2026-09-13, per direct
  * instruction (state_machine.h's HandleGeneralFault(), state_machine.c).

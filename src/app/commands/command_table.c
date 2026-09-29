@@ -96,6 +96,14 @@ static const scpi_command_t command_table[] = {
 
     /* PC10/HRTIM1_FLT6 hardware fault status/clear -- see cmd_state.c's
        own header comment on cmd_fault_query()/cmd_fault_clear(). */
+    /* Saved settings profiles -- cmd_profile.c */
+    { "*SAV",                     cmd_sav               },
+    { "*RCL",                     cmd_rcl               },
+    { "CONFig:PROFile:CATalog?",  cmd_profile_catalog   },
+    { "CONFig:PROFile?",          cmd_profile_query     },
+    { "CONFig:PROFile:DIFF?",     cmd_profile_diff      },
+    { "CONFig:PROFile:CLEar",     cmd_profile_clear     },
+
     { "FAULT?",              cmd_fault_query  },
     { "FAULT:CLEar",         cmd_fault_clear  },
 

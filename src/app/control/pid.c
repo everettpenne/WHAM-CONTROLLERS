@@ -1730,6 +1730,16 @@ uint8_t PID_SetChannelNickname(uint8_t channel, const char *name)
     return 1U;
 }
 
+uint8_t PID_ClearChannelNickname(uint8_t channel)
+{
+    if (channel >= HRTIM_NUM_CHANNELS)
+    {
+        return 0U;
+    }
+    g_ch[channel].nickname[0] = '\0';
+    return 1U;
+}
+
 const char *PID_GetChannelNickname(uint8_t channel)
 {
     if (channel >= HRTIM_NUM_CHANNELS)
