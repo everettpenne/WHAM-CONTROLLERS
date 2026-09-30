@@ -103,6 +103,9 @@ static const scpi_command_t command_table[] = {
     { "PFMIN:STATus?",       cmd_pfmin_status  },
     { "PFMIN:DMASTAT?",      cmd_pfmin_dmastat },  /* TEMPORARY, see commands.h */
     { "PFMIN:DATA?",         cmd_pfmin_data    },
+    { "PFMIN:EDGes",         cmd_pfmin_edges       },
+    { "PFMIN:EDGes?",        cmd_pfmin_edges_query },
+    { "PFMIN:RAW?",          cmd_pfmin_raw         },
 #endif
 };
 

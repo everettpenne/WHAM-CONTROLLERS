@@ -168,6 +168,14 @@ typedef struct
 
 static PfmInputState_t g_state[PFM_INPUT_NUM_CHANNELS];
 
+/* Raw edge mode (pfm_input.h): requested mode, the mode the hardware is
+   actually configured for, the pin level just before capture started, and
+   the raw timestamps. Only BOTH-mode channels write g_edge[]. */
+static uint8_t  g_edgeModeReq[PFM_INPUT_NUM_CHANNELS];
+static uint8_t  g_edgeModeHw[PFM_INPUT_NUM_CHANNELS];
+static uint8_t  g_startLevel[PFM_INPUT_NUM_CHANNELS];
+static uint32_t g_edge[PFM_INPUT_NUM_CHANNELS][PFM_INPUT_MAX_EDGES];
+
 /* Temporary debug aid, 2026-09-09, first real-hardware test of the DMA
    redesign: HAL_TIM_IC_Start_DMA()'s return code per channel, so a
    silent start failure is visible instead of just showing up as
@@ -345,6 +353,53 @@ void PfmInput_Init(void)
     }
 }
 
+/* Sets the capture polarity of channel i to rising-only or both edges.
+   Only ever called from PfmInput_Arm(), i.e. while the channel is stopped --
+   never during a capture. */
+static void ApplyEdgeMode(uint8_t i)
+{
+    TIM_IC_InitTypeDef icCfg = {0};
+    TIM_HandleTypeDef *htim = HandleForTimer(kDesc[i].timer);
+
+    if ((htim == NULL) || (ChannelIsActive(i) == 0U) || (g_edgeModeHw[i] == g_edgeModeReq[i]))
+    {
+        return;
+    }
+    icCfg.ICPolarity  = (g_edgeModeReq[i] != 0U) ? TIM_ICPOLARITY_BOTHEDGE : TIM_ICPOLARITY_RISING;
+    icCfg.ICSelection = TIM_ICSELECTION_DIRECTTI;
+    icCfg.ICPrescaler = TIM_ICPSC_DIV1;
+    icCfg.ICFilter    = 0U;
+    if (HAL_TIM_IC_ConfigChannel(htim, &icCfg, kDesc[i].timChannel) == HAL_OK)
+    {
+        g_edgeModeHw[i] = g_edgeModeReq[i];
+    }
+}
+
+uint8_t PfmInput_SetEdgeMode(uint8_t channel, uint8_t bothEdges)
+{
+    if (channel >= PFM_INPUT_NUM_CHANNELS)
+    {
+        return 0U;
+    }
+    g_edgeModeReq[channel] = (bothEdges != 0U) ? 1U : 0U;
+    return 1U;
+}
+
+uint8_t PfmInput_GetEdgeMode(uint8_t channel)
+{
+    return (channel < PFM_INPUT_NUM_CHANNELS) ? g_edgeModeReq[channel] : 0U;
+}
+
+const uint32_t *PfmInput_GetRawEdges(uint8_t channel)
+{
+    return ((channel < PFM_INPUT_NUM_CHANNELS) && (g_edgeModeHw[channel] != 0U)) ? g_edge[channel] : NULL;
+}
+
+uint8_t PfmInput_GetStartLevel(uint8_t channel)
+{
+    return (channel < PFM_INPUT_NUM_CHANNELS) ? g_startLevel[channel] : 0U;
+}
+
 void PfmInput_Arm(uint16_t m)
 {
     uint16_t clamped = (m > (uint16_t)PFM_INPUT_MAX_PERIODS) ? (uint16_t)PFM_INPUT_MAX_PERIODS : m;
@@ -355,7 +410,13 @@ void PfmInput_Arm(uint16_t m)
         g_state[i].lastRiseTick     = 0U;
         g_state[i].capturedCount    = 0U;
         g_state[i].overcaptureCount = 0U;
+        ApplyEdgeMode(i);
         g_state[i].targetCount      = (ChannelIsActive(i) != 0U) ? clamped : 0U;
+        if ((g_state[i].targetCount != 0U) && (g_edgeModeHw[i] != 0U))
+        {
+            uint32_t edges = 2U * (uint32_t)clamped + 1U;
+            g_state[i].targetCount = (uint16_t)((edges > PFM_INPUT_MAX_EDGES) ? PFM_INPUT_MAX_EDGES : edges);
+        }
         g_dmaNextOffset[i]          = 0U;
     }
 }
@@ -374,6 +435,30 @@ void PfmInput_OnShotStart(void)
         {
             g_dmaStartStatus[i] = HAL_TIM_IC_Start_DMA(htim, kDesc[i].timChannel,
                                                        g_dmaBuf[i], PFM_DMA_BUF_LEN);
+
+            /* Pin level BEFORE the first captured edge, for raw edge mode.
+               Sampled after capture is enabled, not before: starting the
+               DMA channels takes several microseconds, long enough for an
+               edge to land between a "before" sample and the capture
+               actually running (seen on real hardware: phase V read low
+               with its rising edge already gone, so every high/low came
+               out swapped). Level now, minus the edges captured so far
+               (the DMA position counts them), is the level before the
+               first captured edge; repeated until no edge lands between
+               the two reads. */
+            if (g_edgeModeHw[i] != 0U)
+            {
+                uint32_t n0;
+                uint32_t n1;
+                uint8_t  level;
+                do
+                {
+                    n0    = PFM_DMA_BUF_LEN - pfmInputDma[i].Instance->CNDTR;
+                    level = (HAL_GPIO_ReadPin(kDesc[i].port, kDesc[i].pin) != GPIO_PIN_RESET) ? 1U : 0U;
+                    n1    = PFM_DMA_BUF_LEN - pfmInputDma[i].Instance->CNDTR;
+                } while (n0 != n1);
+                g_startLevel[i] = (uint8_t)(level ^ (uint8_t)(n0 & 1U));
+            }
         }
     }
 }
@@ -423,15 +508,27 @@ void PfmInput_OnShotEnd(void)
             uint32_t cndtr = pfmInputDma[i].Instance->CNDTR;
             uint16_t pos = (uint16_t)((cndtr == 0U) ? 0U : (PFM_DMA_BUF_LEN - cndtr));
             uint16_t expected = g_dmaNextOffset[i];
-            uint16_t newCount = (pos >= expected) ? (uint16_t)(pos - expected) : 0U;
+            uint16_t newCount = (uint16_t)((pos + PFM_DMA_BUF_LEN - expected) % PFM_DMA_BUF_LEN);
 
-            if (newCount > ((PFM_DMA_BUF_LEN / 2U) - 1U))
-            {
-                newCount = (PFM_DMA_BUF_LEN / 2U) - 1U;   /* defensive clamp, shouldn't trigger */
-            }
+            /* BUGFIX, raw edge mode, 2026-09-30: the write position may
+               have WRAPPED past the end of the buffer with that half's
+               DMA interrupt still pending (this runs at a higher priority
+               than the DMA interrupts). The old code treated that as "no
+               new edges" and dropped up to a half-buffer of real ones --
+               rare at one edge per period, routine at two. Process up to
+               the end of the buffer first, then from the start. */
             if (newCount > 0U)
             {
-                ProcessDmaChunk(i, expected, newCount);
+                uint16_t first = (uint16_t)(PFM_DMA_BUF_LEN - expected);
+                if (first > newCount)
+                {
+                    first = newCount;
+                }
+                ProcessDmaChunk(i, expected, first);
+                if (newCount > first)
+                {
+                    ProcessDmaChunk(i, 0U, (uint16_t)(newCount - first));
+                }
             }
         }
 
@@ -530,6 +627,28 @@ static void ProcessDmaChunk(uint8_t idx, uint16_t startOffset, uint16_t count)
        2026-09-09. Unchanged from the old per-edge design, just
        computed once per chunk instead of once per edge. */
     uint32_t mask = kDesc[idx].is16Bit ? 0xFFFFU : 0xFFFFFFFFU;
+
+    /* BOTH-edge (raw) mode: keep every captured value as it came, in order. */
+    if (g_edgeModeHw[idx] != 0U)
+    {
+        for (uint16_t k = 0U; k < count; k++)
+        {
+            uint16_t n = st->capturedCount;
+            g_edge[idx][n] = g_dmaBuf[idx][(uint16_t)(startOffset + k)] & mask;
+            st->capturedCount = (uint16_t)(n + 1U);
+            if (st->capturedCount >= st->targetCount)
+            {
+                TIM_HandleTypeDef *htimRaw = HandleForTimer(kDesc[idx].timer);
+                if (htimRaw != NULL)
+                {
+                    HAL_TIM_IC_Stop_DMA(htimRaw, kDesc[idx].timChannel);
+                }
+                return;
+            }
+        }
+        g_dmaNextOffset[idx] = (uint16_t)((startOffset + count) % PFM_DMA_BUF_LEN);
+        return;
+    }
 
     for (uint16_t k = 0U; k < count; k++)
     {
@@ -753,5 +872,9 @@ uint16_t PfmInput_GetCount(uint8_t channel) { (void)channel; return 0U; }
 const uint32_t *PfmInput_GetPeriods(uint8_t channel) { (void)channel; return NULL; }
 uint16_t PfmInput_GetOvercaptureCount(uint8_t channel) { (void)channel; return 0U; }
 uint8_t PfmInput_GetDmaStartStatus(uint8_t channel) { (void)channel; return 0xFFU; }
+uint8_t PfmInput_SetEdgeMode(uint8_t channel, uint8_t bothEdges) { (void)channel; (void)bothEdges; return 0U; }
+uint8_t PfmInput_GetEdgeMode(uint8_t channel) { (void)channel; return 0U; }
+const uint32_t *PfmInput_GetRawEdges(uint8_t channel) { (void)channel; return NULL; }
+uint8_t PfmInput_GetStartLevel(uint8_t channel) { (void)channel; return 0U; }
 
 #endif /* PFM_INPUT_FEATURE_ENABLED */

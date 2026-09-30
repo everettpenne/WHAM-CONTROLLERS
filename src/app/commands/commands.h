@@ -165,6 +165,11 @@ void cmd_pfmin_dmastat(uart_instance_t *inst, char *args); /* PFMIN:DMASTAT? -- 
                                                                 <s1> .. <s6>, last
                                                                 HAL_TIM_IC_Start_DMA()
                                                                 return code per channel */
+
+/* Raw both-edge mode (duty-cycle re-exploration, 2026-09-30) -- see cmd_pfmin.c */
+void cmd_pfmin_edges(uart_instance_t *inst, char *args);         /* PFMIN:EDGes <ch> RISING|BOTH -- OK */
+void cmd_pfmin_edges_query(uart_instance_t *inst, char *args);   /* PFMIN:EDGes? -- OK R B R R R R */
+void cmd_pfmin_raw(uart_instance_t *inst, char *args);           /* PFMIN:RAW? <ch> -- OK <n> OVERCAP=<k> LEVEL=<l> <t0> <d1> ... */
 #endif
 
 /* DIAGnostic:OPTBytes?/RSTCause -- boot-source option bits and reset-cause flags, see cmd_system.c */

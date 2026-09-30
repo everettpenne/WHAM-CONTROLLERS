@@ -171,6 +171,39 @@ uint16_t PfmInput_GetOvercaptureCount(uint8_t channel);
  * reliable. */
 uint8_t PfmInput_GetDmaStartStatus(uint8_t channel);
 
+/* --------------------------------------------------------------------------
+ * RAW EDGE MODE -- re-exploration of duty-cycle measurement, 2026-09-30.
+ *
+ * The 2026-09-08 duty attempts failed (a real signal read exactly one period
+ * late, cause never found) with per-edge interrupts, a live GPIO read to tell
+ * rising from falling, and a polarity flip inside the ISR. This mode keeps
+ * none of those: a channel can be set to capture BOTH edges (polarity set
+ * while the channel is stopped, never touched during a capture), the DMA
+ * stores every edge's raw timer value untouched, and telling rising from
+ * falling is left to whoever reads the stream (alternation from the level the
+ * pin had just before capture started, PfmInput_GetStartLevel()).
+ * Diagnostic: it exists to look at what the real edge stream is.
+ *
+ * Applied at the next PfmInput_Arm(). In BOTH mode the "count" of the channel
+ * is EDGES (up to PFM_INPUT_MAX_EDGES), Arm(M) asks for 2M+1 edges (M periods
+ * of a rising-first signal), and PfmInput_GetPeriods() is not filled.
+ * -------------------------------------------------------------------------- */
+#define PFM_INPUT_MAX_EDGES     (2U * PFM_INPUT_MAX_PERIODS + 2U)
+
+/* bothEdges: 0 = rising only (default), 1 = both edges. Returns 0 for a bad
+   channel. */
+uint8_t PfmInput_SetEdgeMode(uint8_t channel, uint8_t bothEdges);
+uint8_t PfmInput_GetEdgeMode(uint8_t channel);
+
+/* The raw timer values of the last BOTH-mode capture, PfmInput_GetCount()
+   entries (absolute ticks; the 16-bit timers wrap at 65536). NULL if the
+   channel is not in BOTH mode. */
+const uint32_t *PfmInput_GetRawEdges(uint8_t channel);
+
+/* Pin level (0/1) read just before the last capture started: the first edge
+   captured is the opposite transition. */
+uint8_t PfmInput_GetStartLevel(uint8_t channel);
+
 #ifdef __cplusplus
 }
 #endif

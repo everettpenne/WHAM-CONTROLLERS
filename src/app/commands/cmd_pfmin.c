@@ -7,9 +7,11 @@
 #include "cmd_common.h"
 #include "ctrlr_config.h"
 #include "pfm_input.h"
+#include "state_machine.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #if (PFM_INPUT_FEATURE_ENABLED != 0)
 /* --------------------------------------------------------------------------
@@ -89,7 +91,7 @@ void cmd_pfmin_dmastat(uart_instance_t *inst, char *args)
    putting several KB on the stack here would be a real, needless risk
    even though the actual runtime stack has far more room in practice
    (see AGENTS.md's own flagged-but-deferred note on stack sizing). */
-static char g_pfminDataBuf[2600];
+static char g_pfminDataBuf[4700];   /* raw mode: up to 402 edges x 11 chars */
 
 void cmd_pfmin_data(uart_instance_t *inst, char *args)
 {
@@ -115,6 +117,12 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
     }
     ch = (uint8_t)(chArg - 1L);   /* 1-6 on the wire -> 0-5 internally */
 
+    if (PfmInput_GetEdgeMode(ch) != 0U)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "channel is in BOTH-edge mode -- use PFMIN:RAW?");
+        return;
+    }
+
     count   = PfmInput_GetCount(ch);
     periods = PfmInput_GetPeriods(ch);
 
@@ -139,3 +147,117 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
     uart_send(inst, g_pfminDataBuf);
 }
 #endif /* PFM_INPUT_FEATURE_ENABLED */
+
+/* --------------------------------------------------------------------------
+ * PFMIN:EDGes <ch> RISING|BOTH  /  PFMIN:EDGes?  /  PFMIN:RAW? <ch>
+ *
+ * Raw edge mode (pfm_input.h): a channel set to BOTH captures every edge and
+ * keeps the raw timer values, for measuring duty (time high) and for looking
+ * at what the real edge stream is. The mode is applied at the next
+ * PFMIN:CAPTURE, and can only be changed in IDLE.
+ *   PFMIN:EDGes 1 BOTH     -> OK
+ *   PFMIN:EDGes?           -> OK R B R R R R      (R rising only, B both)
+ *   PFMIN:CAPTURE 50 ... FIRE ...
+ *   PFMIN:RAW? 1           -> OK <n> OVERCAP=<k> LEVEL=<0|1> <t0> <d1> <d2> ...
+ * <n> edges; t0 is the first edge's raw timer value and each following number
+ * is the difference from the previous edge (so the reply stays short); LEVEL
+ * is the pin level just before capture started, the first edge is the
+ * opposite transition. PFMIN:DATA? refuses a BOTH channel (ERR 13).
+ * -------------------------------------------------------------------------- */
+void cmd_pfmin_edges(uart_instance_t *inst, char *args)
+{
+    char *tokCh   = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    char *tokMode = (tokCh != NULL) ? strtok(NULL, " \r\n") : NULL;
+    long chArg;
+    uint8_t both;
+
+    if ((tokCh == NULL) || (tokMode == NULL))
+    {
+        SendErr(inst, ERR_INVALID_ARGS, "PFMIN:EDGes needs two arguments: channel (1-6) RISING|BOTH");
+        return;
+    }
+    chArg = atol(tokCh);
+    if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
+    {
+        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        return;
+    }
+    if (strcasecmp(tokMode, "BOTH") == 0)
+    {
+        both = 1U;
+    }
+    else if ((strcasecmp(tokMode, "RISING") == 0) || (strcasecmp(tokMode, "RIS") == 0))
+    {
+        both = 0U;
+    }
+    else
+    {
+        SendErr(inst, ERR_INVALID_ARGS, "mode must be RISING or BOTH");
+        return;
+    }
+    if (SM_GetState() != SM_STATE_IDLE)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "PFMIN:EDGes only in IDLE");
+        return;
+    }
+    (void)PfmInput_SetEdgeMode((uint8_t)(chArg - 1L), both);
+    uart_send(inst, "OK\r\n");
+}
+
+void cmd_pfmin_edges_query(uart_instance_t *inst, char *args)
+{
+    char buf[48];
+    int  len = 0;
+    (void)args;
+
+    len += snprintf(buf, sizeof(buf), "OK");
+    for (uint8_t ch = 0U; ch < PFM_INPUT_NUM_CHANNELS; ch++)
+    {
+        len += snprintf(&buf[len], sizeof(buf) - (size_t)len, " %c", (PfmInput_GetEdgeMode(ch) != 0U) ? 'B' : 'R');
+    }
+    snprintf(&buf[len], sizeof(buf) - (size_t)len, "\r\n");
+    uart_send(inst, buf);
+}
+
+void cmd_pfmin_raw(uart_instance_t *inst, char *args)
+{
+    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    long chArg;
+    uint8_t ch;
+    uint16_t count;
+    const uint32_t *edges;
+    uint32_t mask;
+    int len = 0;
+
+    if (tok == NULL)
+    {
+        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:RAW? needs one argument: channel (1-6)");
+        return;
+    }
+    chArg = atol(tok);
+    if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
+    {
+        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        return;
+    }
+    ch = (uint8_t)(chArg - 1L);
+    edges = PfmInput_GetRawEdges(ch);
+    if (edges == NULL)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "channel is not in BOTH-edge mode (PFMIN:EDGes)");
+        return;
+    }
+    count = PfmInput_GetCount(ch);
+    mask  = (ch >= 4U) ? 0xFFFFU : 0xFFFFFFFFU;   /* PFM_Input_5/6 are the 16-bit timers TIM3/TIM4 */
+
+    len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len,
+                    "OK %u OVERCAP=%u LEVEL=%u", (unsigned int)count,
+                    (unsigned int)PfmInput_GetOvercaptureCount(ch), (unsigned int)PfmInput_GetStartLevel(ch));
+    for (uint16_t i = 0U; i < count; i++)
+    {
+        uint32_t v = (i == 0U) ? edges[0] : ((edges[i] - edges[i - 1U]) & mask);
+        len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len, " %lu", (unsigned long)v);
+    }
+    snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len, "\r\n");
+    uart_send(inst, g_pfminDataBuf);
+}

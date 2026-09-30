@@ -1,6 +1,44 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-09-30  —  PFM_Input raw both-edge mode: duty-cycle re-exploration
+-----------------------------------------------------------------------
+  Change:  New PFMIN:EDGes <ch> RISING|BOTH / PFMIN:EDGes? / PFMIN:RAW? <ch>.
+        A channel in BOTH mode captures every edge by DMA and keeps the raw timer
+        values; the host decodes rise/fall by alternation from LEVEL (the pin
+        level before the first captured edge). Polarity is set only while the
+        channel is stopped (at PFMIN:CAPTURE); no polarity flip in an ISR, no GPIO
+        read to classify edges, no per-edge interrupts -- none of the mechanisms
+        of the 2026-09-08 XREX attempts. PFMIN:DATA? refuses a BOTH channel (ERR 13).
+        Tool: python/pfm_edge_test.py.
+  Result (HVPS 20 kHz, 80 steps, constant duty, simulator, U/V/W/UN by fibre on
+        inputs 1-4): the old "period doubled / one period late" failure does NOT
+        reproduce. High + low = 8499 ticks on every channel (period - 1 tick, as
+        with period-only capture), high and low each steady to 0-1 tick.
+        Programmed cmp 3400 / 4250 / 5099 read as: U high 3368 / 4218 / 5067
+        (cmp - 32), V cmp - 34, W cmp - 33, UN high per - cmp (5099 / 4249 / 3400)
+        and low = cmp. So duty is measurable to a tick from one input, with a
+        fixed, explained offset (SET at CMP3 = 16 ticks plus dead time, and the
+        fibre link's edge asymmetry is not visible above the 1-tick noise).
+  Bugs found and fixed on the way (both were in this session's new code path,
+        the second also latent in rising-only mode):
+        - level was sampled BEFORE starting DMA; V's rising edge landed in that
+          window (starting the channels takes microseconds), so LEVEL read low with
+          V already high and high/low came out swapped. Now sampled after capture
+          is enabled and corrected by the edges already captured.
+        - the end-of-shot tail flush treated a wrapped DMA write position as "no
+          new edges" and dropped up to 15 edges (144 of 161 on inputs 1/3). Now
+          handles the wrap; 161/159/160/159 captured.
+  Not explained: PFM_Input_2 still reports OVERCAP=1 every run and inputs 2/4 end
+        two edges short (159 vs 161); one V high read 366 instead of 3366 in one run
+        (position 139 of 158, twice-identical readback) -- a real short pulse or a
+        repeatable serial-bridge character loss, not resolved. The last pulse of a
+        shot is truncated where the outputs are forced off (U 1008, W 3839), as
+        expected. 100-125 kHz (LIMITER) not tried: edge spacing at 2x rate is the
+        thing to check next for DMA overrun.
+  Verified: simulator over the network, v0.9 build with these changes (image not
+        yet published as a release; branch pfm-input-edges).
+
 2026-09-29  —  Renamed WHAM-SWITCH-PFMG474 -> WHAM-HBRIDGE-PFMG474; port plan started
 -----------------------------------------------------------------------
   Change:  The firmware drives the Limiter (PWM) and HVPS (PFM) H-bridge supplies
