@@ -19,6 +19,23 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
         images to build/ (as in WHAM-XREX-PFMG474) with a fallback for older commits.
         Historical entries below predate the rename and are kept verbatim.
 
+2026-09-30  —  python/pfm_shot_test.py: programmed shot vs PFM_Input measurement, with plot
+-----------------------------------------------------------------------
+  Change:  New host tool. Builds a table (frequency and duty ramp, up to the 200 periods the
+        capture holds), uploads it, arms PFMIN:CAPTURE, ARM + FIRE, reads PFMIN:DATA? back
+        and plots programmed vs measured frequency. Replies damaged by the ethernet bridge
+        (a dropped digit turns 10473 into 1473) are detected and re-read; the tool found
+        one or two damaged replies per shot. The analysis finds each capture's alignment
+        (the capture starts a period before the table) and removes the phase-lock shift a
+        changing period puts on V, W and the complement (V/W at 1/3, 2/3 of the period,
+        UN at duty + 17 ticks dead time). --selftest (no hardware), --from-json replay.
+  Measured on the simulator board (U,V,W,UN over fiber into PFM_Input_1..4), HVPS:
+        20 -> 15 kHz ramp: every channel follows the table; residual vs the model -1 tick
+        (U spread 0.00, V 0.29, W 0.65, UN 0.10 ticks). 40 -> 60 % duty ramp at 20 kHz:
+        the duty MOVEMENT reconstructed from (UN period - U period) matched the table,
+        +1682 ticks programmed vs +1682 measured, worst step 1 tick (6 ns). The duty LEVEL
+        is not measurable: the capture stores periods only.
+
 2026-09-30  —  Operator-selectable supply mode: LIMITER / HVPS frequency and duty limits
 -----------------------------------------------------------------------
   Change:  CONFig:MODE LIMiter|HVPS, CONFig:MODE?, CONFig:LIMits? (cmd_config.c) and a new

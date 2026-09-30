@@ -162,6 +162,16 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
     `net_terminal.py` share the bridge's single client slot between people
     and scripts. The IP addresses and jump host in their headers are
     placeholders -- fill in your own tunnel.
+  - `pfm_shot_test.py` -- fires a programmed frequency/duty ramp with the
+    PFM_Input capture armed (PFMIN:*), reads it back (re-reading any reply
+    damaged by the ethernet bridge), and plots programmed vs measured
+    frequency with the phase-lock model residual (added 2026-09-30). Wiring
+    assumed: PFM_Input_1..4 = U, V, W, UN over fiber (`--map` changes it).
+    `--selftest` needs no hardware; `--from-json` replays a saved shot. When
+    a phase and its complement are both wired it also reconstructs how the
+    compare value (duty) MOVED from (UN period - U period) -- the capture
+    still measures period only, so the duty LEVEL is not available (see
+    docs/changelog.txt).
   - `wham_serial_flash.py` -- one-command serial reflash (`BOOT` +
     `stm32flash`). Ported from the sibling project's
     `pfm_serial_flash.py`, corrected for this project's actual baud and
