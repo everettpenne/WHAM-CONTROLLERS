@@ -25,7 +25,8 @@ typedef enum
     ERR_QSPI_FAILED         = 7,   /* QSPI:ID? command failed or timed out */
     ERR_PFMIN_BAD_CHANNEL   = 8,   /* PFM_Input channel not 1-6 */
     ERR_PFMIN_BAD_COUNT     = 9,   /* PFMIN:CAPTURE M out of 1-PFM_INPUT_MAX_PERIODS */
-    ERR_CARRIER_TOO_HIGH    = 10,  /* TABle:STEP per above the max carrier frequency */
+    ERR_OUT_OF_MODE_LIMITS  = 10,  /* TABle:STEP carrier or duty outside the selected supply mode's
+                                      limits (was ERR_CARRIER_TOO_HIGH: carrier above 100 kHz) */
     /* 11, 14, 15, 16: used by WHAM-XREX-PFMG474 only (invalid channel,
        nickname, external enable) -- reserved so the shared numbers mean the
        same thing on both projects. */

@@ -65,6 +65,17 @@ auto-stops when the table is exhausted. Since 2026-09-29 (Phase 3) an
 operating-state machine gates it: `FIRE` needs `ARM`, every shot needs its
 own `ARM`, and every fault latches `FAULT` -- see the bullet below.
 
+- **Supply mode** (added 2026-09-29; `src/app/control/supply_mode.c`,
+  limits in `ctrlr_config.h`): the operator selects `CONFig:MODE
+  LIMiter|HVPS` and every `TABle:STEP` is checked against the mode's
+  carrier and duty range -- LIMITER (PWM) 75-125 kHz / 5-95 % per-phase duty,
+  HVPS (PFM) 10-30 kHz / 40-60 % duty (the older PFM-STM32G474 project's
+  values). Boot mode is NONE: no table can be uploaded until one is chosen.
+  A mode change is IDLE-only and discards the table. This replaced the old
+  single 100 kHz carrier ceiling (`ERR 10` now covers both frequency and
+  duty limits). **100-125 kHz (LIMITER) is inside the range but has not been
+  scoped on real hardware** -- the SET/RESET-collision fix was only
+  confirmed up to 100 kHz. Host-tested (`tests/test_supply_mode.c`).
 - **Operating-state machine** (added 2026-09-29, Phase 3 of the port;
   `src/app/control/state_machine.c`, `task_faults.c`, `cmd_state.c`):
   IDLE -> `ARM` -> ARMED -> `FIRE` -> FIRING -> table ends -> IDLE;

@@ -9,6 +9,7 @@
 #include "pfm.h"
 #include "hrtim.h"
 #include "state_machine.h"
+#include "supply_mode.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,12 +46,26 @@ static uint8_t RefuseWhileFiring(uart_instance_t *inst)
     return 0U;
 }
 
+/* Discards the uploaded table and any upload in progress. Called when the
+   supply mode changes (cmd_config.c): a table checked against one mode's
+   limits must not survive into another. */
+void CmdTable_Discard(void)
+{
+    PFM_TableReset();
+    g_tableUploadActive = 0U;
+}
+
 void cmd_table_begin(uart_instance_t *inst, char *args)
 {
     (void)args;
 
     if (RefuseWhileFiring(inst) != 0U)
     {
+        return;
+    }
+    if (SupplyMode_Get() == SUPPLY_MODE_NONE)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
         return;
     }
     PFM_TableReset();
@@ -62,20 +77,6 @@ void cmd_table_begin(uart_instance_t *inst, char *args)
 /* per + one compare value per channel -- see ctrlr_config.h's
    HRTIM_NUM_CHANNELS. */
 #define TABLE_STEP_TOKEN_COUNT  (1U + HRTIM_NUM_CHANNELS)
-
-/* Smallest `per` allowed by ctrlr_config.h's PFM_MAX_CARRIER_FREQ_HZ
-   ceiling -- per is INVERSELY related to frequency (freq =
-   HRTIM_TIMER_CLK_HZ / (per+1)), so capping frequency means a MINIMUM
-   per, not a maximum. Same formula as python/pfm_table_upload.py's own
-   per_from_freq() (round(clock/freq) - 1); plain integer division
-   here reproduces that exactly for PFM_MAX_CARRIER_FREQ_HZ = 100000
-   (170000000/100000 = 1700 exactly, no rounding to differ over) --
-   this is a hard compile-time boundary check, not a place to silently
-   accept a rounding mismatch against the host tool. See
-   ctrlr_config.h's own comment on PFM_MAX_CARRIER_FREQ_HZ for why this
-   limit exists. */
-#define TABLE_STEP_MIN_PER \
-    ((uint16_t)((HRTIM_TIMER_CLK_HZ / PFM_MAX_CARRIER_FREQ_HZ) - 1UL))
 
 /* Builds the "wrong token count" error text at runtime -- the count
    itself (1 + HRTIM_NUM_CHANNELS) is only known as a preprocessor
@@ -144,19 +145,41 @@ void cmd_table_step(uart_instance_t *inst, char *args)
         return;
     }
 
-    if (vals[0] < (long)TABLE_STEP_MIN_PER)
-    {
-        char msg[96];
-        snprintf(msg, sizeof(msg),
-                 "per below %u implies carrier > %lu Hz (max allowed)",
-                 (unsigned int)TABLE_STEP_MIN_PER, (unsigned long)PFM_MAX_CARRIER_FREQ_HZ);
-        SendErr(inst, ERR_CARRIER_TOO_HIGH, msg);
-        return;
-    }
-
     for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {
         cmp[ch] = (uint16_t)vals[1 + ch];
+    }
+
+    /* The selected supply mode's carrier and duty limits (supply_mode.h). */
+    {
+        supply_limits_t lim;
+        char msg[96];
+        supply_step_result_t res = SupplyMode_CheckStep((uint16_t)vals[0], cmp, HRTIM_NUM_CHANNELS);
+
+        if (res != SUPPLY_STEP_OK)
+        {
+            if (SupplyMode_GetLimits(SupplyMode_Get(), &lim) == 0U)
+            {
+                SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
+                return;
+            }
+            if ((res == SUPPLY_STEP_FREQ_LOW) || (res == SUPPLY_STEP_FREQ_HIGH))
+            {
+                snprintf(msg, sizeof(msg), "per %lu is %s the %s range (%lu-%lu Hz)",
+                         (unsigned long)vals[0], (res == SUPPLY_STEP_FREQ_LOW) ? "below" : "above",
+                         SupplyMode_Name(SupplyMode_Get()),
+                         (unsigned long)lim.freqMinHz, (unsigned long)lim.freqMaxHz);
+            }
+            else
+            {
+                snprintf(msg, sizeof(msg), "a channel's duty is %s the %s range (%u-%u%%)",
+                         (res == SUPPLY_STEP_DUTY_LOW) ? "below" : "above",
+                         SupplyMode_Name(SupplyMode_Get()),
+                         (unsigned)lim.dutyMinPct, (unsigned)lim.dutyMaxPct);
+            }
+            SendErr(inst, ERR_OUT_OF_MODE_LIMITS, msg);
+            return;
+        }
     }
 
     if (PFM_AppendStep((uint16_t)vals[0], cmp) == 0U)

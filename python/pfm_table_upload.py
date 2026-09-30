@@ -406,6 +406,13 @@ def main():
     ap = argparse.ArgumentParser(description="Upload a PFM table to WHAM-HBRIDGE-PFMG474")
     ap.add_argument("--port", required=True, help="serial device, e.g. /dev/cu.usbserial-XXXXX")
     ap.add_argument("--baud", type=int, default=APP_BAUD, help=f"default: {APP_BAUD}")
+    ap.add_argument("--mode", choices=["LIMITER", "HVPS"],
+                    help="select the supply mode first (CONFig:MODE; clears any table on the board "
+                         "if the mode changes). Without it the board's current mode is used, and "
+                         "the upload stops if none is selected. Every step is checked against the "
+                         "mode's limits (LIMITER 75-125 kHz / 5-95%% duty, HVPS 10-30 kHz / 40-60%% "
+                         "duty) and refused with ERR 10 outside them -- profiles 1-5 (100 kHz, "
+                         "10-90%% duty) fit LIMITER; profiles 6-10 start at 60 kHz and do not.")
     args = ap.parse_args()
 
     table = build_table()
@@ -445,6 +452,16 @@ def main():
                     f"HRTIM_NUM_CHANNELS above to match before running again."
                 )
             print(f"[check] board confirms {board_channels} channel(s), matches this script")
+
+            # Supply mode (firmware refuses TABLE:BEGIN until one is selected).
+            if args.mode:
+                send_and_expect_ok(ser, f"CONFIG:MODE {args.mode}")
+            reply = send_and_expect_ok(ser, "CONFIG:MODE?")
+            mode = reply.split()[1] if len(reply.split()) > 1 else "?"
+            if mode == "NONE":
+                sys.exit("\n[fail] no supply mode selected on the board -- rerun with "
+                         "--mode LIMITER or --mode HVPS")
+            print(f"[check] supply mode: {mode}  ({send_and_expect_ok(ser, 'CONFIG:LIMITS?')})")
 
             send_and_expect_ok(ser, "TABLE:BEGIN")
             print("[upload] TABLE:BEGIN ok, uploading...")

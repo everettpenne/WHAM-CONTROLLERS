@@ -187,6 +187,12 @@ void cmd_disarm(uart_instance_t *inst, char *args);              /* DISARM -- AR
 void cmd_state_query(uart_instance_t *inst, char *args);         /* STATE? -- OK IDLE|ARMED|FIRING|FAULT GENERAL */
 void cmd_general_test_fault(uart_instance_t *inst, char *args);  /* GENERAL:TEST:FAULT -- software fault injection */
 
+/* Supply mode (supply_mode.h), see cmd_config.c / cmd_table.c */
+void cmd_config_mode(uart_instance_t *inst, char *args);          /* CONFig:MODE LIMiter|HVPS */
+void cmd_config_mode_query(uart_instance_t *inst, char *args);    /* CONFig:MODE? -- OK NONE|LIMITER|HVPS */
+void cmd_config_limits_query(uart_instance_t *inst, char *args);  /* CONFig:LIMits? -- OK <mode> FREQ <min> <max> DUTY <min> <max> */
+void CmdTable_Discard(void);                                      /* drops the table; called on a mode change */
+
 /* Matches a received line against the command table and runs the handler
    (or replies ERR 1). Called from the SCPI task (task_scpi.c). */
 void Commands_Dispatch(uart_instance_t *inst, char *line);

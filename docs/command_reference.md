@@ -25,9 +25,9 @@ Ported from the sibling PFM-STM32G474 project, per project decision:
 | 7 | QUADSPI command failed or timed out (see `QSPI:ID?`) |
 | 8 | Invalid `PFM_Input` channel (1-6) |
 | 9 | `M` out of range for `PFMIN:CAPTURE` (1-`PFM_INPUT_MAX_PERIODS`) |
-| 10 | `TABLE:STEP` `per` value implies a carrier frequency above `PFM_MAX_CARRIER_FREQ_HZ` |
+| 10 | `TABLE:STEP` carrier frequency or a channel's duty is outside the selected supply mode's limits (`CONFig:MODE`); before 2026-09-29 this meant "carrier above 100 kHz" |
 | 12 | Invalid command arguments — see the specific command's own usage |
-| 13 | Not allowed in the current state: `FIRE` when not `ARMED`, `ARM` when not `IDLE`, `TABLE:BEGIN`/`STEP` while `FIRING`, `BOOT` while `ARMED`/`FIRING`, `FWUPdate:*` when not `IDLE` or with no transfer/verified image |
+| 13 | Not allowed in the current state (includes `TABLE:BEGIN` / `TABLE:STEP` with no supply mode selected, and `CONFig:MODE` when not `IDLE`): `FIRE` when not `ARMED`, `ARM` when not `IDLE`, `TABLE:BEGIN`/`STEP` while `FIRING`, `BOOT` while `ARMED`/`FIRING`, `FWUPdate:*` when not `IDLE` or with no transfer/verified image |
 | 17 | `FWUPdate:*` flash/CRC/image/option-byte failure |
 
 Codes are never renumbered or reused once assigned, matching the
@@ -173,14 +173,16 @@ before uploading, rather than assuming N.
 
 - **`TABLE:BEGIN`** — clears the table (`PFM_TableReset()`) and opens
   an upload session. Safe to call again mid-upload to start over.
+  Needs a supply mode (`ERR 13` until `CONFig:MODE` has been sent).
 - **`TABLE:STEP <per> <cmp0> ... <cmp(N-1)>`** — appends exactly one
   entry: `per` plus exactly one compare value per channel (N =
   `HRTIM_NUM_CHANNELS`, a compile-time constant — query
   `CONFig:CHANnels?` rather than assuming it). All values are
-  `uint16_t` (0-65535); no other validation happens here (see
-  `PFM_AppendStep()`'s doc comment — the eventual apply-time
-  `HRTIM1_ClampCompare()` in `hrtim.c` is a backstop, not a substitute
-  for the host script sending sane values). Rejects with `ERR 2` if no
+  `uint16_t` (0-65535). Each step is checked against the selected supply
+  mode (see "Supply mode" below): the carrier `170 MHz / (per + 1)` and
+  every channel's duty `cmp / per` must be inside the mode's range, else
+  `ERR 10` with a message naming the limit. (The apply-time
+  `HRTIM1_ClampCompare()` in `hrtim.c` remains a backstop.) Rejects with `ERR 2` if no
   `TABLE:BEGIN` is open, `ERR 3` if the table is already at
   `PFM_TABLE_SIZE` (5000) capacity, `ERR 4` for a malformed line
   (including the wrong token count for this board's N).
@@ -190,6 +192,49 @@ before uploading, rather than assuming N.
   `TABLE:BEGIN` first" for a stray `TABLE:STEP`.
 - **`TABLE?`** — reports the current entry count at any time
   (`OK <count>`), upload session open or not.
+
+### Supply mode: `CONFig:MODE`, `CONFig:MODE?`, `CONFig:LIMits?`
+
+Added 2026-09-29 (`src/app/control/supply_mode.h`). The same firmware drives
+two supplies, and the operator selects which with `CONFig:MODE`:
+
+| Mode | Drive | Carrier | Duty (per channel) |
+|---|---|---|---|
+| `LIMITER` (`LIM`) | PWM | 75–125 kHz (`per` 1359–2265) | 5–95 % |
+| `HVPS` | PFM | 10–30 kHz (`per` 5666–16999) | 40–60 % |
+
+The values are the older PFM-STM32G474 project's bounds
+(`ctrlr_config.h`). The modes only narrow the hardware envelope (16-bit
+period, compare clamp, 100 ns dead time). The boundary is exact: a step
+exactly on a limit is accepted, one `per` count outside is refused.
+
+```
+> CONFig:MODE?
+< OK NONE
+> TABLE:BEGIN
+< ERR 13 No supply mode selected -- send CONFig:MODE LIMiter|HVPS first
+> CONFig:MODE HVPS
+< OK
+> CONFig:LIMits?
+< OK HVPS FREQ 10000 30000 DUTY 40 60
+> TABLE:STEP 1699 850 850 850
+< ERR 10 per 1699 is above the HVPS range (10000-30000 Hz)
+```
+
+- **Boot state is `NONE`**: no table can be uploaded until a mode is
+  selected, so a table built for one supply is never accepted for the other
+  by default. (Saved profiles will restore it in a later phase.)
+- **`CONFig:MODE`** is only accepted in `IDLE` (`ERR 13` otherwise). A mode
+  *change* discards the uploaded table (`TABLE?` reads 0), so a table never
+  outlives the limits it was checked against; re-selecting the current mode
+  changes nothing.
+- **`CONFig:LIMits?`** — `OK <mode> FREQ <min> <max> DUTY <min> <max>` (Hz,
+  percent), or `OK NONE`.
+- Duty is compare / period, the same relation `python/pfm_table_upload.py`
+  uses. `pfm_table_upload.py --mode LIMITER|HVPS` selects the mode first.
+- **Verification caveat:** the HRTIM SET/RESET-collision fix was confirmed on
+  a logic analyzer only up to 100 kHz. `LIMITER` allows up to 125 kHz;
+  100–125 kHz has not been scoped on real hardware.
 
 ### `FIRE`
 

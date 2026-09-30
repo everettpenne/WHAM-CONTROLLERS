@@ -19,6 +19,29 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
         images to build/ (as in WHAM-XREX-PFMG474) with a fallback for older commits.
         Historical entries below predate the rename and are kept verbatim.
 
+2026-09-30  —  Operator-selectable supply mode: LIMITER / HVPS frequency and duty limits
+-----------------------------------------------------------------------
+  Change:  CONFig:MODE LIMiter|HVPS, CONFig:MODE?, CONFig:LIMits? (cmd_config.c) and a new
+        src/app/control/supply_mode.{h,c}. LIMITER (PWM): 75-125 kHz, 5-95% per-phase
+        duty. HVPS (PFM): 10-30 kHz, 40-60% duty -- the older PFM-STM32G474 project's
+        bounds, confirmed by the maintainer. Duty is compare/period. Every TABle:STEP is
+        checked against the selected mode (exact integer math: a step on a limit is
+        accepted, one per count outside is refused, ERR 10 with a message naming the
+        limit). Decisions (asked, 2026-09-30): boot mode NONE -- TABle:BEGIN/STEP are
+        refused (ERR 13) until a mode is selected -- and duty limits are enforced too,
+        not only frequency. CONFig:MODE is IDLE-only; a mode CHANGE discards the table.
+        The old fixed 100 kHz ceiling (PFM_MAX_CARRIER_FREQ_HZ, ERR 10) is gone:
+        that constant now equals the Limiter maximum (125 kHz). ERR 10 renamed
+        ERR_OUT_OF_MODE_LIMITS (same number). python/pfm_table_upload.py gained --mode
+        and refuses to upload with no mode selected; its profiles 6-10 start at 60 kHz and
+        so fit neither mode (profiles 1-5, 100 kHz / 10-90% duty, fit LIMITER).
+        CAUTION recorded in ctrlr_config.h, AGENTS.md and the command reference: the HRTIM
+        SET/RESET-collision fix was confirmed on a logic analyzer only to 100 kHz, so
+        100-125 kHz is unverified. Host test tests/test_supply_mode.c (51 checks).
+        Also fixed: python/sync_build_sources.py now takes the vendor/startup objects for
+        Debug/objects.list from their tracked subdir.mk files instead of the old, untracked
+        list -- after it lost them the link silently produced a ~100-byte image.
+
 2026-09-29  —  Phase 3: operating-state machine and fault handling (v0.8)
 -----------------------------------------------------------------------
   Change:  New src/app/control/state_machine.{h,c} (mirrors WHAM-XREX-PFMG474's API

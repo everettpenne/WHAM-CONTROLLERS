@@ -130,31 +130,42 @@
 #define GDS_FAULT_POLARITY   GDS_NORMALLY_LOW
 
 /* --------------------------------------------------------------------------
- * PFM carrier frequency ceiling (compile-time, hard limit)
+ * Supply modes and their limits (added 2026-09-29)
  *
- * Added 2026-09-09 after a real-hardware frequency-ramp capture test
- * (see docs/changelog.txt) found that this board's PWM output can
- * intermittently glitch on a frequency-CHANGING table -- an occasional
- * genuinely missing real pulse on the wire, confirmed via DSLogic, not
- * just a capture-side artifact -- starting somewhere around 85 kHz and
- * getting more frequent up toward 140 kHz. Root cause is an open
- * investigation (a suspected HRTIM shadow/preload-register race in how
- * PFM_CycleBoundaryHandler applies each new table entry -- see
- * docs/changelog.txt's 2026-09-09 entries). Until that's actually
- * fixed and re-verified, every TABLE:STEP entry's implied carrier
- * frequency is capped here and rejected with ERR 10
- * (commands.c's cmd_table_step()) rather than silently accepted and
- * possibly glitching.
+ * The same firmware drives two different H-bridge supplies; the operator
+ * selects which one with CONFig:MODE (supply_mode.h) and TABle:STEP is then
+ * checked against that mode's range. Values are the older PFM-STM32G474
+ * project's own bounds (its supply_config.h, "Section 1a/1b, 3.1"), still
+ * correct per the maintainer.
  *
- * 100 kHz is the documented, tested boundary -- every constant-100 kHz
- * test this project has run, going back to the very first PWM
- * bring-up, has been clean, and the ramp test's first several steps
- * (all below 85 kHz) never glitched either. This is NOT a claim that
- * 100 kHz is provably safe in general, just the boundary this project
- * has actual evidence for -- raise it only after the shadow/preload
- * fix lands and is itself re-verified on real hardware at whatever new
- * ceiling is proposed.
+ *   HVPS     PFM-driven:  10-30 kHz carrier, shared 40-60% duty
+ *   LIMITER  PWM-driven:  75-125 kHz carrier, per-phase 5-95% duty
+ *
+ * Duty is checked as compare/period, the same relation the host table
+ * builder uses (python/pfm_table_upload.py cmp_from_duty()). The modes only
+ * NARROW the hardware envelope (16-bit period, the compare clamp, the
+ * 100 ns dead time); they never widen it.
+ *
+ * VERIFICATION CAVEAT for LIMITER: this project's HRTIM SET/RESET-collision
+ * fix (hrtim.c, 2026-09-09) was confirmed on a logic analyzer only up to
+ * 100 kHz -- a frequency-ramp capture had found genuinely missing pulses
+ * from about 85 kHz upward before the fix. 100-125 kHz is inside the
+ * Limiter range but has NOT been scoped on real hardware; do that before
+ * relying on it. (Until 2026-09-29 every TABle:STEP above 100 kHz was
+ * rejected outright; PFM_MAX_CARRIER_FREQ_HZ below is now the highest
+ * frequency any mode allows.)
  * -------------------------------------------------------------------------- */
-#define PFM_MAX_CARRIER_FREQ_HZ  (100000UL)
+#define HVPS_FREQ_MIN_HZ          (10000UL)
+#define HVPS_FREQ_MAX_HZ          (30000UL)
+#define HVPS_DUTY_MIN_PCT         (40U)
+#define HVPS_DUTY_MAX_PCT         (60U)
+
+#define LIMITER_FREQ_MIN_HZ       (75000UL)
+#define LIMITER_FREQ_MAX_HZ       (125000UL)
+#define LIMITER_DUTY_MIN_PCT      (5U)
+#define LIMITER_DUTY_MAX_PCT      (95U)
+
+/* Highest carrier frequency any mode allows. */
+#define PFM_MAX_CARRIER_FREQ_HZ  LIMITER_FREQ_MAX_HZ
 
 #endif /* INC_CTRLR_CONFIG_H_ */

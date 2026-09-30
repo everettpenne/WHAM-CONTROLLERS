@@ -56,6 +56,9 @@ static const scpi_command_t command_table[] = {
     /* Reports the compile-time HRTIM channel count -- see commands.c's
        own header comment on cmd_config_channels(). */
     { "CONFig:CHANnels?",    cmd_config_channels },
+    { "CONFig:MODE",         cmd_config_mode           },
+    { "CONFig:MODE?",        cmd_config_mode_query     },
+    { "CONFig:LIMits?",      cmd_config_limits_query   },
 
     /* PC10/HRTIM1_FLT6 hardware fault status/clear -- see commands.c's
        own header comment on cmd_fault_query()/cmd_fault_clear(). */
