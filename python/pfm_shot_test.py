@@ -31,7 +31,9 @@ WHAT THE MEASUREMENT SHOULD LOOK LIKE (learned from real shots)
     about -1 tick with well under 1 tick of spread on a healthy setup.
   - A channel's capture can run a whole period behind the others (phase W
     did); the tool finds the alignment (0-3 periods) that fits best and
-    prints it.
+    prints it. The capture starts just BEFORE the outputs, so the first measured
+    period is the shot's start-up period (a little off the programmed one) and
+    the normal alignment is 2.
 
 Duty
   The capture has no high-time, so absolute duty cannot be read. But UN's
@@ -128,12 +130,13 @@ def model_period(label, per, cmp_, i, n_phases=3):
         edge_offset(label, per, cmp_, i, n_phases)
 
 
-def best_alignment(label, measured, per, cmp_, max_lag=3, preferred_lag=1):
+def best_alignment(label, measured, per, cmp_, max_lag=3, preferred_lag=2):
     """The capture's j-th period can belong to programmed step j-lag. Returns
     (lag, js, residual array in ticks) for the lag that fits the model best
     (smallest spread of the residual). When the shot gives the model nothing
     to tell lags apart (constant period and duty) several lags fit equally;
-    `preferred_lag` (1: the capture starts one period before the table) is
+    `preferred_lag` (2: since 2026-09-30 the capture starts BEFORE the outputs, so it
+    also holds the start-up period and one more before the table; it was 1) is
     then chosen, so a flat shot is not given an arbitrary alignment."""
     fits = {}
     for lag in range(0, max_lag + 1):
@@ -161,6 +164,10 @@ def validate_read(vals, count, per):
     a = np.array(vals, dtype=float)
     if len(a) != count or count < 2:
         return False
+    # The first period is the shot's start-up period (the outputs begin from a
+    # forced state, so it is genuinely a little off, e.g. 8398 for 8499): not
+    # held to the ramp's range or step limit.
+    a = a[1:]
     lo, hi = per.min() + 1, per.max() + 1
     if a.min() < 0.88 * lo or a.max() > 1.12 * hi:
         return False
@@ -314,8 +321,8 @@ def report(res, per):
               f"{err.mean():8.1f} / {np.abs(err).max():6.1f}            "
               f"{r['resid'].mean():6.2f} / {r['resid'].std():4.2f} / {np.abs(r['resid']).max():4.1f}"
               f"                    {r['overcap']}")
-    print("\n(healthy: residual mean about -1 tick, spread under 1 tick; 'align' > 1 means that "
-          "capture ran a whole period behind)")
+    print("\n(healthy: residual mean about -1 tick, spread under 1 tick; 'align' 2 is normal -- the capture "
+          "starts before the outputs and includes the start-up period -- a channel at 3 ran a further period behind)")
 
 
 def plot(per, cmp_, res, labels, data, out_png, title):
@@ -426,21 +433,21 @@ def selftest():
     check(abs(cmp_[0] / per[0] - 0.5) < 1e-3, "duty 50 %")
     per2, cmp2 = build_table(20000, 20000, 40, 60, 100)
     check(abs(cmp2[0] / per2[0] - .4) < 2e-4 and abs(cmp2[-1] / per2[-1] - .6) < 2e-4, "duty ramp 40 -> 60 %")
-    print("alignment and residual on a synthetic capture (U, V, W, UN; W one period late):")
+    print("alignment and residual on a synthetic capture (U, V, W, UN; W one period further behind):")
     labels = ["U", "V", "W", "UN"]
-    data = synthetic_capture(per, cmp_, labels, [1, 1, 2, 1], rng)
+    data = synthetic_capture(per, cmp_, labels, [2, 2, 3, 2], rng)
     res = analyse(per, cmp_, data, labels)
-    check(res[1]["lag"] == 1 and res[2]["lag"] == 1 and res[4]["lag"] == 1, "U, V, UN found at lag 1")
-    check(res[3]["lag"] == 2, "W found at lag 2")
+    check(res[1]["lag"] == 2 and res[2]["lag"] == 2 and res[4]["lag"] == 2, "U, V, UN found at lag 2")
+    check(res[3]["lag"] == 3, "W found at lag 3")
     for k in res:
         check(res[k]["resid"].std() < 0.9 and abs(res[k]["resid"].mean() + 1.0) < 0.3, f"input {k} residual flat (~-1 tick)")
     print("duty movement (40 -> 60 % at constant frequency):")
-    data = synthetic_capture(per2, cmp2, labels, [1, 1, 2, 1], rng)
+    data = synthetic_capture(per2, cmp2, labels, [2, 2, 3, 2], rng)
     res = analyse(per2, cmp2, data, labels)
     d = duty_from_pair("U", "UN", res[1]["m"], res[4]["m"], res[1]["lag"], res[4]["lag"], per2, cmp2)
     _, rel, prog = d
     check(d is not None and np.abs(rel - prog).max() < 3, "compare change reconstructed within 3 ticks")
-    check(duty_from_pair("U", "V", res[1]["m"], res[2]["m"], 1, 1, per2, cmp2) is None, "U/V is not a phase + complement")
+    check(duty_from_pair("U", "V", res[1]["m"], res[2]["m"], 2, 2, per2, cmp2) is None, "U/V is not a phase + complement")
     print("readback validation:")
     good = data[1]["ticks"]
     bad = list(good)
@@ -448,6 +455,9 @@ def selftest():
     check(validate_read(good, len(good), per2), "clean reply accepted")
     check(not validate_read(bad, len(bad), per2), "a dropped digit is rejected")
     check(not validate_read(good[:-1], len(good), per2), "a short reply is rejected")
+    startup = list(good)
+    startup[0] = int(startup[0] * 0.988)      # the real start-up period is ~100 ticks short
+    check(validate_read(startup, len(startup), per2), "an off start-up period is accepted")
     print("\nSELFTEST", "PASSED" if ok else "FAILED")
     return 0 if ok else 1
 

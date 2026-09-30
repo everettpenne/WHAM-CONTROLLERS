@@ -118,19 +118,22 @@ void PfmInput_Init(void);
  * `m` is clamped to PFM_INPUT_MAX_PERIODS. No-op when disabled. */
 void PfmInput_Arm(uint16_t m);
 
-/* Called from PFM_Restart() (pfm.c), right alongside HRTIM1_PWM_Start()
- * -- starts HAL_TIM_IC_Start_DMA() for every channel with a nonzero
- * armed target (see PfmInput_Arm()), and clears that channel's arm
- * (single-shot). A channel never armed is left untouched. This is what
- * makes capture begin exactly when a PFM output shot begins. No-op
- * when disabled. */
+/* Called from PFM_Restart() (pfm.c), immediately BEFORE HRTIM1_PWM_Start()
+ * -- starts HAL_TIM_IC_Start_DMA() for every armed channel (see
+ * PfmInput_Arm()): a bounded, non-circular DMA fill of that channel's
+ * result array, no per-edge or per-chunk CPU work. Started before the
+ * outputs so nothing is missed (enabling four channels takes tens of
+ * microseconds with the per-period interrupt running), which means the
+ * capture includes the shot's start-up period. A channel never armed is
+ * left untouched. No-op when disabled. */
 void PfmInput_OnShotStart(void);
 
 /* Called from every place pfm.c stops a shot (PFM_ForceStop() and the
  * normal end-of-table-exhaustion path in PFM_CycleBoundaryHandler()) --
- * stops (HAL_TIM_IC_Stop_DMA()) any channel still capturing, leaving
- * its partial count intact. Bounds every capture's runtime to the shot
- * that started it; a channel already finished on its own is a no-op
+ * for any channel still capturing, records how many edges the DMA
+ * stored (requested minus the DMA's remaining count) and stops it.
+ * Bounds every capture's runtime to the shot that started it; a channel
+ * whose DMA already filled its array (and stopped itself) is a no-op
  * here. No-op when disabled. */
 void PfmInput_OnShotEnd(void);
 
@@ -148,19 +151,16 @@ uint16_t PfmInput_GetCount(uint8_t channel);
  * read. */
 const uint32_t *PfmInput_GetPeriods(uint8_t channel);
 
-/* Diagnostic: number of times a hardware overcapture (CCxOF) was
- * observed for `channel` since the last PfmInput_Arm() -- a nonzero
- * count means at least one edge was serviced too late (a later edge's
- * timestamp silently overwrote an earlier one in hardware before it
- * could be read), so some entries in this channel's period[] array may
- * not be trustworthy. Added 2026-09-08 while diagnosing real data
- * corruption on real hardware -- see docs/changelog.txt. As of the
- * 2026-09-09 DMA-based capture redesign (pfm_input.c), this is checked
- * once per DMA half-buffer batch rather than once per edge -- coarser
- * (can't say which edge in a batch), but still meaningful, and
- * expected to be even less likely to read nonzero than before (DMA
- * services CCRx far faster than the old software ISR did). Returns 0
- * for an out-of-range channel or when disabled. */
+/* Diagnostic: 1 if a hardware overcapture (CCxOF) was seen for `channel`
+ * while its DMA was still filling the result array -- a later edge
+ * arrived before the DMA had read the previous one, so an edge may be
+ * missing or overwritten. Reported ONLY for a capture the end of the shot
+ * cut short (fewer edges than requested): once the array is full nothing
+ * reads the register and the flag is set by the signal carrying on, so it
+ * is ignored then. Not a reliable loss detector (2026-09-30: flagged on
+ * about 1 in 10 shot-end captures whose data was then clean) -- check the
+ * data itself (periods that add up, alternating edges). Returns 0 for an
+ * out-of-range channel or when disabled. */
 uint16_t PfmInput_GetOvercaptureCount(uint8_t channel);
 
 /* TEMPORARY debug aid, 2026-09-09 (see pfm_input.c's own comment on
@@ -203,6 +203,7 @@ const uint32_t *PfmInput_GetRawEdges(uint8_t channel);
 /* Pin level (0/1) read just before the last capture started: the first edge
    captured is the opposite transition. */
 uint8_t PfmInput_GetStartLevel(uint8_t channel);
+
 
 #ifdef __cplusplus
 }

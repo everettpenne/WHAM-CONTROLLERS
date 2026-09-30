@@ -149,7 +149,7 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
 #endif /* PFM_INPUT_FEATURE_ENABLED */
 
 /* --------------------------------------------------------------------------
- * PFMIN:EDGes <ch> RISING|BOTH  /  PFMIN:EDGes?  /  PFMIN:RAW? <ch>
+ * PFMIN:EDGes <ch> RISING|BOTH  /  PFMIN:EDGes?  /  PFMIN:RAW? <ch> [<start> [<count>]]
  *
  * Raw edge mode (pfm_input.h): a channel set to BOTH captures every edge and
  * keeps the raw timer values, for measuring duty (time high) and for looking
@@ -158,11 +158,14 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
  *   PFMIN:EDGes 1 BOTH     -> OK
  *   PFMIN:EDGes?           -> OK R B R R R R      (R rising only, B both)
  *   PFMIN:CAPTURE 50 ... FIRE ...
- *   PFMIN:RAW? 1           -> OK <n> OVERCAP=<k> LEVEL=<0|1> <t0> <d1> <d2> ...
+ *   PFMIN:RAW? 1           -> OK <n> OVERCAP=<k> LEVEL=<0|1> SUM=<s> <t0> <d1> <d2> ...
  * <n> edges; t0 is the first edge's raw timer value and each following number
- * is the difference from the previous edge (so the reply stays short); LEVEL
+ * is the difference from the previous edge (so the reply stays short); SUM is the
+ * sum of those numbers mod 2^32, a transport check; LEVEL
  * is the pin level just before capture started, the first edge is the
  * opposite transition. PFMIN:DATA? refuses a BOTH channel (ERR 13).
+ * <n> is always the total; <start> and <count> select a page of the values (SUM is
+ * over the page). Without them the whole stream is returned.
  * -------------------------------------------------------------------------- */
 void cmd_pfmin_edges(uart_instance_t *inst, char *args)
 {
@@ -222,7 +225,11 @@ void cmd_pfmin_edges_query(uart_instance_t *inst, char *args)
 void cmd_pfmin_raw(uart_instance_t *inst, char *args)
 {
     char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    char *tokStart = (tok != NULL) ? strtok(NULL, " \r\n") : NULL;
+    char *tokCount = (tokStart != NULL) ? strtok(NULL, " \r\n") : NULL;
     long chArg;
+    uint16_t first = 0U;
+    uint16_t last;
     uint8_t ch;
     uint16_t count;
     const uint32_t *edges;
@@ -250,10 +257,48 @@ void cmd_pfmin_raw(uart_instance_t *inst, char *args)
     count = PfmInput_GetCount(ch);
     mask  = (ch >= 4U) ? 0xFFFFU : 0xFFFFFFFFU;   /* PFM_Input_5/6 are the 16-bit timers TIM3/TIM4 */
 
+    /* Optional page: start index and value count. The ethernet serial bridge
+       loses a character at a fixed place in replies of about 1.7 kB or more, so
+       the host reads in pages of ~100 values, each with its own SUM. */
+    if (tokStart != NULL)
+    {
+        long s = atol(tokStart);
+        if ((s < 0L) || (s > (long)count))
+        {
+            SendErr(inst, ERR_INVALID_ARGS, "PFMIN:RAW? start must be 0..count");
+            return;
+        }
+        first = (uint16_t)s;
+    }
+    last = count;
+    if (tokCount != NULL)
+    {
+        long n = atol(tokCount);
+        if ((n < 1L) || (n > (long)(count - first)))
+        {
+            if (n < 1L)
+            {
+                SendErr(inst, ERR_INVALID_ARGS, "PFMIN:RAW? count must be at least 1");
+                return;
+            }
+            n = (long)(count - first);
+        }
+        last = (uint16_t)(first + (uint16_t)n);
+    }
+
+    /* SUM= is the sum of the numbers that follow (mod 2^32), so the host can tell a
+       reply that lost characters on the way (seen on the ethernet serial bridge) from
+       a good one and read again. */
+    uint32_t sum = 0U;
+    for (uint16_t i = first; i < last; i++)
+    {
+        sum += (i == 0U) ? edges[0] : ((edges[i] - edges[i - 1U]) & mask);
+    }
     len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len,
-                    "OK %u OVERCAP=%u LEVEL=%u", (unsigned int)count,
-                    (unsigned int)PfmInput_GetOvercaptureCount(ch), (unsigned int)PfmInput_GetStartLevel(ch));
-    for (uint16_t i = 0U; i < count; i++)
+                    "OK %u OVERCAP=%u LEVEL=%u SUM=%lu", (unsigned int)count,
+                    (unsigned int)PfmInput_GetOvercaptureCount(ch), (unsigned int)PfmInput_GetStartLevel(ch),
+                    (unsigned long)sum);
+    for (uint16_t i = first; i < last; i++)
     {
         uint32_t v = (i == 0U) ? edges[0] : ((edges[i] - edges[i - 1U]) & mask);
         len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len, " %lu", (unsigned long)v);

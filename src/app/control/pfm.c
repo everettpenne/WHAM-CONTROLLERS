@@ -48,6 +48,12 @@ static uint32_t g_diagMaxGapCycles  = 0U;
 static uint32_t g_diagLastCallCycle = 0U;
 static uint8_t  g_diagHaveLastCall  = 0U;
 
+/* How long PFM_CycleBoundaryHandler() itself runs (cycles, entry to exit), worst
+   case and total over the shot -- the CPU share the per-period interrupt takes
+   (2026-09-30, capture-loss investigation). */
+static uint32_t g_diagBusyMaxCycles = 0U;
+static uint32_t g_diagBusySumCycles = 0U;
+
 /* Added 2026-09-09, second round: the max-gap metric above proves
    there's no single catastrophic stall, but can't distinguish "always
    ran right on schedule" from "many small, repeated delays" -- and a
@@ -192,7 +198,21 @@ void PFM_ApplyCurrentStep(void)
     HRTIM1_ApplyPfmStep(pStep->per, pStep->cmp, phase);
 }
 
+static void CycleBoundaryBody(void);
+
 void PFM_CycleBoundaryHandler(void)
+{
+    uint32_t t0 = Mcu_CycleCount();
+    CycleBoundaryBody();
+    uint32_t busy = Mcu_CycleCount() - t0;
+    g_diagBusySumCycles += busy;
+    if (busy > g_diagBusyMaxCycles)
+    {
+        g_diagBusyMaxCycles = busy;
+    }
+}
+
+static void CycleBoundaryBody(void)
 {
     /* Diagnostic instrumentation -- first thing in this function, on
        purpose, so the recorded gap reflects real ISR-to-ISR timing,
@@ -293,6 +313,8 @@ void PFM_Restart(void)
     g_diagMaxGapCycles  = 0U;
     g_diagLastCallCycle = 0U;
     g_diagHaveLastCall  = 0U;
+    g_diagBusyMaxCycles = 0U;
+    g_diagBusySumCycles = 0U;
     memset(g_diagGapLog, 0, sizeof(g_diagGapLog));
 
     /* Every shot must write HRTIM on its first period, no matter what a
@@ -314,15 +336,17 @@ void PFM_Restart(void)
        first period with the correct step-0 values. */
     HRTIM1_SoftwareUpdate();
 
-    HRTIM1_PWM_Start(g_channelEnabled);
-
-    /* PFM_Input capture (2026-09-08, pfm_input.h) begins here,
-       deliberately the same call as HRTIM1_PWM_Start() above -- this
-       is the literal mechanism that makes input capture start exactly
-       when a PFM output shot starts, not some separate command run at
-       an arbitrary later moment. No-op for any channel never armed
-       via PfmInput_Arm(). */
+    /* PFM_Input capture (2026-09-08, pfm_input.h) starts here, in the same
+       call as the shot and immediately BEFORE the outputs (2026-09-30):
+       enabling four DMA channels takes tens of microseconds with the
+       per-period interrupt running, so starting after HRTIM1_PWM_Start()
+       lost the first several periods on the later channels (measured: the
+       fourth channel started ~80 us late). Nothing can be missed this way
+       -- the outputs are idle until the line below. No-op for any channel
+       never armed via PfmInput_Arm(). */
     PfmInput_OnShotStart();
+
+    HRTIM1_PWM_Start(g_channelEnabled);
 }
 
 void PFM_SetPhaseEnabled(uint8_t channel, uint8_t enabled)
@@ -425,6 +449,12 @@ void PFM_GetDiagCounters(uint32_t *callCount, uint32_t *maxGapCycles)
     {
         *maxGapCycles = g_diagMaxGapCycles;
     }
+}
+
+void PFM_GetDiagBusy(uint32_t *maxCycles, uint32_t *sumCycles)
+{
+    if (maxCycles != NULL) { *maxCycles = g_diagBusyMaxCycles; }
+    if (sumCycles != NULL) { *sumCycles = g_diagBusySumCycles; }
 }
 
 const uint32_t *PFM_GetDiagGapLog(uint16_t *count)

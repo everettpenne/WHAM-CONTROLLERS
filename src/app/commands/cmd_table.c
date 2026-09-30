@@ -282,19 +282,22 @@ void cmd_fire(uart_instance_t *inst, char *args)
  * -------------------------------------------------------------------------- */
 void cmd_pfm_diag(uart_instance_t *inst, char *args)
 {
-    char buf[80];
+    char buf[112];
     uint32_t callCount;
     uint32_t maxGapCycles;
+    uint32_t busyMax;
+    uint32_t busySum;
     (void)args;
 
     PFM_GetDiagCounters(&callCount, &maxGapCycles);
+    PFM_GetDiagBusy(&busyMax, &busySum);
 
     /* 170 MHz CPU clock -- see this function's own doc comment. */
     uint32_t maxGapUs = maxGapCycles / 170U;
 
-    snprintf(buf, sizeof(buf), "OK %lu %lu %lu\r\n",
+    snprintf(buf, sizeof(buf), "OK %lu %lu %lu %lu %lu\r\n",
              (unsigned long)callCount, (unsigned long)maxGapCycles,
-             (unsigned long)maxGapUs);
+             (unsigned long)maxGapUs, (unsigned long)busyMax, (unsigned long)busySum);
     uart_send(inst, buf);
 }
 

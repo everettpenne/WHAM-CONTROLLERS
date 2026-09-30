@@ -210,6 +210,10 @@ uint16_t PFM_GetEntryCount(void);
  * for a while. Either pointer may be NULL to skip that output. */
 void PFM_GetDiagCounters(uint32_t *callCount, uint32_t *maxGapCycles);
 
+/* Worst-case and total time (CPU cycles, 170 MHz) spent inside PFM_CycleBoundaryHandler()
+   this shot -- total / (calls x period) is the CPU share the per-period interrupt uses. */
+void PFM_GetDiagBusy(uint32_t *maxCycles, uint32_t *sumCycles);
+
 /* Diagnostic, added 2026-09-09 (second round -- see pfm.c's own
  * comment on g_diagGapLog): the RAW inter-call gap, in CPU cycles, for
  * every PFM_CycleBoundaryHandler() call this shot, up to

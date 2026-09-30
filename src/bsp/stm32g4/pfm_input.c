@@ -9,6 +9,7 @@
 
 #include "pfm_input_hw.h"
 #include "main.h"
+#include "mcu.h"
 
 #if (PFM_INPUT_FEATURE_ENABLED != 0)
 
@@ -108,135 +109,60 @@ TIM_HandleTypeDef htim5;
 DMA_HandleTypeDef pfmInputDma[PFM_INPUT_NUM_CHANNELS];
 
 /* --------------------------------------------------------------------------
- * Capture technique -- history, real hardware, 2026-09-08/09. See
- * docs/changelog.txt for the full diagnostic history (DSLogic ground
- * truth, a raw unfiltered capture log, live ISR register snapshots).
+ * Capture design (rewritten 2026-09-30 -- read this before changing it).
  *
- *   1. TIM2/3/4/5's NVIC priority was tied with HRTIM1_Master_IRQn,
- *      which fires at the exact same ~10 us cadence as the very
- *      signal being measured -- no preemption meant real edges were
- *      occasionally serviced too late, dropped via hardware
- *      overcapture (CCxOF). Fixed by demoting HRTIM1_Master_IRQn to a
- *      lower priority (hrtim.c's HRTIM1_EnableMasterInterrupt()) so
- *      capture interrupts always preempt it. This fix is real and
- *      kept.
+ * A capture is BOUNDED: PfmInput_Arm(M) asks for M periods (M+1 rising edges),
+ * or 2M+1 edges in both-edge mode, never more than PFM_INPUT_MAX_EDGES. So each
+ * armed channel's DMA (NORMAL, non-circular) writes the timer's capture register
+ * straight into that channel's own result array, g_stamp[], and stops by itself
+ * when it is full. There is no per-edge CPU work, no interrupt per chunk, no ring
+ * buffer, no tail flush and no chunk bookkeeping: the DMA has two interrupts per
+ * capture (half and full), and how many edges arrived is (requested - CNDTR).
+ * Periods are computed from the stamps when the host asks for them.
  *
- *   2. Even with that fixed and overcapture confirmed at zero, capture
- *      was STILL wrong -- the original BOTHEDGE-plus-GPIO-read design
- *      had a genuine race (HAL clears CCxIF before the callback runs,
- *      so a later edge can silently overwrite CCR without tripping
- *      CCxOF). Replaced with an alternating-single-polarity technique,
- *      then that was dropped too (duty-cycle measurement abandoned
- *      entirely, RISING-only from here on) -- see git history and
- *      docs/changelog.txt for the full, now-closed dead end.
+ * Why this replaced the earlier circular 32-entry buffer read a half at a time by
+ * the DMA interrupt: each such chunk cost about 16 us of CPU (24 us wall time with
+ * the per-period HRTIM interrupt preempting), so at 100 kHz with both edges four
+ * channels asked for more CPU than existed. The last channel's interrupt was never
+ * serviced -- measured on the simulator with an event trail: channel 4 took 53
+ * edges and ran zero callbacks while channels 1-3 rotated. The same chunk work had
+ * already been found to stall the table-advance interrupt on the first design
+ * (docs/changelog.txt, 2026-09-09). Its side effects -- stale buffer contents
+ * returned as data, edges lost at the end of a shot -- are gone with it.
  *
- *   3. Even RISING-only, real-hardware testing with genuinely-wired
- *      real signals (not floating pins) on PFM_Input_01+02 found the
- *      REAL PFM output itself stalling on one table entry for 100+
- *      periods -- root-caused (PFM:DIAG?, pfm.c) to HRTIM1_Master's
- *      own interrupt (intentionally LOW NVIC priority, so it never
- *      steals a real capture edge) being genuinely STARVED by these
- *      per-edge capture-channel interrupts, confirmed with a measured
- *      734 us max inter-call gap (~67x a normal period) with only 2
- *      channels active. This is what DMA-based capture (below) is
- *      for: removing per-edge CPU/interrupt involvement almost
- *      entirely, rather than trying to out-prioritize the problem
- *      again the way step 1 did.
- *
- * DMA REDESIGN, 2026-09-09: each active channel's TIMx now DMAs its
- * captured CCRx value directly into a small RAM ring buffer
- * (g_dmaBuf[]) on every edge, with NO per-edge ISR at all -- the CPU
- * only wakes up on a DMA half-transfer or transfer-complete interrupt
- * (HAL_TIM_IC_CaptureHalfCpltCallback()/HAL_TIM_IC_CaptureCallback(),
- * both below), once per PFM_DMA_BUF_LEN/2 edges instead of once per
- * edge. Everything downstream of "here is a batch of new raw ticks"
- * (period computation, the 16-bit wraparound mask, target-count
- * stopping) is unchanged from the old per-edge design, just moved
- * into ProcessDmaChunk() and called once per batch instead of once
- * per edge. Wire protocol (PFMIN:CAPTURE/STATus?/DATA?) is completely
- * unchanged -- this is purely an internal capture-mechanism swap.
+ * History of how the signal itself is captured (real hardware, 2026-09-08/09,
+ * docs/changelog.txt): per-edge interrupts starved the HRTIM table-advance
+ * interrupt, hence DMA. Rising-edge polarity is set once at init and only changed
+ * by PfmInput_Arm() while a channel is stopped (raw both-edge mode); never inside
+ * an interrupt, never by reading the pin to classify an edge.
  * -------------------------------------------------------------------------- */
 typedef struct
 {
-    uint8_t  haveFirstRise;   /* 0 until the very first rise seen since arming */
-    uint32_t lastRiseTick;
-    uint16_t capturedCount;
-    uint16_t targetCount;       /* 0 = not armed */
-    uint16_t overcaptureCount;  /* diagnostic: CCxOF observed -- see the note above */
+    uint16_t want;           /* edges requested for this shot; 0 = not armed */
+    uint16_t got;            /* edges stored (final once OnShotEnd ran or the DMA completed) */
+    uint8_t  running;        /* capture started and not yet stopped */
+    uint8_t  startLevel;     /* pin level before the first captured edge (both-edge mode) */
+    uint8_t  periodsValid;   /* period[] matches stamp[] */
+    uint16_t overcapture;    /* CCxOF seen (see OverCapture() below) */
     uint32_t period[PFM_INPUT_MAX_PERIODS];
 } PfmInputState_t;
 
 static PfmInputState_t g_state[PFM_INPUT_NUM_CHANNELS];
 
-/* Raw edge mode (pfm_input.h): requested mode, the mode the hardware is
-   actually configured for, the pin level just before capture started, and
-   the raw timestamps. Only BOTH-mode channels write g_edge[]. */
+/* Requested and hardware-configured edge mode (pfm_input.h, raw edge mode). */
 static uint8_t  g_edgeModeReq[PFM_INPUT_NUM_CHANNELS];
 static uint8_t  g_edgeModeHw[PFM_INPUT_NUM_CHANNELS];
-static uint8_t  g_startLevel[PFM_INPUT_NUM_CHANNELS];
-static uint32_t g_edge[PFM_INPUT_NUM_CHANNELS][PFM_INPUT_MAX_EDGES];
 
-/* Temporary debug aid, 2026-09-09, first real-hardware test of the DMA
-   redesign: HAL_TIM_IC_Start_DMA()'s return code per channel, so a
-   silent start failure is visible instead of just showing up as
-   "captured 0, no error" indistinguishable from "armed but nothing
-   physically connected." Remove once DMA capture is confirmed
-   reliable and this diagnostic is no longer needed. */
+/* The captured timer values, DMA's destination. */
+static uint32_t g_stamp[PFM_INPUT_NUM_CHANNELS][PFM_INPUT_MAX_EDGES];
+
+/* HAL_TIM_IC_Start_DMA()'s return code per channel (PFMIN:DMASTAT?). */
 static HAL_StatusTypeDef g_dmaStartStatus[PFM_INPUT_NUM_CHANNELS];
 
-/* DMA ring buffer, one per channel -- circular, continuously
-   overwritten by hardware. Must be even (split cleanly in half by the
-   HT/TC callbacks below). 32 is arbitrary but reasonable: small
-   enough that even the fastest signal this project has ever measured
-   (~140 kHz, ~1200 ticks/period during the frequency-ramp testing)
-   completes a half-buffer (16 edges) in ~130 us, comfortably faster
-   than any real shot's duration, and small enough to cost nothing
-   (32 x 6 channels x 4 bytes = 768 B). */
-#define PFM_DMA_BUF_LEN  (32U)
-static uint32_t g_dmaBuf[PFM_INPUT_NUM_CHANNELS][PFM_DMA_BUF_LEN];
-
-/* Tracks, per channel, the buffer offset ProcessDmaChunk() will start
-   at NEXT (0 or PFM_DMA_BUF_LEN/2 in normal operation -- updated at
-   the end of ProcessDmaChunk() to (startOffset + count) % BUF_LEN).
-   BUGFIX, real hardware, 2026-09-09: without this, a shot that ends
-   mid-chunk (before the next half/full DMA interrupt) silently loses
-   however many edges had already landed in the buffer since the last
-   processed chunk -- confirmed on real hardware, a 200-period capture
-   on channel 1 reaching only 191 before the shot's own natural end
-   stopped it. PfmInput_OnShotEnd() uses this (see its own comment) to
-   flush that partial tail before actually stopping DMA. Reset to 0 in
-   PfmInput_Arm() for a fresh shot. */
-static uint16_t g_dmaNextOffset[PFM_INPUT_NUM_CHANNELS];
-
-/* HAL_TIM_ACTIVE_CHANNEL_1/2 (htim->Channel, set by the DMA capture
- * callbacks below around HAL_TIM_IC_CaptureCallback()/
- * HAL_TIM_IC_CaptureHalfCpltCallback()) and TIM_CHANNEL_1/2 (used by
- * every config/start/read API call, and stored in kDesc[]) are
- * different numeric encodings on this HAL -- this converts the former
- * to the latter. Only CH1/CH2 are ever used by this module (no
- * PFM_Input pin lands on CH3/CH4), so this two-way mapping is
- * complete for our purposes. */
-static uint32_t ActiveChannelToTimChannel(HAL_TIM_ActiveChannel active)
+static uint32_t TimerMask(uint8_t i)
 {
-    return (active == HAL_TIM_ACTIVE_CHANNEL_1) ? TIM_CHANNEL_1 : TIM_CHANNEL_2;
+    return kDesc[i].is16Bit ? 0xFFFFU : 0xFFFFFFFFU;
 }
-
-static int8_t FindChannelIndex(const TIM_TypeDef *instance, uint32_t timChannel)
-{
-    for (uint8_t i = 0U; i < PFM_INPUT_NUM_CHANNELS; i++)
-    {
-        if ((kDesc[i].timer == instance) && (kDesc[i].timChannel == timChannel))
-        {
-            return (int8_t)i;
-        }
-    }
-    return -1;
-}
-
-/* Forward declaration -- PfmInput_OnShotEnd() (defined before this
-   function's own body, further down) needs to call it for the
-   tail-flush fix; see that function's own comment. */
-static void ProcessDmaChunk(uint8_t idx, uint16_t startOffset, uint16_t count);
 
 static TIM_HandleTypeDef *HandleForTimer(const TIM_TypeDef *instance)
 {
@@ -245,6 +171,43 @@ static TIM_HandleTypeDef *HandleForTimer(const TIM_TypeDef *instance)
     if (instance == TIM4) { return &htim4; }
     if (instance == TIM5) { return &htim5; }
     return NULL;
+}
+
+static uint32_t OverflowFlag(uint8_t i)
+{
+    return (kDesc[i].timChannel == TIM_CHANNEL_1) ? TIM_FLAG_CC1OF : TIM_FLAG_CC2OF;
+}
+
+/* CCxOF is sticky: set when a capture arrived while the previous value was still
+   unread. Only meaningful while the DMA is still filling the result array (an edge
+   then really was missed). Once the array is full nothing reads the register any
+   more and the signal carries on, so the flag is set by design -- FinishChannel()
+   ignores it for a capture that completed. Returns and clears it. */
+static uint16_t TakeOvercapture(uint8_t i)
+{
+    TIM_HandleTypeDef *htim = HandleForTimer(kDesc[i].timer);
+    uint16_t set = 0U;
+
+    if ((htim != NULL) && (__HAL_TIM_GET_FLAG(htim, OverflowFlag(i)) != 0U))
+    {
+        set = 1U;
+        __HAL_TIM_CLEAR_FLAG(htim, OverflowFlag(i));
+    }
+    return set;
+}
+
+static int8_t FindChannelIndex(const TIM_TypeDef *instance, HAL_TIM_ActiveChannel active)
+{
+    uint32_t timChannel = (active == HAL_TIM_ACTIVE_CHANNEL_1) ? TIM_CHANNEL_1 : TIM_CHANNEL_2;
+
+    for (uint8_t i = 0U; i < PFM_INPUT_NUM_CHANNELS; i++)
+    {
+        if ((kDesc[i].timer == instance) && (kDesc[i].timChannel == timChannel))
+        {
+            return (int8_t)i;
+        }
+    }
+    return -1;
 }
 
 /* --------------------------------------------------------------------------
@@ -392,12 +355,12 @@ uint8_t PfmInput_GetEdgeMode(uint8_t channel)
 
 const uint32_t *PfmInput_GetRawEdges(uint8_t channel)
 {
-    return ((channel < PFM_INPUT_NUM_CHANNELS) && (g_edgeModeHw[channel] != 0U)) ? g_edge[channel] : NULL;
+    return ((channel < PFM_INPUT_NUM_CHANNELS) && (g_edgeModeHw[channel] != 0U)) ? g_stamp[channel] : NULL;
 }
 
 uint8_t PfmInput_GetStartLevel(uint8_t channel)
 {
-    return (channel < PFM_INPUT_NUM_CHANNELS) ? g_startLevel[channel] : 0U;
+    return (channel < PFM_INPUT_NUM_CHANNELS) ? g_state[channel].startLevel : 0U;
 }
 
 void PfmInput_Arm(uint16_t m)
@@ -406,18 +369,22 @@ void PfmInput_Arm(uint16_t m)
 
     for (uint8_t i = 0U; i < PFM_INPUT_NUM_CHANNELS; i++)
     {
-        g_state[i].haveFirstRise    = 0U;
-        g_state[i].lastRiseTick     = 0U;
-        g_state[i].capturedCount    = 0U;
-        g_state[i].overcaptureCount = 0U;
-        ApplyEdgeMode(i);
-        g_state[i].targetCount      = (ChannelIsActive(i) != 0U) ? clamped : 0U;
-        if ((g_state[i].targetCount != 0U) && (g_edgeModeHw[i] != 0U))
+        PfmInputState_t *st = &g_state[i];
+
+        st->got          = 0U;
+        st->running      = 0U;
+        st->startLevel   = 0U;
+        st->periodsValid = 0U;
+        st->overcapture  = 0U;
+        st->want         = 0U;
+        if ((ChannelIsActive(i) == 0U) || (clamped == 0U))
         {
-            uint32_t edges = 2U * (uint32_t)clamped + 1U;
-            g_state[i].targetCount = (uint16_t)((edges > PFM_INPUT_MAX_EDGES) ? PFM_INPUT_MAX_EDGES : edges);
+            continue;
         }
-        g_dmaNextOffset[i]          = 0U;
+        ApplyEdgeMode(i);
+        /* M periods = M+1 rising edges (the first only sets the reference);
+           both-edge mode keeps every edge of M periods of a rising-first signal. */
+        st->want = (g_edgeModeHw[i] != 0U) ? (uint16_t)(2U * clamped + 1U) : (uint16_t)(clamped + 1U);
     }
 }
 
@@ -425,40 +392,36 @@ void PfmInput_OnShotStart(void)
 {
     for (uint8_t i = 0U; i < PFM_INPUT_NUM_CHANNELS; i++)
     {
-        if (g_state[i].targetCount == 0U)
+        PfmInputState_t *st = &g_state[i];
+        TIM_HandleTypeDef *htim = HandleForTimer(kDesc[i].timer);
+
+        if ((st->want == 0U) || (htim == NULL))
         {
             continue;   /* never armed for this shot */
         }
 
-        TIM_HandleTypeDef *htim = HandleForTimer(kDesc[i].timer);
-        if (htim != NULL)
-        {
-            g_dmaStartStatus[i] = HAL_TIM_IC_Start_DMA(htim, kDesc[i].timChannel,
-                                                       g_dmaBuf[i], PFM_DMA_BUF_LEN);
+        (void)TakeOvercapture(i);
+        g_dmaStartStatus[i] = HAL_TIM_IC_Start_DMA(htim, kDesc[i].timChannel, g_stamp[i], st->want);
+        st->running = (g_dmaStartStatus[i] == HAL_OK) ? 1U : 0U;
 
-            /* Pin level BEFORE the first captured edge, for raw edge mode.
-               Sampled after capture is enabled, not before: starting the
-               DMA channels takes several microseconds, long enough for an
-               edge to land between a "before" sample and the capture
-               actually running (seen on real hardware: phase V read low
-               with its rising edge already gone, so every high/low came
-               out swapped). Level now, minus the edges captured so far
-               (the DMA position counts them), is the level before the
-               first captured edge; repeated until no edge lands between
-               the two reads. */
-            if (g_edgeModeHw[i] != 0U)
+        /* Pin level before the first captured edge (both-edge mode): the level
+           now, undone for every edge already stored (the DMA position counts
+           them), repeated until no edge lands between the two reads. Sampled
+           after the capture is enabled -- starting the channels takes
+           microseconds, long enough for an edge to land between an earlier
+           sample and the capture actually running. */
+        if ((g_edgeModeHw[i] != 0U) && (st->running != 0U))
+        {
+            uint32_t n0;
+            uint32_t n1;
+            uint8_t  level;
+            do
             {
-                uint32_t n0;
-                uint32_t n1;
-                uint8_t  level;
-                do
-                {
-                    n0    = PFM_DMA_BUF_LEN - pfmInputDma[i].Instance->CNDTR;
-                    level = (HAL_GPIO_ReadPin(kDesc[i].port, kDesc[i].pin) != GPIO_PIN_RESET) ? 1U : 0U;
-                    n1    = PFM_DMA_BUF_LEN - pfmInputDma[i].Instance->CNDTR;
-                } while (n0 != n1);
-                g_startLevel[i] = (uint8_t)(level ^ (uint8_t)(n0 & 1U));
-            }
+                n0    = (uint32_t)st->want - pfmInputDma[i].Instance->CNDTR;
+                level = (HAL_GPIO_ReadPin(kDesc[i].port, kDesc[i].pin) != GPIO_PIN_RESET) ? 1U : 0U;
+                n1    = (uint32_t)st->want - pfmInputDma[i].Instance->CNDTR;
+            } while (n0 != n1);
+            st->startLevel = (uint8_t)(level ^ (uint8_t)(n0 & 1U));
         }
     }
 }
@@ -472,83 +435,45 @@ uint8_t PfmInput_GetDmaStartStatus(uint8_t channel)
     return (uint8_t)g_dmaStartStatus[channel];
 }
 
+/* Ends channel i's capture: how many edges it stored, then stop its DMA. */
+static void FinishChannel(uint8_t i)
+{
+    PfmInputState_t *st = &g_state[i];
+    TIM_HandleTypeDef *htim = HandleForTimer(kDesc[i].timer);
+    uint32_t remaining = pfmInputDma[i].Instance->CNDTR;
+
+    st->got         = (uint16_t)((remaining >= st->want) ? 0U : (st->want - remaining));
+    {
+        uint16_t flag = TakeOvercapture(i);
+        st->overcapture = (st->got < st->want) ? flag : 0U;   /* see TakeOvercapture() */
+    }
+    st->running     = 0U;
+    st->periodsValid = 0U;
+    if (htim != NULL)
+    {
+        (void)HAL_TIM_IC_Stop_DMA(htim, kDesc[i].timChannel);
+    }
+}
+
 void PfmInput_OnShotEnd(void)
 {
     for (uint8_t i = 0U; i < PFM_INPUT_NUM_CHANNELS; i++)
     {
-        /* A channel that was never armed, or already finished on its
-           own (capturedCount reached targetCount, which already
-           called HAL_TIM_IC_Stop_DMA() -- see ProcessDmaChunk()),
-           has nothing to stop here. HAL_TIM_IC_Stop_DMA() on a channel
-           that isn't running is otherwise harmless, but this avoids
-           the call entirely for the common case. */
-        if ((g_state[i].targetCount == 0U) ||
-            (g_state[i].capturedCount >= g_state[i].targetCount))
+        if (g_state[i].running != 0U)
         {
-            continue;
+            FinishChannel(i);   /* the shot ended before the capture filled up */
         }
+    }
+}
 
-        /* BUGFIX, real hardware, 2026-09-09: flush whatever's already
-           landed in g_dmaBuf[i][] since the last processed chunk
-           BEFORE stopping DMA -- without this, a shot ending mid-chunk
-           (before the next half/full DMA interrupt) silently loses up
-           to PFM_DMA_BUF_LEN/2-1 real edges that DMA already captured
-           but nothing ever processed. Confirmed on real hardware: a
-           200-period capture on channel 1 reached only 191 before the
-           shot's own natural end stopped it -- exactly this
-           mechanism. CNDTR counts DOWN from PFM_DMA_BUF_LEN to 0 then
-           reloads (circular mode), so PFM_DMA_BUF_LEN - CNDTR is the
-           current write position; only flush the gap since
-           g_dmaNextOffset (clamped defensively to less than one full
-           half-buffer -- the normal case -- rather than trusting an
-           unexpected wrap, which should never happen at these
-           capture rates but isn't worth risking a bad array index
-           over). */
-        {
-            uint32_t cndtr = pfmInputDma[i].Instance->CNDTR;
-            uint16_t pos = (uint16_t)((cndtr == 0U) ? 0U : (PFM_DMA_BUF_LEN - cndtr));
-            uint16_t expected = g_dmaNextOffset[i];
-            uint16_t newCount = (uint16_t)((pos + PFM_DMA_BUF_LEN - expected) % PFM_DMA_BUF_LEN);
+/* DMA transfer-complete: this channel's result array is full. */
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+    int8_t idx = FindChannelIndex(htim->Instance, htim->Channel);
 
-            /* BUGFIX, raw edge mode, 2026-09-30: the write position may
-               have WRAPPED past the end of the buffer with that half's
-               DMA interrupt still pending (this runs at a higher priority
-               than the DMA interrupts). The old code treated that as "no
-               new edges" and dropped up to a half-buffer of real ones --
-               rare at one edge per period, routine at two. Process up to
-               the end of the buffer first, then from the start. */
-            if (newCount > 0U)
-            {
-                uint16_t first = (uint16_t)(PFM_DMA_BUF_LEN - expected);
-                if (first > newCount)
-                {
-                    first = newCount;
-                }
-                ProcessDmaChunk(i, expected, first);
-                if (newCount > first)
-                {
-                    ProcessDmaChunk(i, 0U, (uint16_t)(newCount - first));
-                }
-            }
-        }
-
-        /* Re-check: the flush above may have reached targetCount on
-           its own (calling HAL_TIM_IC_Stop_DMA() already, inside
-           ProcessDmaChunk()) -- stopping again here would be
-           harmless but redundant, so only stop if it's still running. */
-        if (g_state[i].capturedCount < g_state[i].targetCount)
-        {
-            TIM_HandleTypeDef *htim = HandleForTimer(kDesc[i].timer);
-            if (htim != NULL)
-            {
-                HAL_TIM_IC_Stop_DMA(htim, kDesc[i].timChannel);
-            }
-        }
-
-        /* Consumed either way -- a channel that timed out short of
-           its target should not silently keep listening into some
-           later, unrelated shot. */
-        g_state[i].targetCount = 0U;
+    if ((idx >= 0) && (g_state[idx].running != 0U))
+    {
+        FinishChannel((uint8_t)idx);
     }
 }
 
@@ -558,180 +483,37 @@ uint16_t PfmInput_GetCount(uint8_t channel)
     {
         return 0U;
     }
-    return g_state[channel].capturedCount;
+    if (g_edgeModeHw[channel] != 0U)
+    {
+        return g_state[channel].got;                                  /* edges */
+    }
+    return (g_state[channel].got > 0U) ? (uint16_t)(g_state[channel].got - 1U) : 0U;   /* periods */
 }
 
 const uint32_t *PfmInput_GetPeriods(uint8_t channel)
 {
-    if (channel >= PFM_INPUT_NUM_CHANNELS)
+    PfmInputState_t *st;
+
+    if ((channel >= PFM_INPUT_NUM_CHANNELS) || (g_edgeModeHw[channel] != 0U))
     {
         return NULL;
     }
-    return g_state[channel].period;
+    st = &g_state[channel];
+    if ((st->periodsValid == 0U) && (st->running == 0U))
+    {
+        uint32_t mask = TimerMask(channel);
+        for (uint16_t k = 0U; (k + 1U) < st->got; k++)
+        {
+            st->period[k] = (g_stamp[channel][k + 1U] - g_stamp[channel][k]) & mask;
+        }
+        st->periodsValid = 1U;
+    }
+    return st->period;
 }
 
 uint16_t PfmInput_GetOvercaptureCount(uint8_t channel)
 {
-    if (channel >= PFM_INPUT_NUM_CHANNELS)
-    {
-        return 0U;
-    }
-    return g_state[channel].overcaptureCount;
-}
-
-/* --------------------------------------------------------------------------
- * ProcessDmaChunk() -- shared by both DMA batch callbacks below.
- * Processes `count` freshly-DMA'd raw tick values starting at
- * g_dmaBuf[idx][startOffset], exactly the same period/wraparound
- * logic the old per-edge ISR used, just iterating a batch instead of
- * a single value. Stops early (and calls HAL_TIM_IC_Stop_DMA()) the
- * moment targetCount is reached, ignoring any remaining entries in
- * this chunk -- they're stale/don't-care once a channel is done.
- * -------------------------------------------------------------------------- */
-static void ProcessDmaChunk(uint8_t idx, uint16_t startOffset, uint16_t count)
-{
-    PfmInputState_t *st = &g_state[idx];
-
-    /* Already finished (see the old per-edge callback's own comment,
-       kept for the same reason: a DMA batch already in flight when
-       the target is reached should be a clean no-op, not an
-       out-of-bounds write). */
-    if (st->capturedCount >= st->targetCount)
-    {
-        return;
-    }
-
-    /* Diagnostic: coarser-grained than the old per-edge check (this
-       can only say "at least one overcapture happened somewhere in
-       this half-buffer's worth of edges", not which one), but still
-       meaningful -- CCxOF is a sticky hardware flag, so it survives
-       from whenever it was set until explicitly cleared here.
-       Expected to read 0 in normal operation: DMA services CCRx far
-       faster than the old software ISR did, so this should be even
-       less likely to fire now than before. */
-    {
-        TIM_HandleTypeDef *htim = HandleForTimer(kDesc[idx].timer);
-        if (htim != NULL)
-        {
-            uint32_t ocFlag = (kDesc[idx].timChannel == TIM_CHANNEL_1) ? TIM_FLAG_CC1OF : TIM_FLAG_CC2OF;
-            if (__HAL_TIM_GET_FLAG(htim, ocFlag) != 0U)
-            {
-                st->overcaptureCount++;
-                __HAL_TIM_CLEAR_FLAG(htim, ocFlag);
-            }
-        }
-    }
-
-    /* 16-bit-counter wraparound mask -- see this file's top comment
-       (DMA REDESIGN section) and TIM3/TIM4's real-hardware findings,
-       2026-09-09. Unchanged from the old per-edge design, just
-       computed once per chunk instead of once per edge. */
-    uint32_t mask = kDesc[idx].is16Bit ? 0xFFFFU : 0xFFFFFFFFU;
-
-    /* BOTH-edge (raw) mode: keep every captured value as it came, in order. */
-    if (g_edgeModeHw[idx] != 0U)
-    {
-        for (uint16_t k = 0U; k < count; k++)
-        {
-            uint16_t n = st->capturedCount;
-            g_edge[idx][n] = g_dmaBuf[idx][(uint16_t)(startOffset + k)] & mask;
-            st->capturedCount = (uint16_t)(n + 1U);
-            if (st->capturedCount >= st->targetCount)
-            {
-                TIM_HandleTypeDef *htimRaw = HandleForTimer(kDesc[idx].timer);
-                if (htimRaw != NULL)
-                {
-                    HAL_TIM_IC_Stop_DMA(htimRaw, kDesc[idx].timChannel);
-                }
-                return;
-            }
-        }
-        g_dmaNextOffset[idx] = (uint16_t)((startOffset + count) % PFM_DMA_BUF_LEN);
-        return;
-    }
-
-    for (uint16_t k = 0U; k < count; k++)
-    {
-        uint32_t tick = g_dmaBuf[idx][(uint16_t)(startOffset + k)];
-
-        if (st->haveFirstRise == 0U)
-        {
-            /* First rise since arming -- establishes the reference
-               only, no period to close yet. */
-            st->haveFirstRise = 1U;
-        }
-        else
-        {
-            uint16_t n = st->capturedCount;
-            st->period[n]     = (tick - st->lastRiseTick) & mask;
-            st->capturedCount = (uint16_t)(n + 1U);
-
-            if (st->capturedCount >= st->targetCount)
-            {
-                TIM_HandleTypeDef *htim = HandleForTimer(kDesc[idx].timer);
-                if (htim != NULL)
-                {
-                    HAL_TIM_IC_Stop_DMA(htim, kDesc[idx].timChannel);
-                }
-                /* targetCount deliberately left as-is (nonzero) --
-                   PfmInput_GetCount()/DATA? still need to know a
-                   capture happened here; PfmInput_OnShotEnd()'s own
-                   capturedCount >= targetCount check is what tells it
-                   this channel needs no further action. Remaining
-                   entries in this chunk (if any) are stale -- ignore. */
-                return;
-            }
-        }
-
-        st->lastRiseTick = tick;
-    }
-
-    /* Record where the NEXT chunk (periodic or the final flush in
-       PfmInput_OnShotEnd()) should start reading from -- see
-       g_dmaNextOffset's own comment above. Only reached on the
-       "processed the whole chunk without hitting targetCount" path;
-       the two early returns above (already finished / just reached
-       target this chunk) both mean DMA is being or already was
-       stopped, so tracking is moot there. */
-    g_dmaNextOffset[idx] = (uint16_t)((startOffset + count) % PFM_DMA_BUF_LEN);
-}
-
-/* --------------------------------------------------------------------------
- * HAL_TIM_IC_CaptureHalfCpltCallback() / HAL_TIM_IC_CaptureCallback()
- * -- called from the DMA channel's own IRQHandler (stm32g4xx_it.c's
- * DMA1_ChannelN_IRQHandler() -> HAL_DMA_IRQHandler() -> HAL's own
- * TIM_DMACaptureHalfCplt()/TIM_DMACaptureCplt()), with htim->Channel
- * set to whichever channel (HAL_TIM_ACTIVE_CHANNEL_1/2) this DMA
- * stream belongs to. Half-complete means the FIRST half of
- * g_dmaBuf[idx][] (indices 0..LEN/2-1) was just filled; (full)
- * complete means the SECOND half (indices LEN/2..LEN-1) was just
- * filled and the buffer is about to wrap. Together these process
- * every entry exactly once, in order, with no gap and no overlap.
- * -------------------------------------------------------------------------- */
-void HAL_TIM_IC_CaptureHalfCpltCallback(TIM_HandleTypeDef *htim)
-{
-    uint32_t timChannel = ActiveChannelToTimChannel(htim->Channel);
-    int8_t   idx = FindChannelIndex(htim->Instance, timChannel);
-
-    if (idx < 0)
-    {
-        return;   /* not one of ours -- shouldn't happen, defensive only */
-    }
-
-    ProcessDmaChunk((uint8_t)idx, 0U, PFM_DMA_BUF_LEN / 2U);
-}
-
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
-{
-    uint32_t timChannel = ActiveChannelToTimChannel(htim->Channel);
-    int8_t   idx = FindChannelIndex(htim->Instance, timChannel);
-
-    if (idx < 0)
-    {
-        return;   /* not one of ours -- shouldn't happen, defensive only */
-    }
-
-    ProcessDmaChunk((uint8_t)idx, PFM_DMA_BUF_LEN / 2U, PFM_DMA_BUF_LEN / 2U);
+    return (channel < PFM_INPUT_NUM_CHANNELS) ? g_state[channel].overcapture : 0U;
 }
 
 /* --------------------------------------------------------------------------
@@ -802,7 +584,7 @@ void HAL_TIM_IC_MspInit(TIM_HandleTypeDef *htim)
         pfmInputDma[i].Init.MemInc               = DMA_MINC_ENABLE;
         pfmInputDma[i].Init.PeriphDataAlignment  = DMA_PDATAALIGN_WORD;
         pfmInputDma[i].Init.MemDataAlignment     = DMA_MDATAALIGN_WORD;
-        pfmInputDma[i].Init.Mode                 = DMA_CIRCULAR;
+        pfmInputDma[i].Init.Mode                 = DMA_NORMAL;   /* one bounded fill, see the capture design note above */
         pfmInputDma[i].Init.Priority             = DMA_PRIORITY_MEDIUM;
 
         if (HAL_DMA_Init(&pfmInputDma[i]) != HAL_OK)

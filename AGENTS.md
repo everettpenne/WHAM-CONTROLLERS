@@ -350,6 +350,16 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
   confirms the new QUADSPI hardware itself (pins, traces, the
   W25Q128JVS) is correctly wired and responding, not just that the
   firmware compiles.
+- **PFM_Input capture design (2026-09-30)**: bounded NORMAL-mode DMA straight into
+  the per-channel result array (`pfm_input.c`), started just BEFORE the outputs;
+  no per-edge or per-chunk CPU work. `PFMIN:EDGes <ch> RISING|BOTH` selects raw
+  both-edge capture (duty from high time); `PFMIN:RAW? <ch> [<start> [<count>]]`
+  returns the stream in checksummed pages -- the ethernet serial bridge loses a
+  character at a fixed place in replies over ~1.7 kB, so read pages, not the whole
+  stream. Do not go back to a circular buffer read by the DMA interrupt: it
+  starved the last channel at 100 kHz (docs/changelog.txt, 2026-09-30). Tools:
+  `pfm_edge_test.py`, `pfm_edge_plot.py`. Known, separate: the table interrupt
+  saturates the CPU above ~93 kHz on ramps.
 - **`PFMIN:CAPTURE`/`STATus?`/`DATA?`** (`pfm_input.c`/`pfm_input.h`,
   hooked into `pfm.c`, `commands.c`) -- per-period **period-only**
   measurement (rising-edge-to-rising-edge; duty/time-high was dropped,

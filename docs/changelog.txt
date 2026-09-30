@@ -1,6 +1,65 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-09-30  —  PFM_Input capture rewritten: bounded DMA into the result array (fixes capture loss at high rate)
+-----------------------------------------------------------------------
+  Symptom: from 100 kHz up, inputs 3 and 4 (TIM5) lost most of a both-edge shot
+        (frequency sweep entry above: UN 14 of ~100 edges at 125 kHz, some with
+        stale or out-of-order data), TIM2 inputs held up.
+  Diagnosis (measured on the simulator, not guessed): rising-only and both-edge runs
+        showed NO DMA overrun (worst backlog 8-11 of 32 entries) and the master
+        interrupt at 40-65 % CPU, but channel 4's half-transfer callback never ran
+        (0 callbacks, 53 edges stored, flags pending) while channels 1-3 ran in
+        rotation. An event trail (timestamped callback entry/exit) showed each
+        16-edge chunk costing about 24 us wall time (HAL DMA handler + chunk loop,
+        preempted by the per-period interrupt). Four channels x one chunk per 80 us
+        asks for more CPU than exists, so the last channel in line is starved.
+        Secondary: capture was started AFTER the outputs and each of the four
+        Start_DMA calls took ~20 us with the master interrupt running, so the fourth
+        channel started ~80 us (8 periods at 100 kHz) late.
+  Fix (src/bsp/stm32g4/pfm_input.c, rewritten): the capture is bounded (M periods =
+        M+1 edges, or 2M+1 both-edge, at most PFM_INPUT_MAX_EDGES), so each DMA
+        channel is NORMAL mode and writes the capture register straight into the
+        channel's result array g_stamp[] and stops itself when full. No ring buffer,
+        no chunk processing, no tail flush, no wrap/stale-data handling; the edge count
+        is (requested - CNDTR) read when the shot ends or the DMA completes. Periods
+        are computed from the stamps when PFMIN:DATA? asks. Two DMA interrupts per
+        capture per channel, nothing per edge. PFM_Restart() now starts the capture
+        immediately BEFORE HRTIM1_PWM_Start(), so nothing is missed and the capture
+        includes the shot's start-up period.
+  Result (simulator, fibre loop, checksum-verified readback): 27 shots x 4 inputs,
+        75/100/125 kHz x 5-95 % duty, 50 and 200 periods: 17,934 edge deltas, none
+        out of order, none stale, none out of pattern except the first pulse (the
+        real start-up pulse, now visible) and the last (truncated where the outputs
+        are forced off); 97-100 % of the requested edges on every channel (was 14-48 %
+        on inputs 3/4 at 125 kHz). High-time offsets exactly U -32, V -34, W -33 (-32
+        once), UN 0 ticks at every point. Rising-only (PFMIN:DATA?) re-checked with
+        the HVPS 20->15 kHz ramp: 200/200/200/199 periods, residual -1 tick, duty
+        movement +1397 programmed vs +1397 measured.
+  Also:  - PFMIN:RAW? <ch> [<start> [<count>]] pages the reply and adds SUM= (sum of
+           the numbers in the reply, mod 2^32). The ethernet serial bridge loses a
+           character at a FIXED place in replies of about 1.7 kB or more (token 379 of
+           a 401-value reply, 7 of 8 reads) and randomly elsewhere; the firmware sends
+           with a plain blocking transmit and has no buffer limit. The earlier "two
+           identical reads" check could be fooled by the fixed-place loss and is gone;
+           the 366-vs-3366 V pulse in the first edge test was this, not a capture
+           effect. pfm_edge_test.py reads 100-value pages and accepts one only if SUM
+           matches.
+         - PFM:DIAG? gained two fields: worst-case and total cycles spent inside the
+           per-period table interrupt.
+         - pfm_shot_test.py: the normal alignment is now 2 (was 1) and the first
+           (start-up) period is exempt from the readback sanity check.
+         - OVERCAP is reported only for a capture the shot end cut short, and is not a
+           reliable loss detector (set on ~1 in 10 of those, data clean).
+  NOT fixed, found on the way (pre-existing, unrelated to the capture): the per-period
+        table interrupt takes ~1,700 cycles on a ramp (every step rewrites PER and all
+        compares) against a 1,360-cycle period at 125 kHz, so the CPU saturates in it
+        and the table advances at about 93 kHz worth of steps, not one per period: a
+        125 -> 75.5 kHz 200-step ramp came out ~36 periods behind (residual mean -75
+        ticks). Constant-table shots cost ~600 cycles. The same circular-buffer design
+        still sits in WHAM-XREX-PFMG474 (not touched).
+  Verified: simulator over the network, branch pfm-input-edges.
+
 2026-09-30  —  PFM_Input both-edge capture across the LIMITER range (75-125 kHz, 5-95 %)
 -----------------------------------------------------------------------
   Test:    python/pfm_edge_test.py --mode LIMITER --freqs 75000,100000,125000

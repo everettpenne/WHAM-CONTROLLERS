@@ -34,20 +34,30 @@ LIMITS = {"LIMITER": (5, 95), "HVPS": (40, 60)}
 for c in CH: link.must(f"PFMIN:EDGes {c} BOTH")
 
 
-def read_raw(ch):
-    last = None
-    for _ in range(12):
-        r = link.cmd(f"PFMIN:RAW? {ch}", timeout=6)
+PAGE = 100
+
+
+def read_page(ch, start, count):
+    """One page of PFMIN:RAW?, its SUM= checked. The ethernet serial bridge loses
+    characters (at a fixed place in replies over ~1.7 kB, and randomly elsewhere),
+    so a page is used only if its numbers add up to the reply's SUM."""
+    for _ in range(25):
+        r = link.cmd(f"PFMIN:RAW? {ch} {start} {count}", timeout=6)
         try:
-            t = r.split(); n = int(t[1]); vals = [int(x) for x in t[4:]]
-            lvl = int(t[3].split("=")[1]); ov = t[2]
+            t = r.split(); n = int(t[1]); ov = t[2]; lvl = int(t[3].split("=")[1])
+            want = int(t[4].split("=")[1]); vals = [int(x) for x in t[5:]]
         except Exception:
             continue
-        if len(vals) != n: continue
-        rec = (n, ov, lvl, vals)
-        if last == rec: return rec          # two identical reads = clean
-        last = rec
-    return last
+        if len(vals) == min(count, n - start) and sum(vals) % 2**32 == want:
+            return n, ov, lvl, vals
+    sys.exit(f"[fail] PFMIN:RAW? {ch} {start} {count}: no reply with a matching SUM in 25 reads")
+
+
+def read_raw(ch):
+    n, ov, lvl, vals = read_page(ch, 0, PAGE)
+    while len(vals) < n:
+        vals += read_page(ch, len(vals), PAGE)[3]
+    return (n, ov, lvl, vals)
 
 
 def shot(hz, duty, steps):
