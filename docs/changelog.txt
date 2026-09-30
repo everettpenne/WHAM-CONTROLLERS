@@ -1,6 +1,38 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-09-30  —  PFM_Input both-edge capture across the LIMITER range (75-125 kHz, 5-95 %)
+-----------------------------------------------------------------------
+  Test:    python/pfm_edge_test.py --mode LIMITER --freqs 75000,100000,125000
+        --duties 5,15,35,50,65,85,95 (50-period shots, simulator, U/V/W/UN by fibre
+        on inputs 1-4); python/pfm_edge_plot.py draws it. (75 kHz is not exactly
+        representable: period rounded down, 75.03 kHz; duty clamped into 5-95 % with
+        the board's own exact integer rule.)
+  Measurement: wherever an edge stream was captured cleanly, high + low equals the
+        period to the tick and the high time is compare - 32 (U), - 34 (V), - 33 (W),
+        UN exactly per - compare, with NO dependence on frequency or duty, down to a
+        36-tick (212 ns) pulse at 125 kHz / 5 % and a 100-tick gap at 95 %. Duty is
+        therefore recoverable to 1 tick across the whole LIMITER range.
+  Capture quality (NOT good at the top of the range): edges captured per channel,
+        of ~100 in the shot, mean over duties:
+            75 kHz   U 89  V 97  W 93  UN 92
+           100 kHz   U 97  V 94  W 86  UN 54
+           125 kHz   U 96  V 91  W 48  UN 14 (0-36; 0 edges at 50 and 95 %)
+        Inputs 1/2 (TIM2) hold up; inputs 3/4 (TIM5, DMA1 ch 3/4, the higher IRQ
+        numbers) lose edges from 100 kHz and OVERCAP=1 is common from 75 kHz.
+        Corrupt data seen at 125 kHz, not just missing data: negative deltas on V
+        (timestamps out of order, e.g. 4294964578), and UN at 125 kHz / 5 % holds the
+        PREVIOUS shot's 85/1614 pattern (stale buffer contents, sum 1699 not 1359).
+        Consistent with DMA/ISR servicing falling behind (the HRTIM master interrupt
+        runs every period, at a higher priority than the DMA interrupts, and the
+        32-entry buffers are read a half at a time) -- the cause is NOT yet measured.
+        The stale-data case also says the end-of-shot flush can hand back old buffer
+        contents when the channel's DMA made no real progress; the same hole exists
+        in rising-only mode. Not fixed in this entry.
+  Ideas, untried: larger DMA buffers; DMA interrupt priority above the master
+        interrupt; clear the buffer at capture start; reject a flush whose data
+        predates the capture; time the master ISR to see the actual CPU load.
+
 2026-09-30  —  PFM_Input raw both-edge mode: duty-cycle re-exploration
 -----------------------------------------------------------------------
   Change:  New PFMIN:EDGes <ch> RISING|BOTH / PFMIN:EDGes? / PFMIN:RAW? <ch>.
