@@ -42,6 +42,22 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
         Debug/objects.list from their tracked subdir.mk files instead of the old, untracked
         list -- after it lost them the link silently produced a ~100-byte image.
 
+  Verified on the WHAM-XREX simulator board (network update to v0.9, then over the
+        bridge; 80 command checks, all as designed): boot mode NONE (MODE?/LIMits? -> NONE,
+        TABle:BEGin -> ERR 13); MODE with no/bad argument -> ERR 12; both modes' limits
+        read back correctly; every boundary exact -- LIMITER per 1359 (125.000 kHz) and 2265
+        accepted, 1358 and 2266 refused, duty 5%/95% per channel (each channel checked on its
+        own) accepted at the limit and refused one count outside; HVPS per 5666 and 16999
+        accepted, 5665 and 17000 refused, duty 40%/60% likewise; a step for the other mode's
+        range is refused; wrong token count still ERR 4. A mode change emptied the table
+        (TABle? 0); re-selecting the same mode kept it; CONFig:MODE while ARMED -> ERR 13,
+        mode and table untouched; while in FAULT -> ERR 13. Short shots ran through the state
+        machine: HVPS 20 steps at 20 kHz (PFM:DIAG? 20 periods, max gap 8607 cycles) and
+        LIMITER 20 steps at 125 kHz (20 periods, max gap 1361 cycles = one 125 kHz period).
+        (One check in the test script had a wrong expected count; the firmware's value was
+        correct.) NOT verified: the actual waveform at 100-125 kHz -- only the interrupt
+        timing was observed, no logic analyzer or scope.
+
 2026-09-29  —  Phase 3: operating-state machine and fault handling (v0.8)
 -----------------------------------------------------------------------
   Change:  New src/app/control/state_machine.{h,c} (mirrors WHAM-XREX-PFMG474's API
