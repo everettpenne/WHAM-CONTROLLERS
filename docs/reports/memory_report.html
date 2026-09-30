@@ -220,7 +220,7 @@
     <div class="eyebrow">WHAM-HBRIDGE-PFMG474 &middot; STM32G474QET6</div>
     <h1>Memory footprint</h1>
     <div class="subtitle">
-      As of <span class="mono">06f67b5542</span> &mdash; Record Phase 3 hardware verification; publish the v0.8 image running on the simulator
+      As of <span class="mono">a8c15327fa</span> &mdash; Record supply-mode hardware verification; publish the v0.9 image running on the simulator
       &middot; tracked every commit since 2026-09-09
     </div>
   </header>
@@ -229,13 +229,13 @@
     <div class="card tile">
       <div class="tile-top">
         <div class="tile-label"><span class="dot" style="background:var(--flash)"></span>Flash (512 KiB)</div>
-        <div class="tile-pct">12.2%</div>
+        <div class="tile-pct">12.5%</div>
       </div>
-      <div class="tile-value">62.2<span class="unit">KB used</span></div>
-      <div class="tile-of">63,720 / 524,288 bytes</div>
-      <div class="meter-track"><div class="meter-fill" style="width:12.2%;background:var(--flash)"></div></div>
+      <div class="tile-value">63.8<span class="unit">KB used</span></div>
+      <div class="tile-of">65,324 / 524,288 bytes</div>
+      <div class="meter-track"><div class="meter-fill" style="width:12.5%;background:var(--flash)"></div></div>
       <div class="tile-foot">
-        <span>449.8 KB remaining</span>
+        <span>448.2 KB remaining</span>
         <svg class="spark" width="96" height="24" viewBox="0 0 96 24" id="spark-flash"></svg>
       </div>
     </div>
@@ -258,7 +258,7 @@
     <div class="card">
       <div class="card-head">
         <div class="chart-title">Utilization over project lifetime</div>
-        <div class="chart-note">5 commits &middot; 2026-09-09 &ndash; 2026-09-29</div>
+        <div class="chart-note">6 commits &middot; 2026-09-09 &ndash; 2026-09-30</div>
       </div>
       <div class="legend">
         <div class="legend-item"><span class="legend-swatch" style="background:var(--flash)"></span>Flash</div>
@@ -275,7 +275,7 @@
     <h2>Current breakdown by module</h2>
     <div class="breakdown-grid">
       <div class="card">
-        <div class="chart-title" style="margin-bottom:12px">Flash &mdash; 62.2 KB</div>
+        <div class="chart-title" style="margin-bottom:12px">Flash &mdash; 63.8 KB</div>
         <div id="flash-bars"></div>
       </div>
       <div class="card">
@@ -320,7 +320,7 @@
 
 </div>
 
-<script id="report-data" type="application/json">{"history": [{"commit": "a74078b50d", "date": "2026-09-09T14:55:08-05:00", "subject": "Initial commit: reseeded from WHAM-PFMG474-V4 at de83324 (rename only)", "flash_used": 51316, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "365b71480c", "date": "2026-09-29T13:56:59-05:00", "subject": "Rename WHAM-SWITCH-PFMG474 to WHAM-HBRIDGE-PFMG474", "flash_used": 51320, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "9cc7522d05", "date": "2026-09-29T14:05:50-05:00", "subject": "Restructure firmware into layered src/ (behavior-preserving); port host tests and build tooling", "flash_used": 51588, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "4bba7e779c-dirty", "date": "2026-09-29T15:37:46-05:00", "subject": "Record Phase 2 verification on the simulator board", "flash_used": 62156, "flash_total": 524288, "ram_used": 55512, "ram_total": 131072}, {"commit": "06f67b5542", "date": "2026-09-29T15:56:53-05:00", "subject": "Record Phase 3 hardware verification; publish the v0.8 image running on the simulator", "flash_used": 63720, "flash_total": 524288, "ram_used": 55520, "ram_total": 131072}], "flash_modules": [{"name": "ST HAL library", "bytes": 31496}, {"name": "Toolchain (libc/libm/startup)", "bytes": 7289}, {"name": "Serial commands", "bytes": 4844}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 3997}, {"name": "PFM_Input capture", "bytes": 3232}, {"name": "HRTIM driver", "bytes": 3136}, {"name": "Firmware update", "bytes": 3081}, {"name": "main() / init", "bytes": 2250}, {"name": "PFM table engine", "bytes": 1017}, {"name": "IRQ vector dispatch", "bytes": 806}, {"name": "Other", "bytes": 564}, {"name": "CMSIS", "bytes": 458}, {"name": "QUADSPI test", "bytes": 448}, {"name": "Newlib syscalls", "bytes": 396}, {"name": "HAL MSP config", "bytes": 248}, {"name": "Bootloader jump", "bytes": 216}, {"name": "Gate driver / faults", "bytes": 118}, {"name": "CMSIS system init", "bytes": 64}, {"name": "Startup/vector table", "bytes": 60}], "ram_modules": [{"name": "PFM table engine", "bytes": 40833}, {"name": "PFM_Input capture", "bytes": 6562}, {"name": "Serial commands", "bytes": 5465}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 1564}, {"name": "Toolchain (libc/libm/startup)", "bytes": 447}, {"name": "HRTIM driver", "bytes": 252}, {"name": "main() / init", "bytes": 248}, {"name": "QUADSPI test", "bytes": 76}, {"name": "ST HAL library", "bytes": 44}, {"name": "Firmware update", "bytes": 13}, {"name": "Bootloader jump", "bytes": 4}, {"name": "CMSIS system init", "bytes": 4}, {"name": "Newlib syscalls", "bytes": 4}, {"name": "Other", "bytes": 3}, {"name": "Gate driver / faults", "bytes": 1}]}</script>
+<script id="report-data" type="application/json">{"history": [{"commit": "a74078b50d", "date": "2026-09-09T14:55:08-05:00", "subject": "Initial commit: reseeded from WHAM-PFMG474-V4 at de83324 (rename only)", "flash_used": 51316, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "365b71480c", "date": "2026-09-29T13:56:59-05:00", "subject": "Rename WHAM-SWITCH-PFMG474 to WHAM-HBRIDGE-PFMG474", "flash_used": 51320, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "9cc7522d05", "date": "2026-09-29T14:05:50-05:00", "subject": "Restructure firmware into layered src/ (behavior-preserving); port host tests and build tooling", "flash_used": 51588, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "4bba7e779c-dirty", "date": "2026-09-29T15:37:46-05:00", "subject": "Record Phase 2 verification on the simulator board", "flash_used": 62156, "flash_total": 524288, "ram_used": 55512, "ram_total": 131072}, {"commit": "06f67b5542", "date": "2026-09-29T15:56:53-05:00", "subject": "Record Phase 3 hardware verification; publish the v0.8 image running on the simulator", "flash_used": 63720, "flash_total": 524288, "ram_used": 55520, "ram_total": 131072}, {"commit": "a8c15327fa", "date": "2026-09-30T09:51:04-05:00", "subject": "Record supply-mode hardware verification; publish the v0.9 image running on the simulator", "flash_used": 65324, "flash_total": 524288, "ram_used": 55520, "ram_total": 131072}], "flash_modules": [{"name": "ST HAL library", "bytes": 31496}, {"name": "Toolchain (libc/libm/startup)", "bytes": 7345}, {"name": "Serial commands", "bytes": 5484}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 4365}, {"name": "PFM_Input capture", "bytes": 3232}, {"name": "HRTIM driver", "bytes": 3136}, {"name": "Firmware update", "bytes": 3081}, {"name": "main() / init", "bytes": 2250}, {"name": "Other", "bytes": 1104}, {"name": "PFM table engine", "bytes": 1017}, {"name": "IRQ vector dispatch", "bytes": 806}, {"name": "CMSIS", "bytes": 458}, {"name": "QUADSPI test", "bytes": 448}, {"name": "Newlib syscalls", "bytes": 396}, {"name": "HAL MSP config", "bytes": 248}, {"name": "Bootloader jump", "bytes": 216}, {"name": "Gate driver / faults", "bytes": 118}, {"name": "CMSIS system init", "bytes": 64}, {"name": "Startup/vector table", "bytes": 60}], "ram_modules": [{"name": "PFM table engine", "bytes": 40833}, {"name": "PFM_Input capture", "bytes": 6562}, {"name": "Serial commands", "bytes": 5465}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 1563}, {"name": "Toolchain (libc/libm/startup)", "bytes": 447}, {"name": "HRTIM driver", "bytes": 252}, {"name": "main() / init", "bytes": 248}, {"name": "QUADSPI test", "bytes": 76}, {"name": "ST HAL library", "bytes": 44}, {"name": "Firmware update", "bytes": 13}, {"name": "Bootloader jump", "bytes": 4}, {"name": "CMSIS system init", "bytes": 4}, {"name": "Newlib syscalls", "bytes": 4}, {"name": "Other", "bytes": 4}, {"name": "Gate driver / faults", "bytes": 1}]}</script>
 <script>
 (function () {
   "use strict";
