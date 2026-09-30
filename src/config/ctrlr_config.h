@@ -32,7 +32,7 @@
 /* Firmware identity. Bump on every release the way the sibling
  * PFM-STM32G474 project does (FW_VERSION_STRING in its
  * supply_config.h). */
-#define FW_VERSION_STRING "v0.8"
+#define FW_VERSION_STRING "v0.9"
 
 /* --------------------------------------------------------------------------
  * HRTIM channel count
