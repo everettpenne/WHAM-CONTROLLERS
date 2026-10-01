@@ -18,7 +18,7 @@ static uint8_t g_softFaultLatched = 0U;
 static uint8_t AnySourceLatched(void)
 {
     return ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) ||
-            (g_softFaultLatched != 0U)) ? 1U : 0U;
+            (PFM_UnderrunLatched() != 0U) || (g_softFaultLatched != 0U)) ? 1U : 0U;
 }
 
 /* The single place a fault is latched into the state machine. Callers hold
@@ -74,7 +74,7 @@ void SM_Disarm(void)
 
 uint8_t SM_Fire(void)
 {
-    if ((g_state != SM_STATE_ARMED) || (AnySourceLatched() != 0U) || (PFM_GetEntryCount() == 0U))
+    if ((g_state != SM_STATE_ARMED) || (AnySourceLatched() != 0U) || (PFM_ShotReady() == 0U))
     {
         return 0U;
     }
@@ -140,6 +140,7 @@ uint8_t SM_ClearFault(void)
        pins; the HRTIM fault flag re-trips from the pin). */
     HRTIM1_FaultClear();
     GateDriver_FaultClear();
+    PFM_ClearUnderrun();
 
     Mcu_IrqDisable();
     g_softFaultLatched = 0U;

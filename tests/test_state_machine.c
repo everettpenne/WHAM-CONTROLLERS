@@ -20,7 +20,10 @@ static uint8_t     f_hrtimTripped, f_hrtimPin, f_gdsLatched, f_gdsPin;
 void PFM_Restart(void)          { f_restarts++; f_pfmState = PFM_STATE_RUNNING; }
 void PFM_ForceStop(void)        { f_forceStops++; f_pfmState = PFM_STATE_STOPPED; }
 PFM_State_t PFM_GetState(void)  { return f_pfmState; }
-uint16_t PFM_GetEntryCount(void){ return f_entries; }
+uint8_t PFM_ShotReady(void)     { return (f_entries > 0U) ? 1U : 0U; }
+static uint8_t f_underrun = 0U;
+uint8_t PFM_UnderrunLatched(void) { return f_underrun; }
+void PFM_ClearUnderrun(void)    { f_underrun = 0U; }
 uint8_t HRTIM1_FaultIsTripped(void) { return f_hrtimTripped; }
 void HRTIM1_FaultClear(void)    { f_hrtimTripped = f_hrtimPin; }   /* re-trips if the pin is still low */
 uint8_t GateDriver_FaultIsLatched(void) { return f_gdsLatched; }

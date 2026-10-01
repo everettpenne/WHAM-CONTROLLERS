@@ -4,6 +4,12 @@ pfm_table_upload.py -- build a PFM table on the host and upload it to
 WHAM-HBRIDGE-PFMG474 over the TABle:BEGin / TABle:STEP / TABle:END serial
 commands (see docs/command_reference.md).
 
+LEGACY (2026-10-01): this uploads a PER-PERIOD table with TABle:*, which now holds
+at most PFM_TABLE_SIZE (ctrlr_config.h, 100) entries, so the 200- and 500-period
+profiles below stop with ERR 3. A shot is now a time series of setpoints
+(SHOT:BEGin / SHOT:STEP <t_us> <freq_hz> <duty_pct> / SHOT:END); see
+python/pfm_shot_test.py. Kept for bench use of short per-period tables.
+
 Table CONSTRUCTION deliberately lives entirely in this script, not in
 firmware -- see pfm.h's "ADDED" header note and Core/Src/commands.c's
 cmd_table_step() for why. The firmware side only knows how to accept

@@ -12,11 +12,32 @@
 #include "hrtim.h"
 #include "pfm_input.h"
 #include "mcu.h"
+#include "shot_profile.h"
 #include <string.h>
 
 static PFM_Step_t g_pfmTable[PFM_TABLE_SIZE];
-static uint16_t g_pfmIndex = 0U;
+static uint16_t g_pfmIndex = 0U;       /* read position in the ring */
 static uint16_t g_holdCounter = 0U;
+
+/* The ring. g_ringHead counts entries produced since the shot started (written
+   only by the producer: the generator in PFM_RefillHandler()/PFM_Restart(), or
+   PFM_Restart() for a TABle:* table); g_ringTail counts entries consumed
+   (written only by PFM_CycleBoundaryHandler()). Each counter has ONE writer, so
+   the playback interrupt (priority 1) can preempt the refill (priority 2)
+   at any instruction without a lock; the entries ready are head - tail, and
+   entry n lives in slot n % PFM_TABLE_SIZE. g_genDone is set by the producer
+   BEFORE it publishes the last entry, so playback that sees the ring empty with
+   g_genDone set knows the shot is over, and with it clear knows the refill fell
+   behind (an underrun). */
+static volatile uint32_t g_ringHead = 0U;
+static volatile uint32_t g_ringTail = 0U;
+static volatile uint8_t  g_genDone  = 1U;
+static volatile uint8_t  g_underrun = 0U;
+static PFM_Source_t      g_source   = PFM_SOURCE_TABLE;
+
+static uint32_t g_diagMinReady = 0U;
+static uint32_t g_diagRefills  = 0U;
+static uint32_t g_diagProduced = 0U;
 
 /* --------------------------------------------------------------------------
  * Diagnostic: real inter-call timing for PFM_CycleBoundaryHandler(),
@@ -146,6 +167,11 @@ void PFM_Init(void)
     g_holdCounter = 0U;
     g_pfmState = PFM_STATE_STOPPED;
     g_pfmEntryCount = 0U;
+    g_ringHead = 0U;
+    g_ringTail = 0U;
+    g_genDone  = 1U;
+    g_source   = PFM_SOURCE_TABLE;
+    Mcu_RefillIrqInit();
 
     /* Enable the DWT cycle counter for the diagnostic above -- TRCENA
        (DEMCR) must be set before DWT->CTRL's own CYCCNTENA bit will
@@ -255,17 +281,26 @@ static void CycleBoundaryBody(void)
         return;
     }
 
-    /* Defensive: with no table builder wired up (see pfm.h),
-       g_pfmEntryCount is always 0 today, so this always takes the stop
-       path below on the very first call after a shot starts -- applying
-       g_pfmTable[0] of a never-built table would otherwise silently run
-       on garbage. This is intentionally the same defensive check the
-       sibling project uses, kept ready for the day a builder populates
-       real entries. */
-    if (g_pfmEntryCount == 0U)
+    /* Nothing ready to play. With the producer finished that cannot happen (the
+       shot ends at the consumption below), so this is either an empty table or
+       the refill falling behind: an underrun, which stops the shot and latches
+       a fault rather than holding the previous step or playing garbage. */
     {
-        PFM_ForceStop();
-        return;
+        uint32_t ready = g_ringHead - g_ringTail;
+
+        if (ready == 0U)
+        {
+            if (g_genDone == 0U)
+            {
+                g_underrun = 1U;
+            }
+            PFM_ForceStop();
+            return;
+        }
+        if (ready < g_diagMinReady)
+        {
+            g_diagMinReady = ready;
+        }
     }
 
     PFM_ApplyCurrentStep();
@@ -273,13 +308,14 @@ static void CycleBoundaryBody(void)
     g_holdCounter++;
     if (g_holdCounter >= PFM_HOLD_PERIODS)
     {
-        g_holdCounter = 0U;
-        g_pfmIndex++;
+        uint32_t ready;
 
-        /* Compare against g_pfmEntryCount (the ACTUAL built length),
-           not PFM_TABLE_SIZE (the fixed buffer capacity) -- a short
-           table would otherwise never be seen as exhausted here. */
-        if (g_pfmIndex >= g_pfmEntryCount)
+        g_holdCounter = 0U;
+        g_pfmIndex = (uint16_t)((g_pfmIndex + 1U) % PFM_TABLE_SIZE);
+        g_ringTail++;
+        ready = g_ringHead - g_ringTail;
+
+        if ((ready == 0U) && (g_genDone != 0U))
         {
             /* Last entry just completed this cycle.
                Stop outputs now, at a coherent boundary. */
@@ -295,13 +331,105 @@ static void CycleBoundaryBody(void)
                needs its own explicit call here as well. */
             PfmInput_OnShotEnd();
         }
+        else if ((g_genDone == 0U) && (ready <= (PFM_TABLE_SIZE / 2U)))
+        {
+            Mcu_RefillIrqPend();   /* half the ring is free: top it up */
+        }
     }
+}
+
+/* Appends generator entries until the ring is full or the shot's curve is
+   exhausted. Single producer: PFM_RefillHandler() and, with interrupts masked,
+   PFM_Restart(). */
+static void FillRing(void)
+{
+    while ((g_genDone == 0U) && ((g_ringHead - g_ringTail) < PFM_TABLE_SIZE))
+    {
+        PFM_Step_t *slot = &g_pfmTable[g_ringHead % PFM_TABLE_SIZE];
+        uint16_t per;
+        uint16_t cmp;
+        uint8_t  last;
+
+        if (ShotGen_Next(&per, &cmp, &last) == 0U)
+        {
+            g_genDone = 1U;
+            return;
+        }
+        slot->per = per;
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            slot->cmp[ch] = cmp;
+        }
+        if (last != 0U)
+        {
+            g_genDone = 1U;   /* before the entry is published, see the ring's comment */
+        }
+        g_ringHead++;
+        g_diagProduced++;
+    }
+}
+
+void PFM_RefillHandler(void)
+{
+    g_diagRefills++;
+    FillRing();
+}
+
+void PFM_SelectSource(PFM_Source_t source)
+{
+    g_source = source;
+}
+
+PFM_Source_t PFM_GetSource(void)
+{
+    return g_source;
+}
+
+uint8_t PFM_ShotReady(void)
+{
+    return (g_source == PFM_SOURCE_PROFILE) ? ShotProfile_IsComplete()
+                                            : ((g_pfmEntryCount > 0U) ? 1U : 0U);
+}
+
+uint8_t PFM_UnderrunLatched(void)
+{
+    return g_underrun;
+}
+
+void PFM_ClearUnderrun(void)
+{
+    g_underrun = 0U;
+}
+
+void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced)
+{
+    if (minReady != NULL) { *minReady = g_diagMinReady; }
+    if (refills != NULL)  { *refills  = g_diagRefills; }
+    if (produced != NULL) { *produced = g_diagProduced; }
 }
 
 void PFM_Restart(void)
 {
+    uint32_t irq = Mcu_IrqSave();   /* the ring and the generator are set up with the refill interrupt held off */
+
     g_pfmIndex = 0U;
     g_holdCounter = 0U;
+    g_ringTail = 0U;
+    g_diagMinReady = 0xFFFFFFFFU;
+    g_diagRefills  = 0U;
+    g_diagProduced = 0U;
+    if (g_source == PFM_SOURCE_PROFILE)
+    {
+        g_ringHead = 0U;
+        g_genDone  = (ShotGen_Start(PFM_HOLD_PERIODS) != 0U) ? 0U : 1U;
+        FillRing();               /* the whole ring is ready before the first period */
+    }
+    else
+    {
+        g_ringHead = g_pfmEntryCount;
+        g_genDone  = 1U;
+    }
+    Mcu_IrqRestore(irq);
     g_pfmState = PFM_STATE_RUNNING;
 
     /* Fresh diagnostic window for this shot -- see g_diagMaxGapCycles's

@@ -73,20 +73,17 @@ extern "C" {
 #define PFM_HOLD_PERIODS                         (1U)
 
 /* --------------------------------------------------------------------------
- * Table size. The sibling project derives this from its own supply_config.h
- * (SUPPLY_PFM_TABLE_SIZE, currently 5000 there, chosen for a specific RAM
- * budget history tied to features not present here) -- defined directly
- * here instead, at the same value, since there's no equivalent config
- * source yet. Revisit if/when this project grows its own RAM-budget
- * pressure worth tracking. PFM_Step_t's size now depends on
- * HRTIM_NUM_CHANNELS (2 + 2*N bytes -- see ctrlr_config.h), so total
- * static RAM for the table is PFM_TABLE_SIZE * (2 + 2*HRTIM_NUM_CHANNELS)
- * bytes, not a fixed 8 bytes/entry regardless of channel count anymore.
- * At N=5 and PFM_TABLE_SIZE=5000 that's 60,000 B -- confirmed against a
- * real .map file to comfortably fit this MCU's 128 KiB SRAM alongside
- * everything else (see docs/changelog.txt, 2026-09-08).
+ * Table size: PFM_TABLE_SIZE (ctrlr_config.h, 100 entries by default). The
+ * table is a RING of per-period entries -- {per, one compare per channel}, 2 +
+ * 2 * HRTIM_NUM_CHANNELS bytes each -- played back by the per-period
+ * interrupt and kept filled by a lower-priority one (PFM_RefillHandler()),
+ * so a shot may be far longer than the table (a 1 s shot at 20 kHz is
+ * 20,000 periods). Source of the entries (PFM_SelectSource()):
+ *   PFM_SOURCE_PROFILE  the time-series shot (shot_profile.h) walked by the
+ *                       generator, refilled during the shot -- the normal way
+ *   PFM_SOURCE_TABLE    a table uploaded entry by entry (TABle:*), at most
+ *                       PFM_TABLE_SIZE entries, played once -- bench use
  * -------------------------------------------------------------------------- */
-#define PFM_TABLE_SIZE                           (5000U)
 
 /* --------------------------------------------------------------------------
  * PFM_Step_t -- one playback entry. `cmp[]` holds one compare value per
@@ -129,6 +126,37 @@ typedef enum
     PFM_PHASE_V,
     PFM_PHASE_W
 } PFM_Phase_t;
+
+typedef enum
+{
+    PFM_SOURCE_TABLE = 0U,
+    PFM_SOURCE_PROFILE
+} PFM_Source_t;
+
+/* Chooses where the next shot's entries come from. Called when an upload
+   completes (SHOT:END or TABle:END); never while FIRING. */
+void PFM_SelectSource(PFM_Source_t source);
+PFM_Source_t PFM_GetSource(void);
+
+/* 1 if the selected source holds something to fire (a complete time series,
+   or at least one table entry). */
+uint8_t PFM_ShotReady(void);
+
+/* Body of the refill interrupt (Core/Src/stm32g4xx_it.c FMAC_IRQHandler()):
+   tops the ring up from the generator. Priority 2, so the per-period
+   interrupt (1) preempts it; it gets the CPU the per-period interrupt leaves. */
+void PFM_RefillHandler(void);
+
+/* The ring ran empty while the shot was not over: the refill fell behind the
+   playback. The shot is stopped and this latches until PFM_ClearUnderrun()
+   (FAULT:CLEAR); the state machine treats it as a fault (state_machine.c). */
+uint8_t PFM_UnderrunLatched(void);
+void    PFM_ClearUnderrun(void);
+
+/* Ring diagnostics of the last shot: the fewest entries ready at any period
+   (0 would be an underrun), the number of refill interrupts that ran, and the
+   entries generated. */
+void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced);
 
 void PFM_Init(void);
 void PFM_ApplyCurrentStep(void);

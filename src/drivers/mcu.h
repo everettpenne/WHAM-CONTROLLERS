@@ -32,6 +32,15 @@ uint32_t Mcu_CycleCount(void);
    HAL_Init() (main.c) -- see mcu.c for why. */
 void Mcu_SetSysTickHighestPriority(void);
 
+/* A software-triggered, low-priority interrupt for work that must run soon but
+   not inside the per-period interrupt (refilling the PFM table, pfm.c). Init
+   once; Pend may be called from any interrupt or thread. The handler is
+   Core/Src/stm32g4xx_it.c's FMAC_IRQHandler() (the FMAC is not used), which
+   calls PFM_RefillHandler(). Priority 2: below the per-period interrupt and
+   the fault/EXTI tier (1), above the DMA and UART interrupts (3). */
+void Mcu_RefillIrqInit(void);
+void Mcu_RefillIrqPend(void);
+
 /* Boot-related option bits (DIAGnostic:OPTBytes?). */
 typedef struct
 {

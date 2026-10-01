@@ -41,6 +41,14 @@ static const scpi_command_t command_table[] = {
     { "TABle:END",           cmd_table_end    },
     { "TABle?",              cmd_table_query  },
 
+    /* The time-series shot -- see cmd_shot.c. */
+    { "SHOT:BEGin",          cmd_shot_begin       },
+    { "SHOT:STEP",           cmd_shot_step        },
+    { "SHOT:END",            cmd_shot_end         },
+    { "SHOT:CLEar",          cmd_shot_clear       },
+    { "SHOT?",               cmd_shot_query       },
+    { "SHOT:POINt?",         cmd_shot_point_query },
+
     /* Begins PWM output -- see commands.c's own header comment on
        cmd_fire(). */
     { "FIRE",                cmd_fire         },

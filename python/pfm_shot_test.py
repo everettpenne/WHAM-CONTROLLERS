@@ -3,12 +3,16 @@
 PFM_Input capture measured, then plot the result.
 
 WHAT IT DOES
-  1. Selects the supply mode (CONFig:MODE) if asked, builds a table of up to
-     200 steps -- the carrier frequency ramps linearly from --start-hz to
-     --end-hz and the duty from --duty-start to --duty-end (percent, each
-     step is one switching period) -- and uploads it (TABle:*).
-  2. Arms the PFM_Input capture for that many periods (PFMIN:CAPTURE), ARMs
-     and FIREs, waits for the shot to finish (STATE? back to IDLE).
+  1. Selects the supply mode (CONFig:MODE) if asked and uploads a two-setpoint
+     time-series shot (SHOT:BEGin/STEP/END): at t = 0 --start-hz and
+     --duty-start, at --duration-ms --end-hz and --duty-end, ramping linearly
+     between them. The firmware turns that into one table entry per switching
+     period; generate_profile() below is an exact Python port of that
+     generator (held to the C code by the selftest), so the tool knows the
+     per-period values the board played.
+  2. Arms the PFM_Input capture (PFMIN:CAPTURE) for the first
+     min(periods in the shot, 200) periods, ARMs and FIREs, waits for the shot
+     to finish (STATE? back to IDLE; a FAULT here is a table underrun).
   3. Reads each capture channel back with PFMIN:DATA?, and re-reads any
      reply that was damaged in transit (see "Readback" below).
   4. Analyses and plots: programmed vs measured frequency, the raw error,
@@ -53,7 +57,7 @@ Readback
 
 USAGE
   python3 python/pfm_shot_test.py --url socket://localhost:5002 --name shot \\
-      --mode HVPS --start-hz 20000 --end-hz 15000 --out ramp.png
+      --mode HVPS --start-hz 20000 --end-hz 15000 --duration-ms 10 --out ramp.png
   python3 python/pfm_shot_test.py --url /dev/cu.usbserial-XXXX --mode HVPS \\
       --start-hz 20000 --end-hz 20000 --duty-start 40 --duty-end 60
   python3 python/pfm_shot_test.py --selftest       # no hardware needed
@@ -84,16 +88,60 @@ COLORS = ["#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#ff7f0e", "#8c564b"]
 # --------------------------------------------------------------------------
 # table
 # --------------------------------------------------------------------------
-def build_table(start_hz, end_hz, duty_start, duty_end, periods):
-    """(per, cmp) arrays: frequency and duty ramp linearly over `periods`
-    steps. per = round(CLK / f) - 1, cmp = round(per * duty)."""
-    if not 2 <= periods <= MAX_PERIODS:
-        raise ValueError(f"--periods must be 2..{MAX_PERIODS}")
-    f = start_hz + (end_hz - start_hz) * np.arange(periods) / (periods - 1)
-    duty = duty_start + (duty_end - duty_start) * np.arange(periods) / (periods - 1)
-    per = np.rint(CLK_HZ / f).astype(int) - 1
-    cmp_ = np.rint(per * duty / 100.0).astype(int)
-    return per, cmp_
+MODE_LIMITS = {                      # (f min Hz, f max Hz, duty min %, duty max %) -- ctrlr_config.h
+    "HVPS": (10_000, 30_000, 40, 60),
+    "LIMITER": (75_000, 125_000, 5, 95),
+}
+SHOT_MAX_DURATION_US = 1_000_000     # ctrlr_config.h
+SHOT_SETPOINT_MAX = 500
+
+
+def _tdiv(a, b):
+    """Integer division truncated toward zero, like C's."""
+    q = abs(a) // abs(b)
+    return q if (a < 0) == (b < 0) else -q
+
+
+def make_setpoints(start_hz, end_hz, duty_start, duty_end, duration_ms):
+    """The two-setpoint shot this tool uploads: [(t_us, freq_mHz, duty_hundredths), ...]."""
+    t_us = int(round(duration_ms * 1000))
+    return [(0, int(round(start_hz * 1000)), int(round(duty_start * 100))),
+            (t_us, int(round(end_hz * 1000)), int(round(duty_end * 100)))]
+
+
+def generate_profile(setpoints, mode, periods_per_entry=1):
+    """Exact port of the firmware's generator (src/app/control/shot_profile.c,
+    ShotGen_Next): the {per, cmp} of every switching period of a time-series
+    shot, linear in time between setpoints, all in integer arithmetic. Returns
+    (per, cmp) as int arrays. setpoints = [(t_us, freq_mHz, duty_hundredths)]."""
+    fmin, fmax, dmin, dmax = MODE_LIMITS[mode]
+    per1_min = -(-CLK_HZ // fmax)
+    per1_max = CLK_HZ // fmin
+    tpu = CLK_HZ // 1_000_000
+    end = setpoints[-1][0] * tpu
+    per, cmp_ = [], []
+    tick, seg = 0, -1
+    seg_start = seg_end = f0 = d0 = slope_f = slope_d = 0
+    while tick < end:
+        while seg < 0 or tick >= seg_end:
+            seg += 1
+            (ta, fa, da), (tb, fb, db) = setpoints[seg], setpoints[seg + 1]
+            seg_start, seg_end, f0, d0 = ta * tpu, tb * tpu, fa, da
+            dt = seg_end - seg_start
+            slope_f = _tdiv((fb - fa) * (1 << 32), dt)
+            slope_d = _tdiv((db - da) * (1 << 32), dt)
+        elapsed = tick - seg_start
+        f = f0 + ((slope_f * elapsed) >> 32)            # arithmetic shift = floor, as in C
+        d = d0 + ((slope_d * elapsed) >> 32)
+        per1 = (CLK_HZ * 1000 + f // 2) // f
+        per1 = min(max(per1, per1_min), per1_max)
+        p = per1 - 1
+        c = (p * d + 5000) // 10000
+        c = min(max(c, (dmin * p + 99) // 100), (dmax * p) // 100)
+        per.append(p)
+        cmp_.append(c)
+        tick += per1 * periods_per_entry
+    return np.array(per, dtype=int), np.array(cmp_, dtype=int)
 
 
 # --------------------------------------------------------------------------
@@ -229,8 +277,10 @@ class Link:
         return r
 
 
-def run_shot(link, per, cmp_, mode, channels):
-    """Upload, fire and read back. Returns {channel: {'count','overcap','ticks'}}."""
+def run_shot(link, setpoints, per, cmp_, mode, channels):
+    """Upload the shot, fire and read back the first periods. `per`/`cmp_` are the
+    per-period values the board generates (generate_profile()). Returns
+    {channel: {'count','overcap','ticks'}}."""
     idn = link.must("*IDN?")
     print(f"board:  {idn}")
     state = link.must("STATE?")
@@ -243,28 +293,40 @@ def run_shot(link, per, cmp_, mode, channels):
         sys.exit("[fail] no supply mode selected on the board -- pass --mode LIMITER or HVPS")
     print(f"mode:   {cur}   {link.must('CONFig:LIMits?')}")
 
-    n = len(per)
-    print(f"upload: {n} steps, per {per[0]} -> {per[-1]}, cmp {cmp_[0]} -> {cmp_[-1]} ...", end="", flush=True)
+    n_shot = len(per)
+    n = min(n_shot, MAX_PERIODS)          # the capture holds at most 200 periods
+    print(f"upload: {len(setpoints)} setpoints, {setpoints[-1][0] / 1000:g} ms -> {n_shot} periods "
+          f"(per {per[0]} -> {per[-1]}) ...", end="", flush=True)
     t0 = time.time()
-    link.must("TABle:BEGin")
-    for p, c in zip(per, cmp_):
-        r = link.cmd(f"TABle:STEP {p} {c} {c} {c}")
+    link.must("SHOT:BEGin")
+    for t_us, f_mhz, d_h in setpoints:
+        r = link.cmd(f"SHOT:STEP {t_us} {f_mhz // 1000}.{f_mhz % 1000:03d} {d_h // 100}.{d_h % 100:02d}")
         if r != "OK":
-            sys.exit(f"\n[fail] TABle:STEP {p} {c} -> {r!r} (outside the {cur} limits?)")
-    link.must("TABle:END")
-    print(f" done ({time.time() - t0:.0f} s)")
+            sys.exit(f"\n[fail] SHOT:STEP {t_us} ... -> {r!r}")
+    r = link.must("SHOT:END")
+    print(f" done ({time.time() - t0:.1f} s) {r}")
 
     link.must(f"PFMIN:CAPTURE {n}")
     link.must("ARM")
     link.must("FIRE")
-    t_end = time.time() + 10 + n * 0.0005
+    t_end = time.time() + 10 + setpoints[-1][0] / 1e6 * 1.5
     while time.time() < t_end:
         time.sleep(0.1)
-        if link.cmd("STATE?") == "OK IDLE":
+        state = link.cmd("STATE?")
+        if state == "OK IDLE":
             break
+        if state and state.startswith("OK FAULT"):
+            sys.exit(f"[fail] the shot faulted ({state}) -- a table underrun (PFM:DIAG? ring fields) or a real fault")
     else:
         sys.exit("[fail] shot did not finish (STATE? never returned to IDLE)")
-    print(f"shot:   done; counts {link.must('PFMIN:STATus?')}")
+    diag = link.cmd("PFM:DIAG?").split()
+    if len(diag) >= 9:
+        calls, ready, refills, produced = int(diag[1]), int(diag[6]), int(diag[7]), int(diag[8])
+        print(f"shot:   done; {calls} periods played (generated {n_shot}), fewest table entries ready {ready}, "
+              f"{refills} refills; counts {link.must('PFMIN:STATus?')}")
+    else:
+        print(f"shot:   done; counts {link.must('PFMIN:STATus?')}")
+    per, cmp_ = per[:n + 4], cmp_[:n + 4]
 
     data = {}
     for ch in channels:
@@ -427,12 +489,23 @@ def selftest():
         print(f"  {'ok ' if cond else 'BAD'} {what}")
         ok = ok and bool(cond)
 
-    print("table:")
-    per, cmp_ = build_table(20000, 15000, 50, 50, 200)
-    check(per[0] == 8499 and per[-1] == 11332, "20 -> 15 kHz gives per 8499 -> 11332")
-    check(abs(cmp_[0] / per[0] - 0.5) < 1e-3, "duty 50 %")
-    per2, cmp2 = build_table(20000, 20000, 40, 60, 100)
-    check(abs(cmp2[0] / per2[0] - .4) < 2e-4 and abs(cmp2[-1] / per2[-1] - .6) < 2e-4, "duty ramp 40 -> 60 %")
+    print("generator, held to the C code (tests/test_shot_profile.c GOLDEN lines):")
+    p, c = generate_profile([(0, 20_000_000, 5000), (1000, 20_000_000, 5000)], "HVPS")
+    check(len(p) == 20 and p[0] == 8499 and c[0] == 4250, "flat 20 kHz / 50 %, 1 ms: 20 entries, per 8499, cmp 4250")
+    ramp = [(0, 20_000_000, 4000), (10_000, 15_000_000, 6000)]
+    per, cmp_ = generate_profile(ramp, "HVPS")
+    check(len(per) == 176 and per[0] == 8499 and cmp_[0] == 3400 and per[-1] == 11329, "ramp 20 -> 15 kHz, 40 -> 60 %, 10 ms: 176 entries")
+    check(int((per + 1).sum()) == 1_709_700, "ramp: the periods add up to 1709700 clocks")
+    check(per[80] == 9501 and cmp_[80] == 4601, "ramp: entry 80 is per 9501, cmp 4601")
+    p, c = generate_profile([(0, 75_000_000, 500), (1000, 75_000_000, 500)], "LIMITER")
+    check(p[0] == 2265 and c[0] == 114, "LIMITER 75 kHz / 5 %: period and compare clamped onto the limits (2265, 114)")
+    p, c = generate_profile([(0, 125_000_000, 500), (1000, 125_000_000, 500)], "LIMITER")
+    check(p[0] == 1359 and c[0] == 68, "LIMITER 125 kHz / 5 %: per 1359, cmp 68")
+    p, c = generate_profile([(0, 20_000_000, 5000), (1_000_000, 20_000_000, 5000)], "HVPS")
+    check(len(p) == 20000, "the longest shot, 1 s at 20 kHz: 20,000 entries")
+    per2, cmp2 = generate_profile([(0, 20_000_000, 4000), (5000, 20_000_000, 6000)], "HVPS")
+    check(len(per2) == 100 and abs(cmp2[0] / per2[0] - .4) < 2e-4 and abs(cmp2[-1] / per2[-1] - .6) < 3e-3, "duty ramp 40 -> 60 % at constant frequency")
+    check(make_setpoints(20000, 15000, 40, 60, 10) == ramp, "the CLI's two setpoints")
     print("alignment and residual on a synthetic capture (U, V, W, UN; W one period further behind):")
     labels = ["U", "V", "W", "UN"]
     data = synthetic_capture(per, cmp_, labels, [2, 2, 3, 2], rng)
@@ -472,7 +545,8 @@ def main():
     ap.add_argument("--end-hz", type=float, default=15000.0)
     ap.add_argument("--duty-start", type=float, default=50.0, help="percent")
     ap.add_argument("--duty-end", type=float, default=None, help="percent (default: same as --duty-start)")
-    ap.add_argument("--periods", type=int, default=MAX_PERIODS, help=f"steps = switching periods, 2..{MAX_PERIODS}")
+    ap.add_argument("--duration-ms", type=float, default=10.0,
+                    help="shot length; the capture holds the first 200 periods of it (default 10)")
     ap.add_argument("--map", default=",".join(DEFAULT_MAP),
                     help="what PFM_Input_1.. are wired to, e.g. U,V,W,UN (default) or U,UN")
     ap.add_argument("--out", default="pfm_shot.png", help="plot file")
@@ -496,10 +570,17 @@ def main():
         info = saved.get("info", "saved shot")
     else:
         duty_end = args.duty_start if args.duty_end is None else args.duty_end
-        per, cmp_ = build_table(args.start_hz, args.end_hz, args.duty_start, duty_end, args.periods)
+        mode = args.mode
         link = Link(args.url, args.name)
-        data = run_shot(link, per, cmp_, args.mode, list(range(1, len(labels) + 1)))
-        info = (f"{args.periods}-period shot: {args.start_hz / 1e3:g} -> {args.end_hz / 1e3:g} kHz, "
+        if mode is None:
+            mode = link.must("CONFig:MODE?").split()[1]
+            if mode not in MODE_LIMITS:
+                sys.exit("[fail] no supply mode on the board -- pass --mode LIMITER or HVPS")
+        setpoints = make_setpoints(args.start_hz, args.end_hz, args.duty_start, duty_end, args.duration_ms)
+        per_all, cmp_all = generate_profile(setpoints, mode)
+        data = run_shot(link, setpoints, per_all, cmp_all, args.mode, list(range(1, len(labels) + 1)))
+        per, cmp_ = per_all[:min(len(per_all), MAX_PERIODS) + 4], cmp_all[:min(len(per_all), MAX_PERIODS) + 4]
+        info = (f"{args.duration_ms:g} ms shot ({len(per_all)} periods): {args.start_hz / 1e3:g} -> {args.end_hz / 1e3:g} kHz, "
                 f"duty {args.duty_start:g} -> {duty_end:g} %")
         if args.json:
             json.dump({"per": per.tolist(), "cmp": cmp_.tolist(), "labels": labels, "info": info,

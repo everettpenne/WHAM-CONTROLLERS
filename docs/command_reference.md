@@ -147,7 +147,76 @@ header for exactly what disabling the module does.
 Refused with `ERR 13` while `ARMED` or `FIRING` (resetting under load would
 drop the outputs uncontrolled); allowed in `IDLE` and `FAULT`.
 
-### `TABLE:BEGIN`, `TABLE:STEP`, `TABLE:END`, `TABLE?`
+### `SHOT:BEGin`, `SHOT:STEP`, `SHOT:END`, `SHOT:CLEar`, `SHOT?`, `SHOT:POINt?`
+
+A shot is a **time series of setpoints**. The operator uploads, for each
+setpoint, a time, a carrier frequency and a duty; the firmware ramps
+frequency and duty **linearly in time** between setpoints, one switching
+period at a time. Open-loop shots run from about 10 ms to 1 s.
+
+```
+> CONFig:MODE HVPS
+< OK
+> SHOT:BEGin
+< OK
+> SHOT:STEP 0 20000 40          t_us  freq_hz  duty_pct  -- always t = 0 first
+< OK
+> SHOT:STEP 10000 15000 60      at 10 ms: 15 kHz, 60 %
+< OK
+> SHOT:END
+< OK 2 10000                    setpoints, shot length in microseconds
+> ARM
+< OK
+> FIRE
+< OK
+```
+
+- **Units on the wire:** time is an integer number of microseconds; frequency
+  is in Hz with up to 3 decimals (`20000.5`); duty is in percent with up to 2
+  decimals (`47.25`).
+- **Rules:** the **first setpoint must be at t = 0** (the shot starts at the
+  first slot's frequency and duty); times strictly increase; the last
+  setpoint's time is the end of the shot and may be at most
+  `SHOT_MAX_DURATION_US` (1 s); at least two setpoints are needed
+  (`SHOT:END` refuses otherwise); at most `SHOT_SETPOINT_MAX` (500).
+- **Limits are checked at upload, per setpoint**, against the selected supply
+  mode (`CONFig:LIMits?`): `ERR 10` for a frequency or duty outside the mode,
+  `ERR 4` for an ordering/format error or a time beyond the longest shot,
+  `ERR 3` when full, `ERR 13` with no supply mode or while `FIRING`. A straight
+  line between two setpoints inside the limits stays inside them; the
+  generator additionally clamps every period onto the mode's exact limits
+  (so a `75000 Hz` setpoint, which is not exactly representable, plays as the
+  nearest legal period).
+- **The shot ends at the first period that starts at or after the last
+  setpoint's time** (so it overshoots by less than one period), and the last
+  setpoint's own values are approached, not held.
+- `SHOT:BEGin` discards the previous shot; `SHOT:CLEar` drops it; a supply
+  mode change drops it. None of them work while `FIRING`.
+- `SHOT?` — `OK <setpoints> <duration_us> <PROFILE|TABLE>`: the last field is
+  which source `FIRE` will play (the last upload that finished). `SHOT:POINt?
+  <i>` — `OK <t_us> <freq_hz> <duty_pct>` for setpoint *i* (from 0).
+- **How it plays:** a generator (`shot_profile.c`) turns the setpoints into
+  one `{per, cmp}` entry per period and keeps a **ring table** of
+  `PFM_TABLE_SIZE` entries (100 by default) full; the per-period interrupt
+  plays it, and a software-triggered, lower-priority interrupt refills each
+  half while the other half plays. So a shot can be far longer than the table.
+  If the refill ever falls behind (the ring runs empty before the shot is
+  over) the shot is **stopped and latched as a fault** (`STATE?` →
+  `FAULT GENERAL`, cleared by `FAULT:CLEAR`) rather than holding a stale step.
+  `PFM:DIAG?` reports the fewest entries that were ready at any period.
+- **Compile-time sizes** (`ctrlr_config.h`, rebuild the `.bin` to change):
+  `SHOT_SETPOINT_MAX` (500, 12 bytes each), `SHOT_MAX_DURATION_US` (1 s),
+  `PFM_TABLE_SIZE` (100, 8 bytes each).
+- The host tool `python/pfm_shot_test.py` has an exact Python port of the
+  generator (`generate_profile()`), held to the C code by both test suites.
+
+### `TABLE:BEGIN`, `TABLE:STEP`, `TABLE:END`, `TABLE?` (bench use)
+
+The per-period table, entered one entry at a time. Since 2026-10-01 it holds
+at most `PFM_TABLE_SIZE` (100) entries and plays once, with no refill: it is
+the engine's input format kept for bench work, and `SHOT:*` above is how a
+shot is normally defined. The last upload to finish (`SHOT:END` or
+`TABLE:END`) is what `FIRE` plays.
 
 Uploads a complete PFM shot profile (a sequence of `(per, cmp0, ...,
 cmp(N-1))` steps, N = `HRTIM_NUM_CHANNELS` — see `Core/Inc/pfm.h`'s
@@ -238,10 +307,12 @@ exactly on a limit is accepted, one `per` count outside is refused.
 
 ### `FIRE`
 
-Starts table playback from step 0. Playback advances automatically, one
-table entry per PWM period, driven by the HRTIM1 master-repetition
-interrupt (`PFM_CycleBoundaryHandler()` in `pfm.c`), and stops on its own,
-at a coherent period boundary, after the last entry.
+Starts playback of the shot (`SHOT:*`, or a `TABLE:*` table if that was
+uploaded last) from its start. Playback advances automatically, one entry per
+PWM period, driven by the HRTIM1 master-repetition interrupt
+(`PFM_CycleBoundaryHandler()` in `pfm.c`), and stops on its own, at a
+coherent period boundary, at the end of the shot. `ERR 5` when nothing has
+been uploaded.
 
 **Needs `ARMED`** (gated 2026-09-29; before that `FIRE` took effect
 immediately in any state). `FIRE` moves the state to `FIRING`; when the

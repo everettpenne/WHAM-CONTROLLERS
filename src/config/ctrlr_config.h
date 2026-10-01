@@ -168,4 +168,38 @@
 /* Highest carrier frequency any mode allows. */
 #define PFM_MAX_CARRIER_FREQ_HZ  LIMITER_FREQ_MAX_HZ
 
+/* --------------------------------------------------------------------------
+ * Shot memory (compile-time; change here and rebuild the .bin)
+ *
+ * A shot is programmed as a time series of setpoints (SHOT:STEP <t_us>
+ * <freq_hz> <duty_pct>, shot_profile.h). The firmware linearly interpolates
+ * between them one switching period at a time into a small per-period ring
+ * table (pfm.c) that the per-period interrupt plays back and a low-priority
+ * interrupt keeps refilled, so the shot's length does not depend on the
+ * table's size.
+ *
+ *   SHOT_SETPOINT_MAX     time-series setpoints, 12 bytes each (500 = 6 kB).
+ *                         At least 2: t = 0 first, then the shot's end.
+ *   SHOT_MAX_DURATION_US  longest shot, and the largest time a setpoint may
+ *                         have. Open-loop shots run from about 10 ms to 1 s.
+ *   PFM_TABLE_SIZE        the per-period ring (pfm.h), 8 bytes per entry.
+ *                         Even; each half is refilled while the other plays,
+ *                         so the refill has (PFM_TABLE_SIZE / 2) periods --
+ *                         400 us at 125 kHz with 100 entries -- to run.
+ *                         Also the longest table TABle:* can upload directly.
+ * -------------------------------------------------------------------------- */
+#define SHOT_SETPOINT_MAX        (500U)
+#define SHOT_MAX_DURATION_US     (1000000UL)
+#define PFM_TABLE_SIZE           (100U)
+
+#if (SHOT_SETPOINT_MAX < 2U) || (SHOT_SETPOINT_MAX > 5000U)
+#error "SHOT_SETPOINT_MAX must be 2..5000"
+#endif
+#if (PFM_TABLE_SIZE < 8U) || (PFM_TABLE_SIZE > 5000U) || ((PFM_TABLE_SIZE % 2U) != 0U)
+#error "PFM_TABLE_SIZE must be even and 8..5000"
+#endif
+#if (SHOT_MAX_DURATION_US < 1000UL) || (SHOT_MAX_DURATION_US > 60000000UL)
+#error "SHOT_MAX_DURATION_US must be 1 ms .. 60 s"
+#endif
+
 #endif /* INC_CTRLR_CONFIG_H_ */

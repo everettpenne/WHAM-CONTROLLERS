@@ -218,6 +218,14 @@ void SysTick_Handler(void)
 
 /* USER CODE BEGIN 1 */
 
+/* Software-triggered refill of the PFM per-period table (mcu.h, pfm.c). The
+   FMAC peripheral is not used; its vector is borrowed as a free, lowest-cost
+   software interrupt. */
+void FMAC_IRQHandler(void)
+{
+    PFM_RefillHandler();
+}
+
 /**
   * @brief  Rx Transfer completed callback.
   *

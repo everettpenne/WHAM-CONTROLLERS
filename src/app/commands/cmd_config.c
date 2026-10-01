@@ -77,6 +77,7 @@ void cmd_config_mode(uart_instance_t *inst, char *args)
     if (SupplyMode_Set(mode) != 0U)
     {
         CmdTable_Discard();
+        CmdShot_Discard();
     }
     uart_send(inst, "OK\r\n");
 }

@@ -1,5 +1,7 @@
 /*
- * cmd_table.c -- serial command handlers: legacy TABle:*, FIRE, PFM:DIAG?/GAPLOG?.
+ * cmd_table.c -- serial command handlers: the per-period TABle:* (bench use: at
+ * most PFM_TABLE_SIZE entries, played once -- the shot itself is SHOT:*, cmd_shot.c),
+ * FIRE, PFM:DIAG?/GAPLOG?.
  * Split out of the old single commands.c (2026-09-29); the handlers are
  * unchanged. See commands.h for the file map.
  */
@@ -197,6 +199,7 @@ void cmd_table_end(uart_instance_t *inst, char *args)
     (void)args;
 
     g_tableUploadActive = 0U;
+    PFM_SelectSource(PFM_SOURCE_TABLE);
 
     snprintf(buf, sizeof(buf), "OK %u\r\n", (unsigned int)PFM_GetEntryCount());
     uart_send(inst, buf);
@@ -245,9 +248,9 @@ void cmd_fire(uart_instance_t *inst, char *args)
         return;
     }
 
-    if (PFM_GetEntryCount() == 0U)
+    if (PFM_ShotReady() == 0U)
     {
-        SendErr(inst, ERR_TABLE_EMPTY, "Table is empty -- upload one first (TABLE:BEGIN/STEP/END)");
+        SendErr(inst, ERR_TABLE_EMPTY, "Nothing to fire -- upload a shot first (SHOT:BEGin/STEP/END)");
         return;
     }
 
@@ -282,22 +285,27 @@ void cmd_fire(uart_instance_t *inst, char *args)
  * -------------------------------------------------------------------------- */
 void cmd_pfm_diag(uart_instance_t *inst, char *args)
 {
-    char buf[112];
+    char buf[144];
     uint32_t callCount;
     uint32_t maxGapCycles;
     uint32_t busyMax;
     uint32_t busySum;
+    uint32_t minReady;
+    uint32_t refills;
+    uint32_t produced;
     (void)args;
 
     PFM_GetDiagCounters(&callCount, &maxGapCycles);
     PFM_GetDiagBusy(&busyMax, &busySum);
+    PFM_GetDiagRing(&minReady, &refills, &produced);
 
     /* 170 MHz CPU clock -- see this function's own doc comment. */
     uint32_t maxGapUs = maxGapCycles / 170U;
 
-    snprintf(buf, sizeof(buf), "OK %lu %lu %lu %lu %lu\r\n",
+    snprintf(buf, sizeof(buf), "OK %lu %lu %lu %lu %lu %lu %lu %lu\r\n",
              (unsigned long)callCount, (unsigned long)maxGapCycles,
-             (unsigned long)maxGapUs, (unsigned long)busyMax, (unsigned long)busySum);
+             (unsigned long)maxGapUs, (unsigned long)busyMax, (unsigned long)busySum,
+             (unsigned long)minReady, (unsigned long)refills, (unsigned long)produced);
     uart_send(inst, buf);
 }
 

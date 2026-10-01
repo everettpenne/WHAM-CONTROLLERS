@@ -16,7 +16,7 @@ typedef enum
 {
     ERR_UNKNOWN_COMMAND     = 1,   /* no command_table[] pattern matched */
     ERR_TABLE_NOT_UPLOADING = 2,   /* TABle:STEP/END without TABle:BEGin */
-    ERR_TABLE_FULL          = 3,   /* PFM_TABLE_SIZE entries already appended */
+    ERR_TABLE_FULL          = 3,   /* PFM_TABLE_SIZE table entries or SHOT_SETPOINT_MAX setpoints already stored */
     ERR_TABLE_STEP_INVALID  = 4,   /* TABle:STEP: wrong count (1 + HRTIM_NUM_CHANNELS)
                                       or a value outside uint16 */
     ERR_TABLE_EMPTY         = 5,   /* FIRE with nothing uploaded */
@@ -39,8 +39,8 @@ typedef enum
    site compiles exactly as it did with literal numbers. */
 void SendErr(uart_instance_t *inst, int code, const char *msg);
 
-/* True if either fault source (PC10/HRTIM1_FLT6 or GateDriverStatus) is
-   latched -- FAULT? and FIRE's ERR 6 gate. */
+/* True if any fault source (PC10/HRTIM1_FLT6, GateDriverStatus, or a PFM table
+   underrun) is latched -- FAULT? and FIRE's ERR 6 gate. */
 uint8_t AnyFaultLatched(void);
 
 #endif /* CMD_COMMON_H */

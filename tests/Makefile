@@ -16,7 +16,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
            -I$(ROOT)/src/app/protection -I$(ROOT)/build/generated -I$(OUT)
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile
 
 .PHONY: all run clean
 all: run
@@ -44,6 +44,10 @@ $(OUT)/test_state_machine: test_state_machine.c $(ROOT)/src/app/control/state_ma
 $(OUT)/test_supply_mode: test_supply_mode.c $(ROOT)/src/app/control/supply_mode.c \
                          $(ROOT)/src/app/control/supply_mode.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -o $@ test_supply_mode.c $(ROOT)/src/app/control/supply_mode.c
+
+$(OUT)/test_shot_profile: test_shot_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/shot_profile.h \
+                          $(ROOT)/src/app/control/supply_mode.c test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -o $@ test_shot_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
 
 clean:
 	rm -rf $(OUT)

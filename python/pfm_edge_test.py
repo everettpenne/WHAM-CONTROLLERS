@@ -8,6 +8,7 @@ after t0 is the time spent at the OPPOSITE level; states then alternate.
     python3 python/pfm_edge_test.py edges.json --mode HVPS --freqs 20000 --duties 40,50,60
     python3 python/pfm_edge_test.py lim.json --mode LIMITER --freqs 75000,100000,125000 \\
         --duties 5,15,35,50,65,85,95 [--url socket://localhost:5002] [--steps 50]
+Each shot is a two-setpoint time series (SHOT:*) of about --steps periods.
 Needs an idle HBRIDGE board with U, V, W, UN fibred to PFM_Input_1..4.
 """
 import argparse, os, sys, time, json
@@ -61,15 +62,18 @@ def read_raw(ch):
 
 
 def shot(hz, duty, steps):
-    per = int(170e6 // hz) - 1      # floor: 75 kHz is not exactly representable, round toward lower per
-    cmp_ = round(per * duty / 100)
-    lo_pct, hi_pct = LIMITS[a.mode]              # the board checks duty with exact integer math
-    cmp_ = min(max(cmp_, -(-per * lo_pct // 100)), per * hi_pct // 100)
-    link.must("TABle:BEGin")
-    for _ in range(steps):
-        r = link.cmd(f"TABle:STEP {per} {cmp_} {cmp_} {cmp_}")
+    """A constant-frequency, constant-duty shot of about `steps` periods, as a
+    two-setpoint time series; the per/cmp of the first entry (what the firmware's
+    generator clamps the request to) is what the analysis compares against."""
+    t_us = int(steps * 1e6 / hz) + 1
+    sp = T.make_setpoints(hz, hz, duty, duty, t_us / 1000)
+    per_all, cmp_all = T.generate_profile(sp, a.mode)
+    per, cmp_ = int(per_all[0]), int(cmp_all[0])
+    link.must("SHOT:BEGin")
+    for t, f_mhz, d_h in sp:
+        r = link.cmd(f"SHOT:STEP {t} {f_mhz // 1000}.{f_mhz % 1000:03d} {d_h // 100}.{d_h % 100:02d}")
         assert r == "OK", (hz, duty, r)
-    link.must("TABle:END")
+    link.must("SHOT:END")
     link.must(f"PFMIN:CAPTURE {steps}")
     link.must("ARM"); link.must("FIRE")
     for _ in range(100):

@@ -76,6 +76,17 @@ void Mcu_SetSysTickHighestPriority(void)
     HAL_NVIC_SetPriority(SysTick_IRQn, 0U, 0U);
 }
 
+void Mcu_RefillIrqInit(void)
+{
+    HAL_NVIC_SetPriority(FMAC_IRQn, 2U, 0U);
+    HAL_NVIC_EnableIRQ(FMAC_IRQn);
+}
+
+void Mcu_RefillIrqPend(void)
+{
+    NVIC_SetPendingIRQ(FMAC_IRQn);
+}
+
 void Mcu_ReadOptionBytes(mcu_option_bytes_t *ob)
 {
     uint32_t optr = FLASH->OPTR;

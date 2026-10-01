@@ -32,6 +32,7 @@ extern "C" {
  *   cmd_system.c   *IDN?, BOOT, DIAGnostic:OPTBytes?/RSTCause, QSPI:ID?
  *   cmd_fwupdate.c FWUPdate:* (in-application firmware update)
  *   cmd_table.c    legacy TABle:*, FIRE, PFM:DIAG?/GAPLOG?
+ *   cmd_shot.c     SHOT:* (the time-series shot)
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, GENERAL:TEST:FAULT
  *   cmd_io.c       GDS?
@@ -197,6 +198,15 @@ void cmd_config_mode(uart_instance_t *inst, char *args);          /* CONFig:MODE
 void cmd_config_mode_query(uart_instance_t *inst, char *args);    /* CONFig:MODE? -- OK NONE|LIMITER|HVPS */
 void cmd_config_limits_query(uart_instance_t *inst, char *args);  /* CONFig:LIMits? -- OK <mode> FREQ <min> <max> DUTY <min> <max> */
 void CmdTable_Discard(void);                                      /* drops the table; called on a mode change */
+
+/* Time-series shot (shot_profile.h), see cmd_shot.c */
+void cmd_shot_begin(uart_instance_t *inst, char *args);           /* SHOT:BEGin */
+void cmd_shot_step(uart_instance_t *inst, char *args);            /* SHOT:STEP <t_us> <freq_hz> <duty_pct> */
+void cmd_shot_end(uart_instance_t *inst, char *args);             /* SHOT:END -- OK <setpoints> <duration_us> */
+void cmd_shot_clear(uart_instance_t *inst, char *args);           /* SHOT:CLEar */
+void cmd_shot_query(uart_instance_t *inst, char *args);           /* SHOT? -- OK <setpoints> <duration_us> <PROFILE|TABLE> */
+void cmd_shot_point_query(uart_instance_t *inst, char *args);     /* SHOT:POINt? <i> -- OK <t_us> <freq_hz> <duty_pct> */
+void CmdShot_Discard(void);                                       /* drops the shot; called on a mode change */
 
 /* Matches a received line against the command table and runs the handler
    (or replies ERR 1). Called from the SCPI task (task_scpi.c). */
