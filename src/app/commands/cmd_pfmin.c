@@ -83,26 +83,77 @@ void cmd_pfmin_dmastat(uart_instance_t *inst, char *args)
     uart_send(inst, buf);
 }
 
-/* Sized for the worst case: PFM_INPUT_MAX_PERIODS entries, each up to
-   " 4294967295" (11 chars), plus the "OK <count> OVERCAP=<n>" prefix
-   and CRLF -- comfortably over 200*11+32 with room to spare. static,
-   not a stack local: this project's linker script reserves only
-   _Min_Stack_Size (1 KB) for the stack (STM32G474QETX_FLASH.ld) --
-   putting several KB on the stack here would be a real, needless risk
-   even though the actual runtime stack has far more room in practice
-   (see AGENTS.md's own flagged-but-deferred note on stack sizing). */
-static char g_pfminDataBuf[4700];   /* raw mode: up to 402 edges x 11 chars */
+/* Reply buffer for PFMIN:DATA? / PFMIN:RAW?: at most PFMIN_PAGE_MAX values per
+   reply, each up to " 4294967295" (11 chars) plus the header and CRLF. static,
+   not a stack local: this project's linker script reserves only _Min_Stack_Size
+   (1 KB) for the stack. */
+#define PFMIN_PAGE_MAX  (400U)
+static char g_pfminDataBuf[PFMIN_PAGE_MAX * 11U + 96U];
 
+/* Parses the optional <start> [<count>] page arguments against `total` values.
+   A reply carries at most PFMIN_PAGE_MAX values (a longer request is cut to that:
+   read the rest with a later start). The ethernet serial bridge loses characters
+   in replies of about 1.7 kB or more, so the host reads ~100 at a time. Sends the
+   error and returns 0 on a bad argument. */
+static uint8_t ParsePage(uart_instance_t *inst, const char *name, const char *tokStart,
+                         const char *tokCount, uint16_t total, uint16_t *first, uint16_t *last)
+{
+    long s = 0L;
+    long n;
+    char msg[64];
+
+    if (tokStart != NULL)
+    {
+        s = atol(tokStart);
+        if ((s < 0L) || (s > (long)total))
+        {
+            snprintf(msg, sizeof(msg), "%s start must be 0..count", name);
+            SendErr(inst, ERR_INVALID_ARGS, msg);
+            return 0U;
+        }
+    }
+    n = (long)total - s;
+    if (tokCount != NULL)
+    {
+        long req = atol(tokCount);
+        if (req < 1L)
+        {
+            snprintf(msg, sizeof(msg), "%s count must be at least 1", name);
+            SendErr(inst, ERR_INVALID_ARGS, msg);
+            return 0U;
+        }
+        if (req < n)
+        {
+            n = req;
+        }
+    }
+    if (n > (long)PFMIN_PAGE_MAX)
+    {
+        n = (long)PFMIN_PAGE_MAX;
+    }
+    *first = (uint16_t)s;
+    *last  = (uint16_t)(s + n);
+    return 1U;
+}
+
+/* PFMIN:DATA? <ch> [<start> [<count>]] -- OK <periods> OVERCAP=<k> SUM=<s> <p1> <p2> ...
+   <periods> is the total; the numbers are the rising-edge-to-rising-edge periods of
+   the page asked for (all of them, up to PFMIN_PAGE_MAX, without start/count); SUM is
+   their sum mod 2^32, a transport check. */
 void cmd_pfmin_data(uart_instance_t *inst, char *args)
 {
-    char    *tok;
+    char    *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    char    *tokStart = (tok != NULL) ? strtok(NULL, " \r\n") : NULL;
+    char    *tokCount = (tokStart != NULL) ? strtok(NULL, " \r\n") : NULL;
     long     chArg;
     uint8_t  ch;
     uint16_t count;
-    const uint32_t *periods;
+    uint16_t first;
+    uint16_t last;
+    const uint16_t *stamps;
+    uint32_t sum = 0U;
     int      len = 0;
 
-    tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
         SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:DATA? needs one argument: channel (1-6)");
@@ -123,24 +174,30 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
         return;
     }
 
-    count   = PfmInput_GetCount(ch);
-    periods = PfmInput_GetPeriods(ch);
+    count  = PfmInput_GetCount(ch);
+    stamps = PfmInput_GetStamps(ch);
+    if (ParsePage(inst, "PFMIN:DATA?", tokStart, tokCount, count, &first, &last) == 0U)
+    {
+        return;
+    }
+    if (stamps == NULL)
+    {
+        first = 0U;
+        last  = 0U;   /* an inactive channel has nothing: count is 0 */
+    }
 
-    /* OVERCAP=<n>: a genuine data-quality indicator (see
-       PfmInput_GetOvercaptureCount()'s own doc comment in
-       pfm_input.c) -- nonzero means a second rising edge arrived
-       before this module's ISR could read the previous one, so some
-       entries below may not be trustworthy. Expected to read 0 in
-       normal operation; not yet documented in
-       docs/command_reference.md. */
+    for (uint16_t i = first; i < last; i++)
+    {
+        sum += (uint32_t)(uint16_t)(stamps[i + 1U] - stamps[i]);
+    }
+    /* OVERCAP=<n>: see PfmInput_GetOvercaptureCount(). */
     len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len,
-                     "OK %u OVERCAP=%u", (unsigned int)count,
-                     (unsigned int)PfmInput_GetOvercaptureCount(ch));
-
-    for (uint16_t i = 0U; i < count; i++)
+                     "OK %u OVERCAP=%u SUM=%lu", (unsigned int)count,
+                     (unsigned int)PfmInput_GetOvercaptureCount(ch), (unsigned long)sum);
+    for (uint16_t i = first; i < last; i++)
     {
         len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len,
-                         " %lu", (unsigned long)periods[i]);
+                         " %u", (unsigned int)(uint16_t)(stamps[i + 1U] - stamps[i]));
     }
     snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len, "\r\n");
 
@@ -159,7 +216,7 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
  *   PFMIN:EDGes?           -> OK R B R R R R      (R rising only, B both)
  *   PFMIN:CAPTURE 50 ... FIRE ...
  *   PFMIN:RAW? 1           -> OK <n> OVERCAP=<k> LEVEL=<0|1> SUM=<s> <t0> <d1> <d2> ...
- * <n> edges; t0 is the first edge's raw timer value and each following number
+ * <n> edges; t0 is the first edge's raw 16-bit timer value and each following number
  * is the difference from the previous edge (so the reply stays short); SUM is the
  * sum of those numbers mod 2^32, a transport check; LEVEL
  * is the pin level just before capture started, the first edge is the
@@ -228,12 +285,12 @@ void cmd_pfmin_raw(uart_instance_t *inst, char *args)
     char *tokStart = (tok != NULL) ? strtok(NULL, " \r\n") : NULL;
     char *tokCount = (tokStart != NULL) ? strtok(NULL, " \r\n") : NULL;
     long chArg;
-    uint16_t first = 0U;
-    uint16_t last;
     uint8_t ch;
     uint16_t count;
-    const uint32_t *edges;
-    uint32_t mask;
+    uint16_t first;
+    uint16_t last;
+    const uint16_t *stamps;
+    uint32_t sum = 0U;
     int len = 0;
 
     if (tok == NULL)
@@ -248,51 +305,25 @@ void cmd_pfmin_raw(uart_instance_t *inst, char *args)
         return;
     }
     ch = (uint8_t)(chArg - 1L);
-    edges = PfmInput_GetRawEdges(ch);
-    if (edges == NULL)
+    stamps = PfmInput_GetStamps(ch);
+    if ((stamps == NULL) || (PfmInput_CapturedBothEdges(ch) == 0U))
     {
         SendErr(inst, ERR_INVALID_STATE, "channel is not in BOTH-edge mode (PFMIN:EDGes)");
         return;
     }
     count = PfmInput_GetCount(ch);
-    mask  = (ch >= 4U) ? 0xFFFFU : 0xFFFFFFFFU;   /* PFM_Input_5/6 are the 16-bit timers TIM3/TIM4 */
-
-    /* Optional page: start index and value count. The ethernet serial bridge
-       loses a character at a fixed place in replies of about 1.7 kB or more, so
-       the host reads in pages of ~100 values, each with its own SUM. */
-    if (tokStart != NULL)
+    if (ParsePage(inst, "PFMIN:RAW?", tokStart, tokCount, count, &first, &last) == 0U)
     {
-        long s = atol(tokStart);
-        if ((s < 0L) || (s > (long)count))
-        {
-            SendErr(inst, ERR_INVALID_ARGS, "PFMIN:RAW? start must be 0..count");
-            return;
-        }
-        first = (uint16_t)s;
-    }
-    last = count;
-    if (tokCount != NULL)
-    {
-        long n = atol(tokCount);
-        if ((n < 1L) || (n > (long)(count - first)))
-        {
-            if (n < 1L)
-            {
-                SendErr(inst, ERR_INVALID_ARGS, "PFMIN:RAW? count must be at least 1");
-                return;
-            }
-            n = (long)(count - first);
-        }
-        last = (uint16_t)(first + (uint16_t)n);
+        return;
     }
 
     /* SUM= is the sum of the numbers that follow (mod 2^32), so the host can tell a
        reply that lost characters on the way (seen on the ethernet serial bridge) from
-       a good one and read again. */
-    uint32_t sum = 0U;
+       a good one and read again. The first value of the stream is the first edge's raw
+       16-bit timer value, every other is the difference from the previous edge. */
     for (uint16_t i = first; i < last; i++)
     {
-        sum += (i == 0U) ? edges[0] : ((edges[i] - edges[i - 1U]) & mask);
+        sum += (i == 0U) ? stamps[0] : (uint32_t)(uint16_t)(stamps[i] - stamps[i - 1U]);
     }
     len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len,
                     "OK %u OVERCAP=%u LEVEL=%u SUM=%lu", (unsigned int)count,
@@ -300,7 +331,7 @@ void cmd_pfmin_raw(uart_instance_t *inst, char *args)
                     (unsigned long)sum);
     for (uint16_t i = first; i < last; i++)
     {
-        uint32_t v = (i == 0U) ? edges[0] : ((edges[i] - edges[i - 1U]) & mask);
+        uint32_t v = (i == 0U) ? stamps[0] : (uint32_t)(uint16_t)(stamps[i] - stamps[i - 1U]);
         len += snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len, " %lu", (unsigned long)v);
     }
     snprintf(&g_pfminDataBuf[len], sizeof(g_pfminDataBuf) - (size_t)len, "\r\n");

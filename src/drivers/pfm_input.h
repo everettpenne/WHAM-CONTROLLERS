@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include "ctrlr_config.h"
 
 /*
  * pfm_input.h
@@ -89,14 +90,16 @@ extern "C" {
  * 734 us stall, which broke at just 2 channels. This is the same
  * all-6 configuration that caused a real board lockup under the old
  * design. */
-#define PFM_INPUT_ACTIVE_CHANNEL_MASK  (0x3FU)  /* all 6 channels */
+#define PFM_INPUT_ACTIVE_CHANNEL_MASK  (0x0FU)  /* PFM_Input_1..4: the four wired to U, V, W, UN */
 
-/* Compile-time cap on periods storable per channel per run, sizing the
- * RAM arrays (6 x this x 2 x 4 bytes) -- see pfm_input.c. 200 is 10x
- * the example M=20 in the original request; cheap against this MCU's
- * 128 KiB SRAM and this project's existing 40 KB g_pfmTable[]
- * (pfm.c). Raise if a real need for more periods per run shows up. */
-#define PFM_INPUT_MAX_PERIODS   (200U)
+/* How many channels that mask enables (sizes the capture arrays). */
+#define PFM_INPUT_ACTIVE_COUNT \
+    ((PFM_INPUT_ACTIVE_CHANNEL_MASK & 1U) + ((PFM_INPUT_ACTIVE_CHANNEL_MASK >> 1) & 1U) + \
+     ((PFM_INPUT_ACTIVE_CHANNEL_MASK >> 2) & 1U) + ((PFM_INPUT_ACTIVE_CHANNEL_MASK >> 3) & 1U) + \
+     ((PFM_INPUT_ACTIVE_CHANNEL_MASK >> 4) & 1U) + ((PFM_INPUT_ACTIVE_CHANNEL_MASK >> 5) & 1U))
+
+/* The longest capture per channel, PFM_INPUT_MAX_PERIODS, is a ctrlr_config.h constant
+ * (it sizes the RAM arrays). */
 
 /* Called once at boot (main.c, alongside the other peripheral bring-up
  * calls) -- configures rising-edge input capture, GPIO AF pins, AND
@@ -142,14 +145,15 @@ void PfmInput_OnShotEnd(void);
  * out-of-range channel or when disabled. */
 uint16_t PfmInput_GetCount(uint8_t channel);
 
-/* Raw tick array for `channel` (0..5) -- period[i] (rising-to-rising,
- * in timer ticks) for i = 0..PfmInput_GetCount(channel)-1, in capture
- * order. Returns NULL for an out-of-range channel or when disabled; a
- * valid channel always returns a non-NULL pointer (into a fixed static
- * array), regardless of how many entries are actually valid --
- * callers must use PfmInput_GetCount() to know how many entries to
- * read. */
-const uint32_t *PfmInput_GetPeriods(uint8_t channel);
+/* The raw 16-bit timer values of the last capture of `channel`, one per captured
+ * edge, in capture order: PfmInput_GetCount() + 1 of them in rising-edge mode
+ * (period k is stamp[k+1] - stamp[k], taken modulo 65,536), PfmInput_GetCount()
+ * of them in BOTH-edge mode. NULL for an inactive or out-of-range channel (and
+ * when disabled); otherwise a pointer into a fixed array whose first
+ * valid entries are as counted -- callers use PfmInput_GetCount(). Stored as
+ * 16 bits (the DMA writes the low half of the capture register): a period is
+ * always below 65,536 clocks. */
+const uint16_t *PfmInput_GetStamps(uint8_t channel);
 
 /* Diagnostic: 1 if a hardware overcapture (CCxOF) was seen for `channel`
  * while its DMA was still filling the result array -- a later edge
@@ -186,7 +190,7 @@ uint8_t PfmInput_GetDmaStartStatus(uint8_t channel);
  *
  * Applied at the next PfmInput_Arm(). In BOTH mode the "count" of the channel
  * is EDGES (up to PFM_INPUT_MAX_EDGES), Arm(M) asks for 2M+1 edges (M periods
- * of a rising-first signal), and PfmInput_GetPeriods() is not filled.
+ * of a rising-first signal).
  * -------------------------------------------------------------------------- */
 #define PFM_INPUT_MAX_EDGES     (2U * PFM_INPUT_MAX_PERIODS + 2U)
 
@@ -195,10 +199,9 @@ uint8_t PfmInput_GetDmaStartStatus(uint8_t channel);
 uint8_t PfmInput_SetEdgeMode(uint8_t channel, uint8_t bothEdges);
 uint8_t PfmInput_GetEdgeMode(uint8_t channel);
 
-/* The raw timer values of the last BOTH-mode capture, PfmInput_GetCount()
-   entries (absolute ticks; the 16-bit timers wrap at 65536). NULL if the
-   channel is not in BOTH mode. */
-const uint32_t *PfmInput_GetRawEdges(uint8_t channel);
+/* 1 if the last capture of `channel` was taken in BOTH-edge mode (its stamps are
+   then edges, not rising edges only). */
+uint8_t PfmInput_CapturedBothEdges(uint8_t channel);
 
 /* Pin level (0/1) read just before the last capture started: the first edge
    captured is the opposite transition. */

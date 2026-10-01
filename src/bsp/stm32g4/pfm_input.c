@@ -142,9 +142,7 @@ typedef struct
     uint16_t got;            /* edges stored (final once OnShotEnd ran or the DMA completed) */
     uint8_t  running;        /* capture started and not yet stopped */
     uint8_t  startLevel;     /* pin level before the first captured edge (both-edge mode) */
-    uint8_t  periodsValid;   /* period[] matches stamp[] */
     uint16_t overcapture;    /* CCxOF seen (see OverCapture() below) */
-    uint32_t period[PFM_INPUT_MAX_PERIODS];
 } PfmInputState_t;
 
 static PfmInputState_t g_state[PFM_INPUT_NUM_CHANNELS];
@@ -154,14 +152,23 @@ static uint8_t  g_edgeModeReq[PFM_INPUT_NUM_CHANNELS];
 static uint8_t  g_edgeModeHw[PFM_INPUT_NUM_CHANNELS];
 
 /* The captured timer values, DMA's destination. */
-static uint32_t g_stamp[PFM_INPUT_NUM_CHANNELS][PFM_INPUT_MAX_EDGES];
+/* 16-bit stamps (the low half of each capture), one array per ACTIVE channel only
+   (PFM_INPUT_ACTIVE_COUNT of them); SlotOf() maps a channel to its array. */
+static uint16_t g_stamp[PFM_INPUT_ACTIVE_COUNT][PFM_INPUT_MAX_EDGES];
 
 /* HAL_TIM_IC_Start_DMA()'s return code per channel (PFMIN:DMASTAT?). */
 static HAL_StatusTypeDef g_dmaStartStatus[PFM_INPUT_NUM_CHANNELS];
 
-static uint32_t TimerMask(uint8_t i)
+/* Index of channel i's array in g_stamp[]: its rank among the active channels. */
+static uint8_t SlotOf(uint8_t i)
 {
-    return kDesc[i].is16Bit ? 0xFFFFU : 0xFFFFFFFFU;
+    uint8_t slot = 0U;
+
+    for (uint8_t k = 0U; k < i; k++)
+    {
+        slot = (uint8_t)(slot + ChannelIsActive(k));
+    }
+    return slot;
 }
 
 static TIM_HandleTypeDef *HandleForTimer(const TIM_TypeDef *instance)
@@ -353,9 +360,18 @@ uint8_t PfmInput_GetEdgeMode(uint8_t channel)
     return (channel < PFM_INPUT_NUM_CHANNELS) ? g_edgeModeReq[channel] : 0U;
 }
 
-const uint32_t *PfmInput_GetRawEdges(uint8_t channel)
+const uint16_t *PfmInput_GetStamps(uint8_t channel)
 {
-    return ((channel < PFM_INPUT_NUM_CHANNELS) && (g_edgeModeHw[channel] != 0U)) ? g_stamp[channel] : NULL;
+    if ((channel >= PFM_INPUT_NUM_CHANNELS) || (ChannelIsActive(channel) == 0U))
+    {
+        return NULL;
+    }
+    return g_stamp[SlotOf(channel)];
+}
+
+uint8_t PfmInput_CapturedBothEdges(uint8_t channel)
+{
+    return ((channel < PFM_INPUT_NUM_CHANNELS) && (g_edgeModeHw[channel] != 0U)) ? 1U : 0U;
 }
 
 uint8_t PfmInput_GetStartLevel(uint8_t channel)
@@ -374,7 +390,6 @@ void PfmInput_Arm(uint16_t m)
         st->got          = 0U;
         st->running      = 0U;
         st->startLevel   = 0U;
-        st->periodsValid = 0U;
         st->overcapture  = 0U;
         st->want         = 0U;
         if ((ChannelIsActive(i) == 0U) || (clamped == 0U))
@@ -401,7 +416,9 @@ void PfmInput_OnShotStart(void)
         }
 
         (void)TakeOvercapture(i);
-        g_dmaStartStatus[i] = HAL_TIM_IC_Start_DMA(htim, kDesc[i].timChannel, g_stamp[i], st->want);
+        g_dmaStartStatus[i] = HAL_TIM_IC_Start_DMA(htim, kDesc[i].timChannel, (uint32_t *)(void *)g_stamp[SlotOf(i)],   /* the HAL's type; the DMA's memory size is HALFWORD,
+                                                                              so it stores 16-bit stamps at this address */
+                                                       st->want);
         st->running = (g_dmaStartStatus[i] == HAL_OK) ? 1U : 0U;
 
         /* Pin level before the first captured edge (both-edge mode): the level
@@ -448,7 +465,6 @@ static void FinishChannel(uint8_t i)
         st->overcapture = (st->got < st->want) ? flag : 0U;   /* see TakeOvercapture() */
     }
     st->running     = 0U;
-    st->periodsValid = 0U;
     if (htim != NULL)
     {
         (void)HAL_TIM_IC_Stop_DMA(htim, kDesc[i].timChannel);
@@ -488,27 +504,6 @@ uint16_t PfmInput_GetCount(uint8_t channel)
         return g_state[channel].got;                                  /* edges */
     }
     return (g_state[channel].got > 0U) ? (uint16_t)(g_state[channel].got - 1U) : 0U;   /* periods */
-}
-
-const uint32_t *PfmInput_GetPeriods(uint8_t channel)
-{
-    PfmInputState_t *st;
-
-    if ((channel >= PFM_INPUT_NUM_CHANNELS) || (g_edgeModeHw[channel] != 0U))
-    {
-        return NULL;
-    }
-    st = &g_state[channel];
-    if ((st->periodsValid == 0U) && (st->running == 0U))
-    {
-        uint32_t mask = TimerMask(channel);
-        for (uint16_t k = 0U; (k + 1U) < st->got; k++)
-        {
-            st->period[k] = (g_stamp[channel][k + 1U] - g_stamp[channel][k]) & mask;
-        }
-        st->periodsValid = 1U;
-    }
-    return st->period;
 }
 
 uint16_t PfmInput_GetOvercaptureCount(uint8_t channel)
@@ -583,7 +578,7 @@ void HAL_TIM_IC_MspInit(TIM_HandleTypeDef *htim)
         pfmInputDma[i].Init.PeriphInc            = DMA_PINC_DISABLE;
         pfmInputDma[i].Init.MemInc               = DMA_MINC_ENABLE;
         pfmInputDma[i].Init.PeriphDataAlignment  = DMA_PDATAALIGN_WORD;
-        pfmInputDma[i].Init.MemDataAlignment     = DMA_MDATAALIGN_WORD;
+        pfmInputDma[i].Init.MemDataAlignment     = DMA_MDATAALIGN_HALFWORD;   /* the capture register is read as a word, its low half stored: 16-bit stamps */
         pfmInputDma[i].Init.Mode                 = DMA_NORMAL;   /* one bounded fill, see the capture design note above */
         pfmInputDma[i].Init.Priority             = DMA_PRIORITY_MEDIUM;
 
@@ -651,12 +646,12 @@ void PfmInput_Arm(uint16_t m) { (void)m; }
 void PfmInput_OnShotStart(void) { }
 void PfmInput_OnShotEnd(void) { }
 uint16_t PfmInput_GetCount(uint8_t channel) { (void)channel; return 0U; }
-const uint32_t *PfmInput_GetPeriods(uint8_t channel) { (void)channel; return NULL; }
+const uint16_t *PfmInput_GetStamps(uint8_t channel) { (void)channel; return NULL; }
 uint16_t PfmInput_GetOvercaptureCount(uint8_t channel) { (void)channel; return 0U; }
 uint8_t PfmInput_GetDmaStartStatus(uint8_t channel) { (void)channel; return 0xFFU; }
 uint8_t PfmInput_SetEdgeMode(uint8_t channel, uint8_t bothEdges) { (void)channel; (void)bothEdges; return 0U; }
 uint8_t PfmInput_GetEdgeMode(uint8_t channel) { (void)channel; return 0U; }
-const uint32_t *PfmInput_GetRawEdges(uint8_t channel) { (void)channel; return NULL; }
+uint8_t PfmInput_CapturedBothEdges(uint8_t channel) { (void)channel; return 0U; }
 uint8_t PfmInput_GetStartLevel(uint8_t channel) { (void)channel; return 0U; }
 
 #endif /* PFM_INPUT_FEATURE_ENABLED */

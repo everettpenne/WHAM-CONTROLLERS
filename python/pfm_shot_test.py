@@ -79,7 +79,7 @@ import numpy as np
 
 CLK_HZ = 170_000_000        # HRTIM / capture-timer clock
 DEAD_TICKS = 17             # HRTIM_DEADTIME_COUNTS (100 ns)
-MAX_PERIODS = 200           # PFM_INPUT_MAX_PERIODS
+MAX_PERIODS = 3800          # PFM_INPUT_MAX_PERIODS (ctrlr_config.h)
 DEFAULT_MAP = ["U", "V", "W", "UN"]      # PFM_Input_1..4
 PHASE_INDEX = {"U": 0, "V": 1, "W": 2}   # channel index -> Master-compare phase
 COLORS = ["#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#ff7f0e", "#8c564b"]
@@ -277,6 +277,36 @@ class Link:
         return r
 
 
+PAGE = 100
+
+
+def read_periods(link, ch, n):
+    """All the periods of input `ch` (PFMIN:DATA?), read a page at a time: the
+    Ethernet serial bridge loses characters (at a fixed place in long replies and
+    randomly elsewhere), so a page is used only if its numbers add up to the
+    reply's own SUM= and it has the announced length. Returns (count, overcap,
+    values) or None."""
+    vals, count, ov = [], None, "OVERCAP=0"
+    while count is None or len(vals) < count:
+        start = len(vals)
+        for _ in range(30):
+            r = link.cmd(f"PFMIN:DATA? {ch} {start} {PAGE}", timeout=6.0)
+            try:
+                t = r.split()
+                cnt = int(t[1]); ov = t[2]; want = int(t[3].split("=")[1]); page = [int(x) for x in t[4:]]
+            except (AttributeError, IndexError, ValueError):
+                continue
+            if len(page) == min(PAGE, cnt - start) and sum(page) % 2**32 == want:
+                count = cnt
+                vals += page
+                break
+        else:
+            return None
+        if count == 0:
+            break
+    return count, ov, vals
+
+
 def run_shot(link, setpoints, per, cmp_, mode, channels):
     """Upload the shot, fire and read back the first periods. `per`/`cmp_` are the
     per-period values the board generates (generate_profile()). Returns
@@ -330,25 +360,12 @@ def run_shot(link, setpoints, per, cmp_, mode, channels):
 
     data = {}
     for ch in channels:
-        for attempt in range(1, 16):
-            r = link.cmd(f"PFMIN:DATA? {ch}", timeout=5.0)
-            toks = r.split() if r else []
-            try:
-                count = int(toks[1])
-                ov = [t for t in toks if t.startswith("OVERCAP=")][0]
-                vals = [int(t) for t in toks[2:] if not t.startswith("OVERCAP=")]
-            except (IndexError, ValueError):
-                continue
-            if count == 0:
-                data[ch] = {"count": 0, "overcap": ov, "ticks": []}
-                break
-            if validate_read(vals, count, per):
-                data[ch] = {"count": count, "overcap": ov, "ticks": vals}
-                if attempt > 1:
-                    print(f"        input {ch}: reply damaged in transit, clean on read {attempt}")
-                break
-        else:
-            print(f"[warn] input {ch}: no clean readback after 15 tries -- left out")
+        got = read_periods(link, ch, n)
+        if got is None:
+            print(f"[warn] input {ch}: no clean readback -- left out")
+            continue
+        count, ov, vals = got
+        data[ch] = {"count": count, "overcap": ov, "ticks": vals}
     return data
 
 

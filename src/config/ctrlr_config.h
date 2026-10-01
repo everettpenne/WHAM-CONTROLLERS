@@ -187,29 +187,39 @@
  *                         directly.
  *
  * Sizing PFM_TABLE_SIZE (measured on the simulator, docs/changelog.txt
- * 2026-10-01). The ring is filled before the first period and refilled by a
- * low-priority interrupt that gets only the CPU the per-period interrupt
- * leaves. That interrupt costs ~590 cycles per period when it has nothing to
- * apply and ~1,270 when every period changes the period or a compare (a ramp);
- * the refill needs ~240 cycles per entry. A period is 1,360 cycles at 125 kHz,
- * so:
- *   - HVPS (10-30 kHz): any size works, 1 s shots included (100 is enough).
- *   - LIMITER, constant or slowly varying: refilled fine up to 125 kHz.
- *   - LIMITER with a step applied EVERY period (a duty or frequency ramp):
- *     sustainable by refill alone only up to ~80 kHz. Above that the refill
- *     falls behind, the ring runs empty and the shot is stopped with a fault
- *     (FAULT:SOURces? TABLE=1). The ring then has to hold most of the shot:
- *     10 ms at 125 kHz is 1,250 periods, so 1,300 entries (10.4 kB), tested on
- *     every worst case (duty 5<->95 % at 125 kHz, 125->75.5 kHz ramps, ...):
- *     the whole shot is generated before the first period.
- * 1,300 is the default for that reason. A build for HVPS only can set 100 and
- * save 9.6 kB; RAM is 42.8 kB of 128 kB used at 1,300. Filling the ring takes
- * ~240 cycles per entry with interrupts masked inside FIRE (1.8 ms at 1,300).
+ * 2026-10-01 and 2026-10-02). The ring is filled before the first period and
+ * refilled by a low-priority interrupt that gets only the CPU the per-period
+ * interrupt leaves. With the project built at -O2, 100 entries sustain 1 s shots
+ * in both modes and every Limiter shot tried at 75-125 kHz, including duty and
+ * frequency ramps and a 5 -> 95 % -> 5 % duty triangle over 50 ms at 125 kHz. The
+ * one case that still empties it is the most extreme: a step applied EVERY
+ * period at 125 kHz (duty 5 -> 95 % in 10 ms); the shot is then stopped with a
+ * fault (FAULT:SOURces? TABLE=1) and a ring of ~1,300 entries (10 ms at 125 kHz)
+ * holds it. Filling the ring takes ~240 cycles per entry with interrupts masked
+ * inside FIRE.
  * -------------------------------------------------------------------------- */
 #define SHOT_SETPOINT_MAX        (500U)
 #define SHOT_MAX_DURATION_US     (1000000UL)
-#define PFM_TABLE_SIZE           (1300U)
+#define PFM_TABLE_SIZE           (100U)
 
+/* --------------------------------------------------------------------------
+ * PFM_Input capture depth (compile-time)
+ *
+ * PFM_INPUT_MAX_PERIODS is the longest capture, per input, in switching
+ * periods (a both-edge capture holds twice that many edges). Each ACTIVE input
+ * (PFM_INPUT_ACTIVE_CHANNEL_MASK, pfm_input.h) gets its own array of
+ * 16-bit timestamps, so the RAM is
+ *     active inputs x (2 * PFM_INPUT_MAX_PERIODS + 2) x 2 bytes
+ * -- 60.8 kB for 4 inputs at 3,800. 3,800 holds a 50 ms shot at 75 kHz (3,750
+ * periods), the slowest the Limiter runs, and 50 ms at 30 kHz (1,500) with room
+ * to spare. 16-bit stamps are enough because a period is always far below 65,536
+ * clocks (385 us, 2.6 kHz): differences are taken modulo 65,536.
+ * -------------------------------------------------------------------------- */
+#define PFM_INPUT_MAX_PERIODS    (3800U)
+
+#if (PFM_INPUT_MAX_PERIODS < 2U) || (PFM_INPUT_MAX_PERIODS > 16000U)
+#error "PFM_INPUT_MAX_PERIODS must be 2..16000"
+#endif
 #if (SHOT_SETPOINT_MAX < 2U) || (SHOT_SETPOINT_MAX > 5000U)
 #error "SHOT_SETPOINT_MAX must be 2..5000"
 #endif

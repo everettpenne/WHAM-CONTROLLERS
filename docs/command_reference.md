@@ -197,25 +197,23 @@ period at a time. Open-loop shots run from about 10 ms to 1 s.
   <i>` — `OK <t_us> <freq_hz> <duty_pct>` for setpoint *i* (from 0).
 - **How it plays:** a generator (`shot_profile.c`) turns the setpoints into
   one `{per, cmp}` entry per period and keeps a **ring table** of
-  `PFM_TABLE_SIZE` entries (1,300 by default) full: the whole ring is filled
+  `PFM_TABLE_SIZE` entries (100 by default) full: the whole ring is filled
   inside `FIRE` before the first period, the per-period interrupt plays it, and
   a software-triggered, lower-priority interrupt refills it as it drains. So a
   shot can be far longer than the table. If the refill ever falls behind (the
   ring runs empty before the shot is over) the shot is **stopped and latched as
   a fault** (`STATE?` → `FAULT GENERAL`, `FAULT:SOURces?` → `TABLE=1`, cleared
   by `FAULT:CLEAR`) rather than holding a stale step.
-- **What the CPU can sustain** (simulator, `-O0` project build): the refill gets
-  only what the per-period interrupt leaves. In `HVPS` any shot, 1 s included,
-  refills with a 100-entry ring. In `LIMITER` a constant or slowly varying shot
-  refills fine up to 125 kHz, but a shot that changes the period or a compare
-  **every** period (a duty or frequency ramp) is sustainable by refill alone
-  only to about 80 kHz; above that the ring must hold most of the shot, which is
-  why the default is 1,300 (10 ms at 125 kHz is 1,250 periods). A 1 s shot at
-  125 kHz completed with the ring's low-water mark at 1: no margin.
+- **What the CPU can sustain** (simulator, project built at `-O2`): the refill
+  gets only what the per-period interrupt leaves. With 100 entries, every shot
+  tried completes: 1 s shots in both modes (up to 125,000 periods), all Limiter
+  shots from 75 to 125 kHz including duty and frequency ramps, and a 50 ms
+  duty triangle 5 - 95 - 5 % at 125 kHz. The one case that still empties a
+  100-entry ring is a step applied every period at 125 kHz (duty 5 to 95 % in
+  10 ms), which needs ~1,300 entries (a whole 10 ms shot at 125 kHz).
 - **Compile-time sizes** (`ctrlr_config.h`, rebuild the `.bin` to change, with
   the measurements behind them): `SHOT_SETPOINT_MAX` (500, 12 bytes each),
-  `SHOT_MAX_DURATION_US` (1 s), `PFM_TABLE_SIZE` (1,300, 8 bytes each; an
-  HVPS-only build can use 100).
+  `SHOT_MAX_DURATION_US` (1 s), `PFM_TABLE_SIZE` (100, 8 bytes each).
 - **`PFM:DIAG?`** (diagnostic, last shot) — `OK <periods played> <max gap cycles>
   <max gap us> <busiest interrupt cycles> <total interrupt cycles> <fewest ring entries
   ready> <refills> <entries generated> <refill wall cycles> <longest refill wall
