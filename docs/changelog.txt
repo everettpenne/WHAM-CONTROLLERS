@@ -1,6 +1,47 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-02  —  Global -O2 build; PFM_Input capture holds a full 50 ms shot; 50 ms demonstrations
+-----------------------------------------------------------------------
+  Change:  - The project is now built at -O2 (CubeIDE Debug configuration; .cproject and
+        every Debug/**/subdir.mk, which sync_build_sources.py takes its flags from).
+        Image 74 kB -> 50 kB. Verified on the simulator after the switch: boot and
+        update path, the 20->15 kHz HVPS ramp (residual -1 tick, duty movement exact),
+        the LIMITER worst cases, both-edge capture, the 1 s shots. The per-function
+        -O2 attributes added on 2026-10-01 are now redundant and left in place.
+        - Effect on the ring table: with -O2 a 100-entry ring (the original request)
+          sustains every shot tried, including 125->75.5 kHz ramps with 10->90 % duty
+          in 10 ms and a 5 -> 95 -> 5 % duty triangle over 50 ms at 125 kHz. Only a
+          step applied EVERY period at 125 kHz (duty 5 -> 95 % in 10 ms) still empties
+          it (309 of 1250 periods, fault TABLE=1); that needs ~1,300 entries. So the
+          default PFM_TABLE_SIZE is back to 100.
+        - PFM_Input capture depth: PFM_INPUT_MAX_PERIODS (ctrlr_config.h) 200 -> 3,800.
+          Timestamps are stored as 16 bits (the DMA's memory size is HALFWORD: it reads the
+          capture register as a word and stores the low half; a period is always far below
+          65,536 clocks, so differences are taken modulo 65,536), arrays exist only for the
+          active inputs (PFM_INPUT_ACTIVE_CHANNEL_MASK now 0x0F = inputs 1-4), and the
+          period cache is gone (periods are differences, computed when read). 61 kB for
+          4 inputs; RAM 92 kB of 128 kB, 35 kB left above it for heap and stack.
+          PFMIN:DATA? pages like PFMIN:RAW? (PFMIN:DATA? <ch> [<start> [<count>]], at most
+          400 values per reply) and its reply gained SUM= after OVERCAP=. pfm_shot_test.py
+          reads pages and checks every SUM.
+        - python/pfm_profile_demo.py: the two 50 ms demonstrations below.
+  Demonstrations (simulator, fibre loop, both-edge capture on inputs 1-3, every page
+        checksum-verified; regenerate the plots with the tool):
+        HVPS  -- duty 50 %, frequency a triangle 10 -> 30 -> 10 kHz, four cycles in
+          50 ms (9 setpoints): 1,000 periods played, ring never below 51, 18 refills. U
+          follows the programmed frequency to a mean error of +3 Hz (worst 5 Hz); V and W
+          show a +-100 Hz offset that flips with the ramp direction, the phase lock
+          shifting those phases' edges while the period changes (the same effect the
+          residual model in pfm_shot_test.py accounts for), 0.3 % at 30 kHz.
+        LIMITER -- 75 kHz, duty a triangle 5 -> 95 -> 5 %, four cycles in 50 ms: 3,752
+          periods played, ring never below 51, 55 refills. All three phases follow the
+          programmed duty with a constant -1.41 / -1.50 / -1.45 point offset (U/V/W) and
+          no spread: the high time is the programmed compare minus the fixed 32-34 clocks
+          already established (output SET on CMP3 + dead time).
+        W is captured by a different timer than U and V, so its phase to them is not
+        measured; the plots say so.
+
 2026-10-01  —  Time-series shot (SHOT:*), interpolating generator, per-period ring table
 -----------------------------------------------------------------------
   Change:  A shot is now uploaded as time/frequency/duty setpoints and played through a
