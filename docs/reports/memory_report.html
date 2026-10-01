@@ -220,7 +220,7 @@
     <div class="eyebrow">WHAM-HBRIDGE-PFMG474 &middot; STM32G474QET6</div>
     <h1>Memory footprint</h1>
     <div class="subtitle">
-      As of <span class="mono">bcc1f78d00</span> &mdash; Shot profile: make it sustainable at LIMITER rates (O2 hot paths, 3-divide period, FAULT:SOURces?, 1300-entry ring default)
+      As of <span class="mono">596d6e5b2e</span> &mdash; Global -O2 build, 3800-period 16-bit PFM_Input capture, 50 ms profile demonstrations
       &middot; tracked every commit since 2026-09-09
     </div>
   </header>
@@ -229,26 +229,26 @@
     <div class="card tile">
       <div class="tile-top">
         <div class="tile-label"><span class="dot" style="background:var(--flash)"></span>Flash (512 KiB)</div>
-        <div class="tile-pct">13.9%</div>
+        <div class="tile-pct">9.6%</div>
       </div>
-      <div class="tile-value">71.0<span class="unit">KB used</span></div>
-      <div class="tile-of">72,736 / 524,288 bytes</div>
-      <div class="meter-track"><div class="meter-fill" style="width:13.9%;background:var(--flash)"></div></div>
+      <div class="tile-value">49.0<span class="unit">KB used</span></div>
+      <div class="tile-of">50,132 / 524,288 bytes</div>
+      <div class="meter-track"><div class="meter-fill" style="width:9.6%;background:var(--flash)"></div></div>
       <div class="tile-foot">
-        <span>441.0 KB remaining</span>
+        <span>463.0 KB remaining</span>
         <svg class="spark" width="96" height="24" viewBox="0 0 96 24" id="spark-flash"></svg>
       </div>
     </div>
     <div class="card tile">
       <div class="tile-top">
         <div class="tile-label"><span class="dot" style="background:var(--ram)"></span>RAM (128 KiB)</div>
-        <div class="tile-pct">32.8%</div>
+        <div class="tile-pct">71.7%</div>
       </div>
-      <div class="tile-value">42.0<span class="unit">KB used</span></div>
-      <div class="tile-of">43,004 / 131,072 bytes</div>
-      <div class="meter-track"><div class="meter-fill" style="width:32.8%;background:var(--ram)"></div></div>
+      <div class="tile-value">91.7<span class="unit">KB used</span></div>
+      <div class="tile-of">93,948 / 131,072 bytes</div>
+      <div class="meter-track"><div class="meter-fill" style="width:71.7%;background:var(--ram)"></div></div>
       <div class="tile-foot">
-        <span>86.0 KB remaining</span>
+        <span>36.3 KB remaining</span>
         <svg class="spark" width="96" height="24" viewBox="0 0 96 24" id="spark-ram"></svg>
       </div>
     </div>
@@ -258,7 +258,7 @@
     <div class="card">
       <div class="card-head">
         <div class="chart-title">Utilization over project lifetime</div>
-        <div class="chart-note">8 commits &middot; 2026-09-09 &ndash; 2026-10-01</div>
+        <div class="chart-note">9 commits &middot; 2026-09-09 &ndash; 2026-10-01</div>
       </div>
       <div class="legend">
         <div class="legend-item"><span class="legend-swatch" style="background:var(--flash)"></span>Flash</div>
@@ -275,11 +275,11 @@
     <h2>Current breakdown by module</h2>
     <div class="breakdown-grid">
       <div class="card">
-        <div class="chart-title" style="margin-bottom:12px">Flash &mdash; 71.0 KB</div>
+        <div class="chart-title" style="margin-bottom:12px">Flash &mdash; 49.0 KB</div>
         <div id="flash-bars"></div>
       </div>
       <div class="card">
-        <div class="chart-title" style="margin-bottom:12px">RAM &mdash; 42.0 KB</div>
+        <div class="chart-title" style="margin-bottom:12px">RAM &mdash; 91.7 KB</div>
         <div id="ram-bars"></div>
       </div>
     </div>
@@ -320,7 +320,7 @@
 
 </div>
 
-<script id="report-data" type="application/json">{"history": [{"commit": "a74078b50d", "date": "2026-09-09T14:55:08-05:00", "subject": "Initial commit: reseeded from WHAM-PFMG474-V4 at de83324 (rename only)", "flash_used": 51316, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "365b71480c", "date": "2026-09-29T13:56:59-05:00", "subject": "Rename WHAM-SWITCH-PFMG474 to WHAM-HBRIDGE-PFMG474", "flash_used": 51320, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "9cc7522d05", "date": "2026-09-29T14:05:50-05:00", "subject": "Restructure firmware into layered src/ (behavior-preserving); port host tests and build tooling", "flash_used": 51588, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "4bba7e779c-dirty", "date": "2026-09-29T15:37:46-05:00", "subject": "Record Phase 2 verification on the simulator board", "flash_used": 62156, "flash_total": 524288, "ram_used": 55512, "ram_total": 131072}, {"commit": "06f67b5542", "date": "2026-09-29T15:56:53-05:00", "subject": "Record Phase 3 hardware verification; publish the v0.8 image running on the simulator", "flash_used": 63720, "flash_total": 524288, "ram_used": 55520, "ram_total": 131072}, {"commit": "a8c15327fa", "date": "2026-09-30T09:51:04-05:00", "subject": "Record supply-mode hardware verification; publish the v0.9 image running on the simulator", "flash_used": 65324, "flash_total": 524288, "ram_used": 55520, "ram_total": 131072}, {"commit": "e6c03eba41", "date": "2026-09-30T12:49:25-05:00", "subject": "PFM_Input: bounded DMA capture into the result array, started before the outputs", "flash_used": 67660, "flash_total": 524288, "ram_used": 66488, "ram_total": 131072}, {"commit": "bcc1f78d00", "date": "2026-10-01T12:19:52-05:00", "subject": "Shot profile: make it sustainable at LIMITER rates (O2 hot paths, 3-divide period, FAULT:SOURces?, 1300-entry ring default)", "flash_used": 72736, "flash_total": 524288, "ram_used": 43004, "ram_total": 131072}], "flash_modules": [{"name": "ST HAL library", "bytes": 31564}, {"name": "Serial commands", "bytes": 8318}, {"name": "Toolchain (libc/libm/startup)", "bytes": 7325}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 5942}, {"name": "PFM_Input capture", "bytes": 3714}, {"name": "Firmware update", "bytes": 3081}, {"name": "HRTIM driver", "bytes": 2946}, {"name": "Other", "bytes": 2564}, {"name": "main() / init", "bytes": 2354}, {"name": "PFM table engine", "bytes": 2058}, {"name": "IRQ vector dispatch", "bytes": 802}, {"name": "CMSIS", "bytes": 518}, {"name": "QUADSPI test", "bytes": 448}, {"name": "Newlib syscalls", "bytes": 396}, {"name": "HAL MSP config", "bytes": 248}, {"name": "Bootloader jump", "bytes": 216}, {"name": "Gate driver / faults", "bytes": 118}, {"name": "CMSIS system init", "bytes": 64}, {"name": "Startup/vector table", "bytes": 60}], "ram_modules": [{"name": "PFM_Input capture", "bytes": 15418}, {"name": "PFM table engine", "bytes": 11277}, {"name": "Serial commands", "bytes": 7566}, {"name": "Other", "bytes": 6078}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 1572}, {"name": "Toolchain (libc/libm/startup)", "bytes": 447}, {"name": "HRTIM driver", "bytes": 252}, {"name": "main() / init", "bytes": 248}, {"name": "QUADSPI test", "bytes": 76}, {"name": "ST HAL library", "bytes": 44}, {"name": "Firmware update", "bytes": 13}, {"name": "Bootloader jump", "bytes": 4}, {"name": "CMSIS system init", "bytes": 4}, {"name": "Newlib syscalls", "bytes": 4}, {"name": "Gate driver / faults", "bytes": 1}]}</script>
+<script id="report-data" type="application/json">{"history": [{"commit": "a74078b50d", "date": "2026-09-09T14:55:08-05:00", "subject": "Initial commit: reseeded from WHAM-PFMG474-V4 at de83324 (rename only)", "flash_used": 51316, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "365b71480c", "date": "2026-09-29T13:56:59-05:00", "subject": "Rename WHAM-SWITCH-PFMG474 to WHAM-HBRIDGE-PFMG474", "flash_used": 51320, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "9cc7522d05", "date": "2026-09-29T14:05:50-05:00", "subject": "Restructure firmware into layered src/ (behavior-preserving); port host tests and build tooling", "flash_used": 51588, "flash_total": 524288, "ram_used": 55368, "ram_total": 131072}, {"commit": "4bba7e779c-dirty", "date": "2026-09-29T15:37:46-05:00", "subject": "Record Phase 2 verification on the simulator board", "flash_used": 62156, "flash_total": 524288, "ram_used": 55512, "ram_total": 131072}, {"commit": "06f67b5542", "date": "2026-09-29T15:56:53-05:00", "subject": "Record Phase 3 hardware verification; publish the v0.8 image running on the simulator", "flash_used": 63720, "flash_total": 524288, "ram_used": 55520, "ram_total": 131072}, {"commit": "a8c15327fa", "date": "2026-09-30T09:51:04-05:00", "subject": "Record supply-mode hardware verification; publish the v0.9 image running on the simulator", "flash_used": 65324, "flash_total": 524288, "ram_used": 55520, "ram_total": 131072}, {"commit": "e6c03eba41", "date": "2026-09-30T12:49:25-05:00", "subject": "PFM_Input: bounded DMA capture into the result array, started before the outputs", "flash_used": 67660, "flash_total": 524288, "ram_used": 66488, "ram_total": 131072}, {"commit": "bcc1f78d00", "date": "2026-10-01T12:19:52-05:00", "subject": "Shot profile: make it sustainable at LIMITER rates (O2 hot paths, 3-divide period, FAULT:SOURces?, 1300-entry ring default)", "flash_used": 72736, "flash_total": 524288, "ram_used": 43004, "ram_total": 131072}, {"commit": "596d6e5b2e", "date": "2026-10-01T12:43:45-05:00", "subject": "Global -O2 build, 3800-period 16-bit PFM_Input capture, 50 ms profile demonstrations", "flash_used": 50132, "flash_total": 524288, "ram_used": 93948, "ram_total": 131072}], "flash_modules": [{"name": "ST HAL library", "bytes": 17998}, {"name": "Toolchain (libc/libm/startup)", "bytes": 7341}, {"name": "Serial commands", "bytes": 6106}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 5616}, {"name": "Firmware update", "bytes": 2319}, {"name": "Other", "bytes": 2212}, {"name": "PFM_Input capture", "bytes": 2076}, {"name": "HRTIM driver", "bytes": 1932}, {"name": "PFM table engine", "bytes": 1558}, {"name": "main() / init", "bytes": 1414}, {"name": "IRQ vector dispatch", "bytes": 476}, {"name": "QUADSPI test", "bytes": 316}, {"name": "HAL MSP config", "bytes": 204}, {"name": "Bootloader jump", "bytes": 192}, {"name": "Newlib syscalls", "bytes": 176}, {"name": "Gate driver / faults", "bytes": 88}, {"name": "Startup/vector table", "bytes": 60}, {"name": "CMSIS system init", "bytes": 48}], "ram_modules": [{"name": "PFM_Input capture", "bytes": 61762}, {"name": "PFM table engine", "bytes": 16077}, {"name": "Serial commands", "bytes": 7362}, {"name": "Other", "bytes": 6078}, {"name": "Padding / unattributed (alignment, vector table, anon symbols)", "bytes": 1576}, {"name": "Toolchain (libc/libm/startup)", "bytes": 447}, {"name": "HRTIM driver", "bytes": 252}, {"name": "main() / init", "bytes": 248}, {"name": "QUADSPI test", "bytes": 76}, {"name": "ST HAL library", "bytes": 44}, {"name": "Firmware update", "bytes": 13}, {"name": "Bootloader jump", "bytes": 4}, {"name": "CMSIS system init", "bytes": 4}, {"name": "Newlib syscalls", "bytes": 4}, {"name": "Gate driver / faults", "bytes": 1}]}</script>
 <script>
 (function () {
   "use strict";
