@@ -41,6 +41,10 @@ static const scpi_command_t command_table[] = {
     { "TABle:END",           cmd_table_end    },
     { "TABle?",              cmd_table_query  },
 
+    /* The two analog outputs, PA4/PA5 -- see cmd_dac.c. */
+    { "DAC:OUTPut",          cmd_dac_output       },
+    { "DAC:OUTPut?",         cmd_dac_output_query },
+
     /* The time-series shot -- see cmd_shot.c. */
     { "SHOT:BEGin",          cmd_shot_begin       },
     { "SHOT:STEP",           cmd_shot_step        },

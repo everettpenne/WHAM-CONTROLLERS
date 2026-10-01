@@ -469,6 +469,28 @@ Not modifiable at runtime — there is no corresponding `SET` command,
 by design. Changing it means editing `ctrlr_config.h`, rebuilding, and
 reflashing.
 
+### `DAC:OUTPut`, `DAC:OUTPut?` — the two analog outputs
+
+PA4 (`AnalogOut_01`, DAC1 channel 1) and PA5 (`AnalogOut_02`, DAC1 channel 2) are
+12-bit DAC outputs with the DAC's output buffer on. Both are enabled at boot at
+0 V and are independent of the operating state, faults and `FIRE`.
+
+```
+> DAC:OUTPut 1 1.65          channel 1 (PA4) to 1.65 V
+< OK
+> DAC:OUTPut? 1
+< OK 1.650 2048 2048         volts, code commanded, code in the DAC's output register
+> DAC:OUTPut 2 3.301
+< ERR 12 voltage must be 0 to 3.300 V
+```
+
+- Voltage in volts, up to 3 decimals; channel 1 or 2. The value is rounded to the
+  nearest of 4096 steps (0.8 mV at 3.3 V).
+- Full scale is `DAC_VREF_MV` (`ctrlr_config.h`, **3,300 assumed**: the DAC's
+  reference is VREF+/VDDA; confirm it against the board and set the real value).
+- The last field of the query is read back from the DAC hardware; it equals the
+  commanded code once the DAC has taken the value.
+
 ### `GDS?`
 
 Raw `HIGH`/`LOW` snapshot of the 12 GateDriverStatus_01..12 pins

@@ -1,6 +1,26 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-02  —  PA4 / PA5 configured as the two DAC outputs
+-----------------------------------------------------------------------
+  Change:  PA4 (AnalogOut_01, DAC1_OUT1) and PA5 (AnalogOut_02, DAC1_OUT2) are analog
+        outputs. src/drivers/dac.h (interface), src/bsp/stm32g4/dac.c (GPIO analog, DAC1
+        clock, channels 1 and 2 enabled, output buffer on, no trigger/DMA, 0 V at boot --
+        driven through the registers like hrtim.c; the HAL DAC driver is not in the
+        project), src/app/commands/cmd_dac.c: DAC:OUTPut <1|2> <volts> and DAC:OUTPut?
+        <1|2> (volts, code commanded, code read back from the DAC output register).
+        Dac_Init() is called from App_Init(). DAC_VREF_MV (ctrlr_config.h) is the full
+        scale.
+  Verified on the simulator: both outputs at 0 V after boot; 1.65 V -> code 2048, 3.3 V
+        -> 4095, 0.5 V -> 620, channels independent; out-of-range voltage and bad
+        channel/arguments rejected with ERR 12 and nothing changed; a 0-3.3 V sweep in
+        50 mV steps found the DAC output register equal to the commanded code at every
+        point (0 mismatches).
+  NOT verified: the actual pin voltage (no meter or ADC reading on this bench) and the
+        reference: DAC_VREF_MV is ASSUMED to be 3.3 V (VREF+ = VDDA); check the schematic
+        (docs/pin_mapping_v4.csv cites p60) and measure one output before relying on the
+        scaling. The .ioc does not know about the DAC (hand-written, like HRTIM).
+
 2026-10-02  —  Global -O2 build; PFM_Input capture holds a full 50 ms shot; 50 ms demonstrations
 -----------------------------------------------------------------------
   Change:  - The project is now built at -O2 (CubeIDE Debug configuration; .cproject and

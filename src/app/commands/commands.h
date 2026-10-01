@@ -33,6 +33,7 @@ extern "C" {
  *   cmd_fwupdate.c FWUPdate:* (in-application firmware update)
  *   cmd_table.c    legacy TABle:*, FIRE, PFM:DIAG?/GAPLOG?
  *   cmd_shot.c     SHOT:* (the time-series shot)
+ *   cmd_dac.c      DAC:* (the two analog outputs, PA4/PA5)
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, GENERAL:TEST:FAULT
  *   cmd_io.c       GDS?
@@ -199,6 +200,10 @@ void cmd_config_mode(uart_instance_t *inst, char *args);          /* CONFig:MODE
 void cmd_config_mode_query(uart_instance_t *inst, char *args);    /* CONFig:MODE? -- OK NONE|LIMITER|HVPS */
 void cmd_config_limits_query(uart_instance_t *inst, char *args);  /* CONFig:LIMits? -- OK <mode> FREQ <min> <max> DUTY <min> <max> */
 void CmdTable_Discard(void);                                      /* drops the table; called on a mode change */
+
+/* Analog outputs (dac.h), see cmd_dac.c */
+void cmd_dac_output(uart_instance_t *inst, char *args);           /* DAC:OUTPut <1|2> <volts> */
+void cmd_dac_output_query(uart_instance_t *inst, char *args);     /* DAC:OUTPut? <1|2> -- OK <volts> <code> <register code> */
 
 /* Time-series shot (shot_profile.h), see cmd_shot.c */
 void cmd_shot_begin(uart_instance_t *inst, char *args);           /* SHOT:BEGin */

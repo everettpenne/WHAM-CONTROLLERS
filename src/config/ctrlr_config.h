@@ -230,4 +230,12 @@
 #error "SHOT_MAX_DURATION_US must be 1 ms .. 60 s"
 #endif
 
+/* --------------------------------------------------------------------------
+ * Analog outputs (dac.h): full scale of the two DAC outputs, PA4 and PA5, in
+ * millivolts. The DAC's reference is VREF+ (VDDA); 3.3 V is ASSUMED here --
+ * confirm it against the board (schematic p60) and set the real value, or
+ * the output voltages will be scaled wrong.
+ * -------------------------------------------------------------------------- */
+#define DAC_VREF_MV             (3300U)
+
 #endif /* INC_CTRLR_CONFIG_H_ */
