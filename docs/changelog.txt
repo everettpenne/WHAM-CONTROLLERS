@@ -1,6 +1,38 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-02  —  PA0 / PA1 / PB0 / PC0 configured as the four ADC inputs; the analog reference found and fixed
+-----------------------------------------------------------------------
+  Change:  AnalogIn_01..04 = PA0 (ADC1_IN1), PA1 (IN2), PC0 (IN6), PB0 (IN15). src/drivers/adc.h,
+        src/bsp/stm32g4/adc.c (GPIO analog, ADC12 clock HCLK/4, regulator, calibration,
+        enable; 12 bit, single-ended, software-triggered, 16x hardware oversampling with a
+        4-bit shift, 247.5-clock sampling; registers, no HAL ADC driver),
+        src/app/commands/cmd_adc.c: ADC:INPut? <1-4> and ADC:VREF? (the internal bandgap
+        against the factory calibration: the real VREF+). Adc_Init() from App_Init().
+        New src/drivers/vref.h + src/bsp/stm32g4/vref.c: the internal reference buffer
+        (VREFBUF), enabled in App_Init() before the DAC and ADC.
+  FINDING -- the board has no external analog reference. docs/pin_mapping_v4.csv: pin 43
+        VREF+ is "VREF+ Capacitor". VREFBUF is off at reset, which left VREF+ near 0 V:
+        every ADC conversion, even the internal 1.2 V reference, read 4095, a perfectly flat
+        value (found with a register read-back: the conversions ran, EOC set, correct
+        channel -- the reference was the problem). It also means the DAC change earlier today
+        (PA4/PA5, entry below) could not have produced meaningful voltages: its reference was
+        the same VREF+, and I had ASSUMED 3.3 V. Corrected here: ANALOG_VREF_MV
+        (ctrlr_config.h, 2500) replaces DAC_VREF_MV and ADC_VREF_MV and is the full scale of
+        both; the DAC range is 0-2.500 V, not 0-3.3 V.
+  Verified on the simulator: ADC:VREF? 2.505 V (30 reads, 2.504-2.506) against 2.500 V
+        configured, +0.2 %; unwired inputs read 0.000-0.002 V; bad channel rejected with ERR
+        12; DAC full scale 2.500 V, 2.501 V rejected; 14 ADC reads during a 500 ms shot left it
+        untouched (10,000 periods played, ring minimum 51); the HVPS reference ramp still gives
+        residual -1 tick and exact duty movement.
+  A mistake worth recording: I first programmed VREFBUF's voltage select with 2.5 V and 2.048 V
+        swapped (code 00 is 2.048 V on the G4, 01 is 2.5 V). ADC:VREF? measured 2.053 V against
+        2.5 V configured, which is how it was caught; a DAC scaled for 2.5 V would have been
+        22 % wrong.
+  NOT verified: any voltage applied to the four input pins (none are driven on this bench) and
+        the DAC pin voltages (no meter): the DAC code reaching its output register and the
+        reference it scales to are both now verified, the analog pins themselves are not.
+
 2026-10-02  —  PA4 / PA5 configured as the two DAC outputs
 -----------------------------------------------------------------------
   Change:  PA4 (AnalogOut_01, DAC1_OUT1) and PA5 (AnalogOut_02, DAC1_OUT2) are analog
@@ -16,10 +48,9 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
         channel/arguments rejected with ERR 12 and nothing changed; a 0-3.3 V sweep in
         50 mV steps found the DAC output register equal to the commanded code at every
         point (0 mismatches).
-  NOT verified: the actual pin voltage (no meter or ADC reading on this bench) and the
-        reference: DAC_VREF_MV is ASSUMED to be 3.3 V (VREF+ = VDDA); check the schematic
-        (docs/pin_mapping_v4.csv cites p60) and measure one output before relying on the
-        scaling. The .ioc does not know about the DAC (hand-written, like HRTIM).
+  CORRECTION (same day, see the ADC entry above): DAC_VREF_MV = 3.3 V was WRONG. This board has
+        no external reference (pin 43 is a capacitor); the internal buffer must drive VREF+ and
+        the DAC full scale is ANALOG_VREF_MV = 2.5 V. Not verified at the pin (no meter). The .ioc does not know about the DAC (hand-written, like HRTIM).
 
 2026-10-02  —  Global -O2 build; PFM_Input capture holds a full 50 ms shot; 50 ms demonstrations
 -----------------------------------------------------------------------

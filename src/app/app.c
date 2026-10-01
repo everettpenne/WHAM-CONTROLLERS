@@ -14,7 +14,9 @@
 #include "flash_bank.h"
 #include "boot_diag.h"
 #include "mcu.h"
+#include "vref.h"
 #include "dac.h"
+#include "adc.h"
 #include "ctrlr_config.h"
 #include "git_version.h"
 #include <stdio.h>
@@ -53,8 +55,15 @@ void App_Init(void)
        pattern already used for BootJump_CheckAndEnter(). */
     QspiTest_Init();
 
+    /* The analog reference first: this board's VREF+ pin is only a capacitor, the
+       internal buffer must drive it (vref.h). The DAC and ADC below are scaled to it. */
+    (void)Vref_Init();
+
     /* PA4/PA5 as the two analog outputs (dac.h), enabled at 0 V. */
     Dac_Init();
+
+    /* PA0/PA1/PC0/PB0 as the four analog inputs, ADC1 calibrated and enabled (adc.h). */
+    Adc_Init();
 
     /* PFM_Input period/duty capture (PA15/PD4/PB2/PC12/PB4/PD12, TIM2/
        TIM3/TIM4/TIM5) -- see pfm_input.h. Configures the timers/GPIO

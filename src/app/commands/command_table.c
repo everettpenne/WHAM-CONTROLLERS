@@ -41,6 +41,10 @@ static const scpi_command_t command_table[] = {
     { "TABle:END",           cmd_table_end    },
     { "TABle?",              cmd_table_query  },
 
+    /* The four analog inputs, PA0/PA1/PC0/PB0 -- see cmd_adc.c. */
+    { "ADC:INPut?",          cmd_adc_input_query  },
+    { "ADC:VREF?",           cmd_adc_vref_query   },
+
     /* The two analog outputs, PA4/PA5 -- see cmd_dac.c. */
     { "DAC:OUTPut",          cmd_dac_output       },
     { "DAC:OUTPut?",         cmd_dac_output_query },

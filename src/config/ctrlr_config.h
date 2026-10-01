@@ -231,11 +231,14 @@
 #endif
 
 /* --------------------------------------------------------------------------
- * Analog outputs (dac.h): full scale of the two DAC outputs, PA4 and PA5, in
- * millivolts. The DAC's reference is VREF+ (VDDA); 3.3 V is ASSUMED here --
- * confirm it against the board (schematic p60) and set the real value, or
- * the output voltages will be scaled wrong.
+ * Analog reference (vref.h): the voltage on VREF+, in millivolts, which is the
+ * full scale of the ADC inputs (adc.h) AND the DAC outputs (dac.h). This board has
+ * no external reference (pin 43 is only a capacitor), so the internal VREFBUF
+ * produces it: one of 2048, 2500 or 2900. 2500 needs VDDA of at least ~2.8 V
+ * (this board's 3.3VA is fine); 2900 needs ~3.15 V, little margin. ADC:VREF?
+ * measures the real value from the internal bandgap and the chip's factory
+ * calibration, to check this setting against.
  * -------------------------------------------------------------------------- */
-#define DAC_VREF_MV             (3300U)
+#define ANALOG_VREF_MV          (2500U)
 
 #endif /* INC_CTRLR_CONFIG_H_ */

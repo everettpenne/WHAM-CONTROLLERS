@@ -5,7 +5,8 @@
  *
  * Channels are numbered 0 and 1 here (1 and 2 on the wire, DAC:OUTPut). Both
  * come up enabled, with the DAC's output buffer on, at 0 V. Full scale is
- * DAC_VREF_MV (ctrlr_config.h), 12 bits.
+ * ANALOG_VREF_MV (ctrlr_config.h, produced by the internal reference, vref.h),
+ * 12 bits.
  */
 #ifndef DAC_H
 #define DAC_H
@@ -20,7 +21,7 @@ void Dac_Init(void);
 
 /* Sets a channel's output voltage in millivolts, rounded to the nearest of the
    4096 steps. Returns 0 (and changes nothing) for a bad channel or a value above
-   DAC_VREF_MV, else 1. */
+   ANALOG_VREF_MV, else 1. */
 uint8_t Dac_SetMilliVolts(uint8_t channel, uint16_t milliVolts);
 
 /* The 12-bit code last commanded for a channel (0 for a bad channel). */

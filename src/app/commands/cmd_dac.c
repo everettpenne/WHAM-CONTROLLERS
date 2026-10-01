@@ -2,7 +2,7 @@
  * cmd_dac.c -- serial command handlers: the two analog outputs, DAC:*.
  *
  *   DAC:OUTPut <ch> <volts>   ch 1 = PA4 (AnalogOut_01), 2 = PA5 (AnalogOut_02);
- *                             volts from 0 to DAC_VREF_MV / 1000, up to 3 decimals
+ *                             volts from 0 to ANALOG_VREF_MV / 1000, up to 3 decimals
  *   DAC:OUTPut? <ch>          OK <volts> <code commanded> <code in the DAC register>
  *
  * Both outputs are enabled at boot at 0 V and are not affected by the operating
@@ -47,10 +47,10 @@ void cmd_dac_output(uart_instance_t *inst, char *args)
         SendErr(inst, ERR_INVALID_ARGS, "DAC:OUTPut needs a channel and a voltage: DAC:OUTPut <1|2> <volts>");
         return;
     }
-    if ((milliVolts > DAC_VREF_MV) || (Dac_SetMilliVolts(channel, (uint16_t)milliVolts) == 0U))
+    if ((milliVolts > ANALOG_VREF_MV) || (Dac_SetMilliVolts(channel, (uint16_t)milliVolts) == 0U))
     {
-        snprintf(msg, sizeof(msg), "voltage must be 0 to %u.%03u V", (unsigned)(DAC_VREF_MV / 1000U),
-                 (unsigned)(DAC_VREF_MV % 1000U));
+        snprintf(msg, sizeof(msg), "voltage must be 0 to %u.%03u V", (unsigned)(ANALOG_VREF_MV / 1000U),
+                 (unsigned)(ANALOG_VREF_MV % 1000U));
         SendErr(inst, ERR_INVALID_ARGS, msg);
         return;
     }
@@ -70,7 +70,7 @@ void cmd_dac_output_query(uart_instance_t *inst, char *args)
         return;
     }
     code = Dac_GetCode(channel);
-    milliVolts = (code * DAC_VREF_MV + 2047U) / 4095U;   /* the voltage that code produces */
+    milliVolts = (code * ANALOG_VREF_MV + 2047U) / 4095U;   /* the voltage that code produces */
     snprintf(buf, sizeof(buf), "OK %u.%03u %u %u\r\n", (unsigned)(milliVolts / 1000U), (unsigned)(milliVolts % 1000U),
              (unsigned)code, (unsigned)Dac_GetOutputCode(channel));
     uart_send(inst, buf);

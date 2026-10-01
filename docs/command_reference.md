@@ -486,10 +486,40 @@ PA4 (`AnalogOut_01`, DAC1 channel 1) and PA5 (`AnalogOut_02`, DAC1 channel 2) ar
 
 - Voltage in volts, up to 3 decimals; channel 1 or 2. The value is rounded to the
   nearest of 4096 steps (0.8 mV at 3.3 V).
-- Full scale is `DAC_VREF_MV` (`ctrlr_config.h`, **3,300 assumed**: the DAC's
-  reference is VREF+/VDDA; confirm it against the board and set the real value).
+- Full scale is `ANALOG_VREF_MV` (`ctrlr_config.h`, 2.500 V): the voltage the
+  internal reference buffer puts on VREF+ (see "Analog reference" below). The
+  default range is therefore 0 to 2.500 V, not 3.3 V.
 - The last field of the query is read back from the DAC hardware; it equals the
   commanded code once the DAC has taken the value.
+
+### `ADC:INPut?`, `ADC:VREF?` — the four analog inputs
+
+`AnalogIn_01` to `AnalogIn_04` are PA0, PA1, PC0 and PB0 (ADC1 channels 1, 2, 6,
+15). 12 bits, single-ended, each reading the average of 16 conversions with a
+5.8 us sampling time per conversion (about 100 us in all, blocking the main loop
+briefly; shots are unaffected). Full scale is `ANALOG_VREF_MV`.
+
+```
+> ADC:INPut? 1
+< OK 1.234 2021                 volts, 12-bit code
+> ADC:VREF?
+< OK 2.505 1990 1662            measured VREF+ in volts, VREFINT code, factory code
+```
+
+- `ADC:INPut? <1-4>` — a pin with nothing connected reads near 0 V here.
+- `ADC:VREF?` — measures the real voltage on VREF+ from the internal bandgap
+  (about 1.21 V) and the chip's own factory calibration (the code recorded with
+  VREF+ = 3.0 V): VREF+ = 3.0 V x factory code / measured code. It needs no pin, so it
+  checks the whole ADC path, and it is how `ANALOG_VREF_MV` is verified. Measured on
+  the simulator: 2.505 V against the 2.500 V configured (+0.2 %, within the bandgap's
+  tolerance), repeatable to 2 mV.
+
+**Analog reference.** This board has no external reference: pin 43 is "VREF+
+Capacitor" (`docs/pin_mapping_v4.csv`), so the chip's internal reference buffer
+(`vref.c`) drives VREF+ at start-up, at `ANALOG_VREF_MV` (2048, 2500 or 2900). Left
+off, as it is at reset, VREF+ sits near 0 V: every ADC conversion reads 4095 and the
+DAC outputs are scaled to nothing. This reference is the full scale of both the ADC
+inputs and the DAC outputs.
 
 ### `GDS?`
 

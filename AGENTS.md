@@ -495,7 +495,7 @@ Drivers/            ST HAL + CMSIS (vendor code, untouched)
 src/
   config/           ctrlr_config.h -- compile-time configuration; any layer
   drivers/          hardware-independent interfaces, headers only:
-                    uart.h, board_io.h, mcu.h, dac.h, hrtim.h, pfm_input.h,
+                    uart.h, board_io.h, mcu.h, dac.h, adc.h, vref.h, hrtim.h, pfm_input.h,
                     qspi_test.h, boot_jump.h
   bsp/stm32g4/      the only code that touches the MCU (HAL, registers,
                     interrupts): implements drivers/; *_hw.h = BSP-private

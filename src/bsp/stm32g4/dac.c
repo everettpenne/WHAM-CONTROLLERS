@@ -37,11 +37,11 @@ uint8_t Dac_SetMilliVolts(uint8_t channel, uint16_t milliVolts)
 {
     uint32_t code;
 
-    if ((channel >= DAC_NUM_CHANNELS) || (milliVolts > DAC_VREF_MV))
+    if ((channel >= DAC_NUM_CHANNELS) || (milliVolts > ANALOG_VREF_MV))
     {
         return 0U;
     }
-    code = ((uint32_t)milliVolts * 4095U + (DAC_VREF_MV / 2U)) / DAC_VREF_MV;
+    code = ((uint32_t)milliVolts * 4095U + (ANALOG_VREF_MV / 2U)) / ANALOG_VREF_MV;
     g_code[channel] = (uint16_t)code;
     if (channel == 0U)
     {
