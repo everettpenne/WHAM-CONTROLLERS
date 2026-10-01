@@ -116,6 +116,17 @@ void SM_PollFaults(void)
     Mcu_IrqEnable();
 }
 
+uint8_t SM_GetFaultSources(void)
+{
+    uint8_t m = 0U;
+
+    if (HRTIM1_FaultIsTripped() != 0U)    { m |= SM_FAULT_SRC_PC10; }
+    if (GateDriver_FaultIsLatched() != 0U) { m |= SM_FAULT_SRC_GATEDRV; }
+    if (PFM_UnderrunLatched() != 0U)       { m |= SM_FAULT_SRC_UNDERRUN; }
+    if (g_softFaultLatched != 0U)          { m |= SM_FAULT_SRC_TEST; }
+    return m;
+}
+
 void SM_ReportGeneralFault(void)
 {
     Mcu_IrqDisable();

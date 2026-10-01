@@ -272,6 +272,8 @@ void USART2_IRQHandler(void)
   * would keep firing forever at the full carrier rate and could starve
   * the main loop).
   */
+/* -O2 like the playback it calls (pfm.c): this runs every switching period. */
+__attribute__((optimize("O2")))
 void HRTIM1_Master_IRQHandler(void)
 {
     if (__HAL_HRTIM_MASTER_GET_FLAG(&hhrtim1, HRTIM_MASTER_FLAG_MREP) != RESET)

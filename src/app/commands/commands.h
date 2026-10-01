@@ -188,6 +188,7 @@ void cmd_fwup_abort(uart_instance_t *inst, char *args);     /* FWUPdate:ABORt */
 void cmd_fwup_status(uart_instance_t *inst, char *args);    /* FWUPdate:STATus? */
 
 /* Operating state (state_machine.h), see cmd_state.c */
+void cmd_fault_sources_query(uart_instance_t *inst, char *args); /* FAULT:SOURces? -- OK PC10=.. GATEDRV=.. TABLE=.. TEST=.. */
 void cmd_arm(uart_instance_t *inst, char *args);                 /* ARM -- IDLE -> ARMED */
 void cmd_disarm(uart_instance_t *inst, char *args);              /* DISARM -- ARMED -> IDLE */
 void cmd_state_query(uart_instance_t *inst, char *args);         /* STATE? -- OK IDLE|ARMED|FIRING|FAULT GENERAL */

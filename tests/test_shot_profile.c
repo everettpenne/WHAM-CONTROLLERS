@@ -237,6 +237,59 @@ static void TestGeneratorLongShot(void)
     CHECK(ShotGen_Start(1U) == 0U);
 }
 
+/* The period of the first entry of a flat shot must equal the plain 64-bit formula
+   round(CLK * 1000 / f), clamped to the mode's range -- at every frequency in both
+   modes (the firmware uses a 32-bit-only long division for speed). */
+static void TestPeriodDivision(void)
+{
+    const supply_mode_t modes[2] = { SUPPLY_MODE_HVPS, SUPPLY_MODE_LIMITER };
+    uint32_t bad = 0U, n = 0U;
+
+    for (int m = 0; m < 2; m++)
+    {
+        supply_limits_t lim;
+        SupplyMode_Set(modes[m]);
+        SupplyMode_GetLimits(modes[m], &lim);
+        uint64_t clk = HRTIM_TIMER_CLK_HZ;
+        uint64_t per1Min = (clk + lim.freqMaxHz - 1U) / lim.freqMaxHz;
+        uint64_t per1Max = clk / lim.freqMinHz;
+
+        for (uint32_t f = lim.freqMinHz * 1000U; f <= lim.freqMaxHz * 1000U; f += (f < lim.freqMinHz * 1000U + 5000U) ? 1U : 1013U)
+        {
+            uint16_t per, cmp; uint8_t last;
+            uint64_t ref = (clk * 1000U + f / 2U) / f;
+            if (ref < per1Min) { ref = per1Min; }
+            if (ref > per1Max) { ref = per1Max; }
+            ShotProfile_Clear();
+            if (ShotProfile_Append(0U, f, (uint16_t)(lim.dutyMinPct * 100U + 100U)) != SHOT_APPEND_OK ||
+                ShotProfile_Append(1U, f, (uint16_t)(lim.dutyMinPct * 100U + 100U)) != SHOT_APPEND_OK ||
+                ShotGen_Start(1U) == 0U || ShotGen_Next(&per, &cmp, &last) == 0U)
+            {
+                bad++;
+                continue;
+            }
+            n++;
+            if ((uint64_t)per + 1U != ref) { bad++; }
+        }
+        /* the very top of the range, where the long division's remainder is largest */
+        for (uint32_t f = lim.freqMaxHz * 1000U - 40U; f <= lim.freqMaxHz * 1000U; f++)
+        {
+            uint16_t per, cmp; uint8_t last;
+            uint64_t ref = (clk * 1000U + f / 2U) / f;
+            if (ref < per1Min) { ref = per1Min; }
+            ShotProfile_Clear();
+            ShotProfile_Append(0U, f, (uint16_t)(lim.dutyMinPct * 100U + 100U));
+            ShotProfile_Append(1U, f, (uint16_t)(lim.dutyMinPct * 100U + 100U));
+            ShotGen_Start(1U); ShotGen_Next(&per, &cmp, &last);
+            n++;
+            if ((uint64_t)per + 1U != ref) { bad++; }
+        }
+    }
+    CHECK(bad == 0U);
+    CHECK(n > 60000U);
+    printf("  period division checked at %lu frequencies, %lu mismatches\n", (unsigned long)n, (unsigned long)bad);
+}
+
 int main(void)
 {
     TestParse();
@@ -245,5 +298,6 @@ int main(void)
     TestGeneratorRamp();
     TestGeneratorLimiterExtremes();
     TestGeneratorLongShot();
+    TestPeriodDivision();
     return test_report("test_shot_profile");
 }

@@ -197,23 +197,38 @@ period at a time. Open-loop shots run from about 10 ms to 1 s.
   <i>` — `OK <t_us> <freq_hz> <duty_pct>` for setpoint *i* (from 0).
 - **How it plays:** a generator (`shot_profile.c`) turns the setpoints into
   one `{per, cmp}` entry per period and keeps a **ring table** of
-  `PFM_TABLE_SIZE` entries (100 by default) full; the per-period interrupt
-  plays it, and a software-triggered, lower-priority interrupt refills each
-  half while the other half plays. So a shot can be far longer than the table.
-  If the refill ever falls behind (the ring runs empty before the shot is
-  over) the shot is **stopped and latched as a fault** (`STATE?` →
-  `FAULT GENERAL`, cleared by `FAULT:CLEAR`) rather than holding a stale step.
-  `PFM:DIAG?` reports the fewest entries that were ready at any period.
-- **Compile-time sizes** (`ctrlr_config.h`, rebuild the `.bin` to change):
-  `SHOT_SETPOINT_MAX` (500, 12 bytes each), `SHOT_MAX_DURATION_US` (1 s),
-  `PFM_TABLE_SIZE` (100, 8 bytes each).
+  `PFM_TABLE_SIZE` entries (1,300 by default) full: the whole ring is filled
+  inside `FIRE` before the first period, the per-period interrupt plays it, and
+  a software-triggered, lower-priority interrupt refills it as it drains. So a
+  shot can be far longer than the table. If the refill ever falls behind (the
+  ring runs empty before the shot is over) the shot is **stopped and latched as
+  a fault** (`STATE?` → `FAULT GENERAL`, `FAULT:SOURces?` → `TABLE=1`, cleared
+  by `FAULT:CLEAR`) rather than holding a stale step.
+- **What the CPU can sustain** (simulator, `-O0` project build): the refill gets
+  only what the per-period interrupt leaves. In `HVPS` any shot, 1 s included,
+  refills with a 100-entry ring. In `LIMITER` a constant or slowly varying shot
+  refills fine up to 125 kHz, but a shot that changes the period or a compare
+  **every** period (a duty or frequency ramp) is sustainable by refill alone
+  only to about 80 kHz; above that the ring must hold most of the shot, which is
+  why the default is 1,300 (10 ms at 125 kHz is 1,250 periods). A 1 s shot at
+  125 kHz completed with the ring's low-water mark at 1: no margin.
+- **Compile-time sizes** (`ctrlr_config.h`, rebuild the `.bin` to change, with
+  the measurements behind them): `SHOT_SETPOINT_MAX` (500, 12 bytes each),
+  `SHOT_MAX_DURATION_US` (1 s), `PFM_TABLE_SIZE` (1,300, 8 bytes each; an
+  HVPS-only build can use 100).
+- **`PFM:DIAG?`** (diagnostic, last shot) — `OK <periods played> <max gap cycles>
+  <max gap us> <busiest interrupt cycles> <total interrupt cycles> <fewest ring entries
+  ready> <refills> <entries generated> <refill wall cycles> <longest refill wall
+  cycles> <ring fill cycles>`. The "fewest ready" is counted only while the generator
+  is still running (4294967295 if it never was: the whole shot fit in the ring); 0
+  would be an underrun. Cycles are 170 MHz CPU cycles.
 - The host tool `python/pfm_shot_test.py` has an exact Python port of the
   generator (`generate_profile()`), held to the C code by both test suites.
 
 ### `TABLE:BEGIN`, `TABLE:STEP`, `TABLE:END`, `TABLE?` (bench use)
 
 The per-period table, entered one entry at a time. Since 2026-10-01 it holds
-at most `PFM_TABLE_SIZE` (100) entries and plays once, with no refill: it is
+at most `PFM_TABLE_SIZE` entries and plays once, with no refill: it is
 the engine's input format kept for bench work, and `SHOT:*` above is how a
 shot is normally defined. The last upload to finish (`SHOT:END` or
 `TABLE:END`) is what `FIRE` plays.
@@ -366,7 +381,11 @@ force-stops from its interrupt); the state machine keeps it latched until
 only if both are healthy — never straight back to `ARMED`. A fault already
 present at boot shows in the `!BOOT` banner as `STATE=FAULT`.
 
-### `FAULT?`, `FAULT:CLEAR`
+### `FAULT?`, `FAULT:CLEAR`, `FAULT:SOURces?`
+
+`FAULT:SOURces?` — `OK PC10=<0|1> GATEDRV=<0|1> TABLE=<0|1> TEST=<0|1>`: which
+sources hold a fault latched behind the single `FAULT GENERAL` state. `TABLE`
+is the per-period table running empty before the shot was over (see `SHOT:*`).
 
 Status/clear for **two independent fault sources**, combined into one
 answer here (`cmd_common.c`'s `AnyFaultLatched()`, plus the `FAULT` state) — from an operator's

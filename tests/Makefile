@@ -47,7 +47,7 @@ $(OUT)/test_supply_mode: test_supply_mode.c $(ROOT)/src/app/control/supply_mode.
 
 $(OUT)/test_shot_profile: test_shot_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/shot_profile.h \
                           $(ROOT)/src/app/control/supply_mode.c test_util.h | $(OUT)
-	$(CC) $(CFLAGS) -o $@ test_shot_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
+	$(CC) $(CFLAGS) -O2 -o $@ test_shot_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
 
 clean:
 	rm -rf $(OUT)

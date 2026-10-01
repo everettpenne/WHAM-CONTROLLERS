@@ -1,6 +1,63 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-01  —  Time-series shot (SHOT:*), interpolating generator, per-period ring table
+-----------------------------------------------------------------------
+  Change:  A shot is now uploaded as time/frequency/duty setpoints and played through a
+        ring table of per-period entries. Branch shot-profile.
+        - SHOT:BEGin / SHOT:STEP <t_us> <freq_hz> <duty_pct> / SHOT:END, SHOT:CLEar,
+          SHOT?, SHOT:POINt? <i>. First setpoint must be t=0; times strictly increase,
+          last time = shot length (<= SHOT_MAX_DURATION_US, 1 s); >= 2 and <=
+          SHOT_SETPOINT_MAX (500) setpoints. Frequency (Hz, 3 decimals) and duty (%, 2
+          decimals) are checked per setpoint against the supply mode (ERR 10).
+        - shot_profile.c: storage, validation and the generator. Linear in time between
+          setpoints, one {per, cmp} entry per switching period, all integer math (Q32
+          slopes, a 32-bit-divide-only round(CLK*1000/f)), clamped onto the mode's exact
+          integer limits. Host-tested (tests/test_shot_profile.c, 22,017 checks incl. the
+          division against the 64-bit formula at 79,175 frequencies in both modes) and
+          ported exactly to Python (pfm_shot_test.py generate_profile(), held to the C
+          golden values by its selftest).
+        - pfm.c: the table is a ring (PFM_TABLE_SIZE); head/tail counters with one writer
+          each, so the per-period interrupt (priority 1) preempts the refill (priority 2,
+          the unused FMAC vector as a software interrupt, mcu.h Mcu_RefillIrqPend())
+          without a lock. The ring is filled inside FIRE before the first period. An
+          empty ring before the shot is over stops the shot and latches a fault (new
+          source for FAULT GENERAL; FAULT:SOURces? reports PC10/GATEDRV/TABLE/TEST).
+          TABle:* stays as a <=PFM_TABLE_SIZE bench path; the last upload to finish is
+          what FIRE plays.
+        - ctrlr_config.h: SHOT_SETPOINT_MAX 500, SHOT_MAX_DURATION_US 1 s, PFM_TABLE_SIZE
+          (compile-time, with #error range checks). The old 5000-entry table (40 kB) is
+          gone; RAM is 42.8 kB of 128 kB with the default ring.
+        - PFM:DIAG? grew: interrupt busy cycles, ring minimum, refills, entries generated,
+          refill wall time, fill time. pfm_shot_test.py / pfm_edge_test.py now upload
+          SHOT:* (--duration-ms); pfm_table_upload.py is marked legacy.
+  Verified on the simulator: command rules and limits (all of them, plus 500 setpoints
+        and the ERR 3 beyond); a 176-period HVPS ramp played exactly as the Python
+        generator predicted (residual -1 tick, duty movement +3335 programmed = +3335
+        measured); 1 s shots, 20,000-125,000 periods, in both modes and across ramps;
+        every 10 ms LIMITER worst case with the 1,300 ring.
+  FINDING, shapes the default: the project builds at -O0 (CubeIDE Debug). The refill gets
+        only the CPU the per-period interrupt leaves. Measured: the interrupt body costs
+        ~590 cycles with nothing to apply and ~1,270 when every period applies a step; the
+        generator started at ~1,620 cycles per entry. Done here, narrowly and measured at
+        each step: generator + FillRing at -O2 (pragma/attribute; the pure logic is
+        host-tested identically), a 3-divide period computation (240 cycles per entry),
+        the playback path (PFM_CycleBoundaryHandler/ApplyCurrentStep, HRTIM1_Master_
+        IRQHandler, HRTIM1_ApplyPfmStep and its register-address helpers) at -O2. Result:
+        with a 100-entry ring, HVPS is fine everywhere and LIMITER shots that change nothing
+        or change slowly are fine to 125 kHz, but a step applied EVERY period (a duty or
+        frequency ramp) is sustainable by refill only to ~80 kHz (duty 20->80 %: 75 kHz ok,
+        85 kHz stopped at 468 of 850 periods, 95 kHz at 177). A 600-entry ring covered
+        125->75.5 kHz but not duty 5<->95 % at 125 kHz; 1,300 entries (10 ms at 125 kHz =
+        1,250 periods) held every worst case, so that is the default (it was 100 as first
+        requested: the Limiter is the PWM supply, where duty ramps above 80 kHz are the
+        main use). 1 s at 125 kHz constant finished with the ring's low-water mark at 1:
+        no margin. NOT changed: the project-wide optimization level (a decision with
+        effects on all the timing-critical HRTIM code); a global -O2/-Os build is the real
+        lever for a smaller ring.
+  Not fixed: the HRTIM register writes of a step (~680 cycles at -O2) remain the per-step
+        cost; profiling them is the next step if a small ring is wanted for the Limiter.
+
 2026-09-30  —  PFM_Input capture rewritten: bounded DMA into the result array (fixes capture loss at high rate)
 -----------------------------------------------------------------------
   Symptom: from 100 kHz up, inputs 3 and 4 (TIM5) lost most of a both-edge shot

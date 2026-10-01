@@ -88,6 +88,7 @@ static const scpi_command_t command_table[] = {
     { "DISARM",              cmd_disarm       },
     { "STATE?",              cmd_state_query  },
     { "GENERAL:TEST:FAULT",  cmd_general_test_fault },
+    { "FAULT:SOURces?",      cmd_fault_sources_query },
     { "FAULT:CLEar",         cmd_fault_clear  },
 
     /* Raw GateDriverStatus_01..12 (PE0..PE11) diagnostic readback --

@@ -93,6 +93,12 @@ static const uint32_t kMasterCompareUnit[5] = {
     HRTIM_COMPAREUNIT_1, HRTIM_COMPAREUNIT_2, HRTIM_COMPAREUNIT_3, HRTIM_COMPAREUNIT_4
 };
 
+/* This function, HRTIM1_ApplyPfmStep() and the register-address helpers below it are
+   compiled at -O2 although the project builds at -O0: they run every switching period
+   (the per-step apply), and at -O0 their call overhead alone took a large share of a
+   1,360-cycle period at 125 kHz (docs/changelog.txt, 2026-10-01). Same register
+   writes in the same order. */
+__attribute__((optimize("O2")))
 static uint16_t HRTIM1_ClampCompare(uint16_t cmp, uint16_t per)
 {
     uint16_t maxCmp;
@@ -944,6 +950,7 @@ void HRTIM1_SoftwareUpdate(void)
     hhrtim1.Instance->sCommonRegs.CR2 |= updateMask;
 }
 
+__attribute__((optimize("O2")))
 void HRTIM1_ApplyPfmStep(uint16_t per,
                          const uint16_t *cmp,
                          const uint16_t *phase)
@@ -984,11 +991,13 @@ void HRTIM1_ApplyPfmStep(uint16_t per,
     }
 }
 
+__attribute__((optimize("O2")))
 volatile uint32_t *HRTIM1_GetMasterPerRegAddress(void)
 {
     return (volatile uint32_t *)&(HRTIM1->sMasterRegs.MPER);
 }
 
+__attribute__((optimize("O2")))
 volatile uint32_t *HRTIM1_GetMasterCmpRegAddress(uint8_t masterCompareUnit)
 {
     switch (masterCompareUnit)
@@ -1004,11 +1013,13 @@ volatile uint32_t *HRTIM1_GetMasterCmpRegAddress(uint8_t masterCompareUnit)
     }
 }
 
+__attribute__((optimize("O2")))
 volatile uint32_t *HRTIM1_GetTimerPerRegAddress(uint8_t channel)
 {
     return (volatile uint32_t *)&(HRTIM1->sTimerxRegs[channel].PERxR);
 }
 
+__attribute__((optimize("O2")))
 volatile uint32_t *HRTIM1_GetTimerCmp1RegAddress(uint8_t channel)
 {
     return (volatile uint32_t *)&(HRTIM1->sTimerxRegs[channel].CMP1xR);

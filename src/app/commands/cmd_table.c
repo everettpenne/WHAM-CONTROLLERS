@@ -285,7 +285,7 @@ void cmd_fire(uart_instance_t *inst, char *args)
  * -------------------------------------------------------------------------- */
 void cmd_pfm_diag(uart_instance_t *inst, char *args)
 {
-    char buf[144];
+    char buf[192];
     uint32_t callCount;
     uint32_t maxGapCycles;
     uint32_t busyMax;
@@ -293,19 +293,23 @@ void cmd_pfm_diag(uart_instance_t *inst, char *args)
     uint32_t minReady;
     uint32_t refills;
     uint32_t produced;
+    uint32_t refillWall;
+    uint32_t refillWallMax;
+    uint32_t prefill;
     (void)args;
 
     PFM_GetDiagCounters(&callCount, &maxGapCycles);
     PFM_GetDiagBusy(&busyMax, &busySum);
-    PFM_GetDiagRing(&minReady, &refills, &produced);
+    PFM_GetDiagRing(&minReady, &refills, &produced, &refillWall, &refillWallMax, &prefill);
 
     /* 170 MHz CPU clock -- see this function's own doc comment. */
     uint32_t maxGapUs = maxGapCycles / 170U;
 
-    snprintf(buf, sizeof(buf), "OK %lu %lu %lu %lu %lu %lu %lu %lu\r\n",
+    snprintf(buf, sizeof(buf), "OK %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\r\n",
              (unsigned long)callCount, (unsigned long)maxGapCycles,
              (unsigned long)maxGapUs, (unsigned long)busyMax, (unsigned long)busySum,
-             (unsigned long)minReady, (unsigned long)refills, (unsigned long)produced);
+             (unsigned long)minReady, (unsigned long)refills, (unsigned long)produced,
+             (unsigned long)refillWall, (unsigned long)refillWallMax, (unsigned long)prefill);
     uart_send(inst, buf);
 }
 

@@ -350,6 +350,17 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
   confirms the new QUADSPI hardware itself (pins, traces, the
   W25Q128JVS) is correctly wired and responding, not just that the
   firmware compiles.
+- **Shot = time series of setpoints (2026-10-01)**: `SHOT:BEGin/STEP/END`
+  (`cmd_shot.c`), `shot_profile.c` holds them and the generator that walks the curve
+  one switching period at a time into the per-period RING table in `pfm.c`
+  (`PFM_TABLE_SIZE`, refilled by a priority-2 software interrupt; an empty ring before
+  the shot ends is a latched fault, `FAULT:SOURces?` TABLE=1). First setpoint must be
+  t=0, linear ramps between setpoints, limits checked per setpoint. Sizes are
+  `ctrlr_config.h` constants and the default ring (1,300) is sized from measurements,
+  not taste: see the comment there and docs/changelog.txt 2026-10-01 before shrinking
+  it. The project builds at -O0; the generator and the per-period path are compiled at
+  -O2 with attributes -- keep that, it is what makes the numbers hold. The generator is
+  ported exactly in `pfm_shot_test.py generate_profile()`; change both together.
 - **PFM_Input capture design (2026-09-30)**: bounded NORMAL-mode DMA straight into
   the per-channel result array (`pfm_input.c`), started just BEFORE the outputs;
   no per-edge or per-chunk CPU work. `PFMIN:EDGes <ch> RISING|BOTH` selects raw

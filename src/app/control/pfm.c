@@ -33,11 +33,15 @@ static volatile uint32_t g_ringHead = 0U;
 static volatile uint32_t g_ringTail = 0U;
 static volatile uint8_t  g_genDone  = 1U;
 static volatile uint8_t  g_underrun = 0U;
+static volatile uint8_t  g_refillPended = 0U;   /* a refill is pended or running: don't pend again every period */
 static PFM_Source_t      g_source   = PFM_SOURCE_TABLE;
 
 static uint32_t g_diagMinReady = 0U;
 static uint32_t g_diagRefills  = 0U;
 static uint32_t g_diagProduced = 0U;
+static uint32_t g_diagRefillWall    = 0U;   /* cycles from refill entry to exit, summed (includes preemption) */
+static uint32_t g_diagRefillWallMax = 0U;
+static uint32_t g_diagPrefillCycles = 0U;   /* PFM_Restart()'s prefill, interrupts masked: the pure cost of the generator */   /* longest single refill run, same measure */
 
 /* --------------------------------------------------------------------------
  * Diagnostic: real inter-call timing for PFM_CycleBoundaryHandler(),
@@ -196,6 +200,11 @@ void PFM_Init(void)
 static PFM_Step_t g_lastAppliedStep;
 static uint8_t    g_lastAppliedValid = 0U;
 
+/* The per-period playback path (this, CycleBoundaryBody() and its wrapper) is
+   compiled at -O2 although the project is built at -O0: it runs every period, and
+   at -O0 it cost ~800 cycles of a 1,360-cycle period at 125 kHz, starving the
+   refill interrupt (docs/changelog.txt, 2026-10-01). */
+__attribute__((optimize("O2")))
 void PFM_ApplyCurrentStep(void)
 {
     const PFM_Step_t *pStep = &g_pfmTable[g_pfmIndex];
@@ -226,6 +235,7 @@ void PFM_ApplyCurrentStep(void)
 
 static void CycleBoundaryBody(void);
 
+__attribute__((optimize("O2")))
 void PFM_CycleBoundaryHandler(void)
 {
     uint32_t t0 = Mcu_CycleCount();
@@ -238,6 +248,7 @@ void PFM_CycleBoundaryHandler(void)
     }
 }
 
+__attribute__((optimize("O2")))
 static void CycleBoundaryBody(void)
 {
     /* Diagnostic instrumentation -- first thing in this function, on
@@ -297,9 +308,9 @@ static void CycleBoundaryBody(void)
             PFM_ForceStop();
             return;
         }
-        if (ready < g_diagMinReady)
+        if ((g_genDone == 0U) && (ready < g_diagMinReady))
         {
-            g_diagMinReady = ready;
+            g_diagMinReady = ready;   /* only while the generator runs: the drain at the end is not a near-miss */
         }
     }
 
@@ -331,8 +342,9 @@ static void CycleBoundaryBody(void)
                needs its own explicit call here as well. */
             PfmInput_OnShotEnd();
         }
-        else if ((g_genDone == 0U) && (ready <= (PFM_TABLE_SIZE / 2U)))
+        else if ((g_genDone == 0U) && (g_refillPended == 0U) && (ready <= (PFM_TABLE_SIZE / 2U)))
         {
+            g_refillPended = 1U;
             Mcu_RefillIrqPend();   /* half the ring is free: top it up */
         }
     }
@@ -341,6 +353,8 @@ static void CycleBoundaryBody(void)
 /* Appends generator entries until the ring is full or the shot's curve is
    exhausted. Single producer: PFM_RefillHandler() and, with interrupts masked,
    PFM_Restart(). */
+/* -O2 for the same reason as shot_profile.c: this loop is the refill's per-entry cost. */
+__attribute__((optimize("O2")))
 static void FillRing(void)
 {
     while ((g_genDone == 0U) && ((g_ringHead - g_ringTail) < PFM_TABLE_SIZE))
@@ -371,8 +385,23 @@ static void FillRing(void)
 
 void PFM_RefillHandler(void)
 {
+    uint32_t t0;
+    uint32_t wall;
+
+    if (g_pfmState != PFM_STATE_RUNNING)
+    {
+        return;   /* a refill pended before the shot stopped (end, fault, underrun): nothing to play it into */
+    }
+    t0 = Mcu_CycleCount();
     g_diagRefills++;
+    g_refillPended = 0U;   /* cleared first: a period that finds the ring low while this runs pends the next run */
     FillRing();
+    wall = Mcu_CycleCount() - t0;
+    g_diagRefillWall += wall;
+    if (wall > g_diagRefillWallMax)
+    {
+        g_diagRefillWallMax = wall;
+    }
 }
 
 void PFM_SelectSource(PFM_Source_t source)
@@ -401,11 +430,15 @@ void PFM_ClearUnderrun(void)
     g_underrun = 0U;
 }
 
-void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced)
+void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced,
+                     uint32_t *refillWallCycles, uint32_t *refillWallMaxCycles, uint32_t *prefillCycles)
 {
     if (minReady != NULL) { *minReady = g_diagMinReady; }
     if (refills != NULL)  { *refills  = g_diagRefills; }
     if (produced != NULL) { *produced = g_diagProduced; }
+    if (refillWallCycles != NULL)    { *refillWallCycles = g_diagRefillWall; }
+    if (refillWallMaxCycles != NULL) { *refillWallMaxCycles = g_diagRefillWallMax; }
+    if (prefillCycles != NULL)       { *prefillCycles = g_diagPrefillCycles; }
 }
 
 void PFM_Restart(void)
@@ -415,14 +448,21 @@ void PFM_Restart(void)
     g_pfmIndex = 0U;
     g_holdCounter = 0U;
     g_ringTail = 0U;
+    g_refillPended = 0U;
     g_diagMinReady = 0xFFFFFFFFU;
     g_diagRefills  = 0U;
     g_diagProduced = 0U;
+    g_diagRefillWall = 0U;
+    g_diagRefillWallMax = 0U;
     if (g_source == PFM_SOURCE_PROFILE)
     {
         g_ringHead = 0U;
         g_genDone  = (ShotGen_Start(PFM_HOLD_PERIODS) != 0U) ? 0U : 1U;
-        FillRing();               /* the whole ring is ready before the first period */
+        {
+            uint32_t t0 = Mcu_CycleCount();
+            FillRing();           /* the whole ring is ready before the first period */
+            g_diagPrefillCycles = Mcu_CycleCount() - t0;
+        }
     }
     else
     {

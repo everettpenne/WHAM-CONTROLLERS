@@ -88,6 +88,14 @@ void SM_PollFaults(void);
    fault path). A no-op if already in FAULT. */
 void SM_ReportGeneralFault(void);
 
+/* Which sources currently hold a fault latched, as a bit mask -- the cause behind
+   the single FAULT GENERAL state (FAULT:SOURces?). */
+#define SM_FAULT_SRC_PC10       (0x01U)   /* PC10 / HRTIM1_FLT6 hardware fault input */
+#define SM_FAULT_SRC_GATEDRV    (0x02U)   /* a GateDriverStatus input */
+#define SM_FAULT_SRC_UNDERRUN   (0x04U)   /* the per-period table ran empty (pfm.h) */
+#define SM_FAULT_SRC_TEST       (0x08U)   /* GENERAL:TEST:FAULT */
+uint8_t SM_GetFaultSources(void);
+
 /* FAULT -> IDLE if both fault sources clear (each re-checks its physical
    input). Returns 1 if the state is now IDLE, 0 if it stays FAULT or was
    not in FAULT. */

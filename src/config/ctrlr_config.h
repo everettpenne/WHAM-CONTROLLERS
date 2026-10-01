@@ -183,14 +183,32 @@
  *   SHOT_MAX_DURATION_US  longest shot, and the largest time a setpoint may
  *                         have. Open-loop shots run from about 10 ms to 1 s.
  *   PFM_TABLE_SIZE        the per-period ring (pfm.h), 8 bytes per entry.
- *                         Even; each half is refilled while the other plays,
- *                         so the refill has (PFM_TABLE_SIZE / 2) periods --
- *                         400 us at 125 kHz with 100 entries -- to run.
- *                         Also the longest table TABle:* can upload directly.
+ *                         Even. Also the longest table TABle:* can upload
+ *                         directly.
+ *
+ * Sizing PFM_TABLE_SIZE (measured on the simulator, docs/changelog.txt
+ * 2026-10-01). The ring is filled before the first period and refilled by a
+ * low-priority interrupt that gets only the CPU the per-period interrupt
+ * leaves. That interrupt costs ~590 cycles per period when it has nothing to
+ * apply and ~1,270 when every period changes the period or a compare (a ramp);
+ * the refill needs ~240 cycles per entry. A period is 1,360 cycles at 125 kHz,
+ * so:
+ *   - HVPS (10-30 kHz): any size works, 1 s shots included (100 is enough).
+ *   - LIMITER, constant or slowly varying: refilled fine up to 125 kHz.
+ *   - LIMITER with a step applied EVERY period (a duty or frequency ramp):
+ *     sustainable by refill alone only up to ~80 kHz. Above that the refill
+ *     falls behind, the ring runs empty and the shot is stopped with a fault
+ *     (FAULT:SOURces? TABLE=1). The ring then has to hold most of the shot:
+ *     10 ms at 125 kHz is 1,250 periods, so 1,300 entries (10.4 kB), tested on
+ *     every worst case (duty 5<->95 % at 125 kHz, 125->75.5 kHz ramps, ...):
+ *     the whole shot is generated before the first period.
+ * 1,300 is the default for that reason. A build for HVPS only can set 100 and
+ * save 9.6 kB; RAM is 42.8 kB of 128 kB used at 1,300. Filling the ring takes
+ * ~240 cycles per entry with interrupts masked inside FIRE (1.8 ms at 1,300).
  * -------------------------------------------------------------------------- */
 #define SHOT_SETPOINT_MAX        (500U)
 #define SHOT_MAX_DURATION_US     (1000000UL)
-#define PFM_TABLE_SIZE           (100U)
+#define PFM_TABLE_SIZE           (1300U)
 
 #if (SHOT_SETPOINT_MAX < 2U) || (SHOT_SETPOINT_MAX > 5000U)
 #error "SHOT_SETPOINT_MAX must be 2..5000"

@@ -6,6 +6,16 @@
 #include "hrtim.h"
 #include <stddef.h>
 
+/* This firmware is built at -O0 (CubeIDE's Debug configuration). The generator
+   runs in the refill interrupt, which only gets the CPU the per-period interrupt
+   leaves; at -O0 it cost 1,600-2,100 cycles per entry and the refill fell behind
+   the playback above ~75 kHz (measured on the simulator, docs/changelog.txt
+   2026-10-01). This file is pure integer logic, host-tested identically, so it is
+   compiled at -O2 whatever the project's level. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize ("O2")
+#endif
+
 #define TICKS_PER_US   ((uint64_t)(HRTIM_TIMER_CLK_HZ / 1000000UL))
 
 static shot_setpoint_t g_sp[SHOT_SETPOINT_MAX];
@@ -157,6 +167,42 @@ uint8_t ShotProfile_ParseScaled(const char *text, uint8_t decimals, uint32_t *ou
 
 /* ---- generator ---- */
 
+/* The period in HRTIM clocks for a frequency in millihertz: round(CLK * 1000 / f),
+   exactly -- the same value as (CLK * 1000 + f / 2) / f in 64-bit arithmetic, which
+   the host port uses. Done with the core's 32-bit hardware divide only: the refill
+   (a low-priority interrupt that gets only what the per-period interrupt leaves)
+   runs this once per entry and fell behind the playback above ~75 kHz when it was
+   a 64-bit division. Needs f < 2^27 (134 kHz; checked below against the highest
+   limit). */
+#if (LIMITER_FREQ_MAX_HZ * 1000UL) >= (1UL << 27) || (HVPS_FREQ_MAX_HZ * 1000UL) >= (1UL << 27)
+#error "PeriodClocks() needs every mode's maximum frequency below 134 kHz (see shot_profile.c)"
+#endif
+static uint32_t PeriodClocks(uint32_t fMilliHz)
+{
+    /* N = CLK * 1000 = top * 2^10 + low, with `top` held in 32 bits (N < 2^42): one
+       divide for the top, then the remaining ten bits two at a time in 5-bit chunks
+       (the remainder is below f < 2^27, so remainder * 32 + chunk fits 32 bits).
+       Three hardware divides in all, the same exact quotient as a long division. */
+    const uint64_t n = (uint64_t)HRTIM_TIMER_CLK_HZ * 1000U;
+    const uint32_t top = (uint32_t)(n >> 10);
+    const uint32_t c1 = (uint32_t)((n >> 5) & 31U);
+    const uint32_t c0 = (uint32_t)(n & 31U);
+    uint32_t q = top / fMilliHz;
+    uint32_t r = top % fMilliHz;
+
+    r = (r << 5) | c1;
+    q = (q << 5) + r / fMilliHz;
+    r = r % fMilliHz;
+    r = (r << 5) | c0;
+    q = (q << 5) + r / fMilliHz;
+    r = r % fMilliHz;
+    if ((2U * (uint64_t)r) >= fMilliHz)
+    {
+        q++;
+    }
+    return q;
+}
+
 typedef struct
 {
     uint8_t  active;
@@ -224,7 +270,7 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
     uint64_t elapsed;
     int64_t  f;
     int64_t  d;
-    uint64_t per1;
+    uint32_t per1;
     uint32_t perV;
     uint32_t cmpV;
     uint32_t cmpLo;
@@ -250,7 +296,7 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
     d = (int64_t)g.d0 + ((g.slopeD * (int64_t)elapsed) >> 32);
 
     /* period in clocks = round(CLK / f), f in millihertz */
-    per1 = (((uint64_t)HRTIM_TIMER_CLK_HZ * 1000U) + (uint64_t)f / 2U) / (uint64_t)f;
+    per1 = PeriodClocks((uint32_t)f);
     if (per1 < g.per1Min)
     {
         per1 = g.per1Min;
@@ -259,7 +305,7 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
     {
         per1 = g.per1Max;
     }
-    perV = (uint32_t)per1 - 1U;
+    perV = per1 - 1U;
 
     /* compare = round(duty * per); then onto the mode's exact integer limits
        (the same relation SupplyMode_CheckStep() uses: cmp*100 against pct*per). */
@@ -277,7 +323,7 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
 
     *per = (uint16_t)perV;
     *cmp = (uint16_t)cmpV;
-    g.tick += per1 * g.periodsPerEntry;
+    g.tick += (uint64_t)per1 * g.periodsPerEntry;
     *last = (g.tick >= end) ? 1U : 0U;
     if (*last != 0U)
     {

@@ -155,8 +155,12 @@ void    PFM_ClearUnderrun(void);
 
 /* Ring diagnostics of the last shot: the fewest entries ready at any period
    (0 would be an underrun), the number of refill interrupts that ran, and the
-   entries generated. */
-void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced);
+   entries generated, and how long the refill runs took in wall-clock cycles
+   (summed, and the longest one -- they include the time the per-period
+   interrupt preempted them). minReady is counted only while the generator is
+   still running (0xFFFFFFFF if it never was: a shot shorter than the ring). */
+void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced,
+                     uint32_t *refillWallCycles, uint32_t *refillWallMaxCycles, uint32_t *prefillCycles);
 
 void PFM_Init(void);
 void PFM_ApplyCurrentStep(void);
