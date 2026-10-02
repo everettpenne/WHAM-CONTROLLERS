@@ -596,6 +596,8 @@ FLOAT_SETTING(cmd_config_fb_offset,  Control_SetFeedbackOffset, Control_GetFeedb
               "offset must be 0 to the ADC full scale")
 FLOAT_SETTING(cmd_config_fb_range,   Control_SetFeedbackRange, Control_GetFeedbackRange, 3U, "CONFig:FEEDback:RANGE <Vmax in process volts>",
               "Vmax must be > 0 and <= 100000")
+FLOAT_SETTING(cmd_config_fb_dacratio, Control_SetDacRatio, Control_GetDacRatio, 4U, "CONFig:FEEDback:DACRatio <ADC volts per DAC volt>",
+              "DAC ratio must be 0.05 to 2")
 FLOAT_SETTING(cmd_config_fb_filter,  Control_SetFeedbackFilterHz, Control_GetFeedbackFilterHz, 1U, "CONFig:FEEDback:FILTer <cutoff Hz, 0 = off>",
               "cutoff must be 0 or below half the tick rate")
 FLOAT_SETTING(cmd_config_fb_clip,    Control_SetClipMs, Control_GetClipMs, 1U, "CONFig:FEEDback:CLIPTime <ms, 0 = off>",
@@ -750,14 +752,15 @@ void cmd_config_fb_source(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:SOURce ADC|SIM");
+        SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:SOURce ADC|SIM|DAC");
         return;
     }
     if (strcasecmp(tok, "ADC") == 0)        { sim = 0U; }
     else if (strcasecmp(tok, "SIM") == 0)   { sim = 1U; }
+    else if (strcasecmp(tok, "DAC") == 0)   { sim = 2U; }
     else
     {
-        SendErr(inst, ERR_INVALID_ARGS, "source must be ADC or SIM");
+        SendErr(inst, ERR_INVALID_ARGS, "source must be ADC, SIM or DAC");
         return;
     }
     ReplySet(inst, Control_SetFeedbackSim(sim), "bad source");
@@ -766,7 +769,12 @@ void cmd_config_fb_source(uart_instance_t *inst, char *args)
 void cmd_config_fb_source_query(uart_instance_t *inst, char *args)
 {
     (void)args;
-    uart_send(inst, (Control_GetFeedbackSim() != 0U) ? "OK SIM\r\n" : "OK ADC\r\n");
+    switch (Control_GetFeedbackSim())
+    {
+        case 1U:  uart_send(inst, "OK SIM\r\n"); break;
+        case 2U:  uart_send(inst, "OK DAC\r\n"); break;
+        default:  uart_send(inst, "OK ADC\r\n"); break;
+    }
 }
 
 /* ---- SIM:PLANT:* : the simulated supply's parameters ---- */

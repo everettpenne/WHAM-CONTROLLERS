@@ -1,6 +1,23 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-02  —  Closed loop on the real ADC path: CONFig:FEEDback:SOURce DAC (hardware in the loop), first real-ADC run
+-----------------------------------------------------------------------
+  Bench: DAC PA5 -> buffer amplifier(s) with a divider -> ADC PA1 (AnalogIn_02). Sweep after the amplifier was fixed: PA1 =
+  0.552 x DAC (+18 mV at 0 V), linear to 11 mV, 1.60 V at the DAC's 2.9 V; the other five inputs read 0. (Earlier iterations of this
+  wiring read 0.47 x DAC, a constant 1.66 V, and all-mid-rail; PA1 confirmed as ADC:INPut? 2 with a known voltage for the first time.)
+  The loop's actuator is the HRTIM output, which the DAC is not connected to, so a real-ADC test needs the plant emulated:
+        CONFig:FEEDback:SOURce DAC   each tick the firmware plant model (SIM:PLANT:*) computes the supply voltage, puts it on
+                                     DAC PA5 (process volts -> ADC volts by the feedback calibration -> DAC volts by DACRatio),
+                                     and the loop reads the REAL ADC input; the ADC, the amplifier path and the loop are real,
+                                     only the supply is a model. It reaches the ADC one tick later than SOURce SIM would.
+        CONFig:FEEDback:DACRatio <x> ADC volts per DAC volt of the loopback (default 0.5, 0.05-2; 0.552 measured here)
+  Run: Limiter, SCALE 1 / OFFSet 0.8 (the amplifier path only reaches 1.6 V at the ADC, so zero sits at 0.8 V), plant and model
+  VSCALE 0.7, gains 214.286 / 8571.429, a +-0.5 V triangle (12.5 ms/ramp, 100 ms). Ended IDLE, no fault; tracking error 30 mV rms,
+  43 mV max after 5 ms; the error is the usual constant ramp lag of a PI loop (about +-30 mV, sign flipping with the slope),
+  not noise. Duty swung 6.9-93.4 % (the model says 14-86 %): the real path's gain/delay differs from the model, which the loop
+  absorbed. Logged with LOG:ARM/LOG:DATA? and plotted (demand vs feedback). Not yet done on this path: HVPS.
+
 2026-10-02  —  Bipolar feedback range (CONFig:FEEDback:RANGE) and the dead-feedback-line fault; the bench fault was miscabling
 -----------------------------------------------------------------------
   The "every shot ends in FAULT GENERAL (PE0/PE8 high)" bench problem recorded in the entry below was a MISCABLING on the

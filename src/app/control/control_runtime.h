@@ -81,7 +81,9 @@ ctl_set_result_t Control_SetFeedbackRange(float vmax);               /* bipolar 
 float            Control_GetFeedbackRange(void);                     /* process volts at the top of the ADC range */
 ctl_set_result_t Control_SetFeedbackFilterHz(float hz);              /* 0 = off */
 float            Control_GetFeedbackFilterHz(void);
-ctl_set_result_t Control_SetFeedbackSim(uint8_t sim);                /* 0 ADC, 1 simulated plant */
+ctl_set_result_t Control_SetFeedbackSim(uint8_t sim);                /* 0 ADC, 1 simulated plant, 2 plant through the DAC (PA5) and the real ADC */
+ctl_set_result_t Control_SetDacRatio(float ratio);                   /* ADC volts per DAC volt of the DAC loopback, 0.05-2 */
+float            Control_GetDacRatio(void);
 uint8_t          Control_GetFeedbackSim(void);
 
 ctl_set_result_t Control_SetMaxVolts(float volts);

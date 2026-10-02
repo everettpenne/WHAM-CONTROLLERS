@@ -568,7 +568,8 @@ ends when the target ends: the HRTIM outputs are disabled at a period boundary.
 | `RANGE <Vmax>` | sets scale and offset for a bipolar output: -Vmax -> 0 V at the ADC, +Vmax -> full scale, zero at mid-scale (offset = vref/2, scale = 2 Vmax / vref). `RANGE?` returns the process volts at the top of the ADC range. |
 | `FILTer <Hz>` | low-pass on the measurement (0 = off); the overvoltage check ignores it |
 | `CLIPTime <ms>` | how long the ADC may sit at either end of its range before a fault (10 ms; 0 = off) |
-| `SOURce ADC\|SIM` | the real ADC input, or the firmware's simulated plant (nothing wired) |
+| `SOURce ADC\|SIM\|DAC` | the real ADC input; the firmware's simulated plant (nothing wired); or `DAC`, hardware in the loop: the plant model's voltage goes out on DAC PA5 and comes back through the board's amplifier into the real ADC input (one tick later) |
+| `DACRatio <x>` | for `SOURce DAC`: ADC volts per DAC volt of that loopback (0.05-2, default 0.5; measured 0.552 on the bench) |
 
 The Limiter's output swings -Vmax..+Vmax and the ADC reads only 0 to `ANALOG_VREF_MV`, so
 its divider is expected to put zero volts at mid-scale; `CONFig:FEEDback:RANGE 900` is the

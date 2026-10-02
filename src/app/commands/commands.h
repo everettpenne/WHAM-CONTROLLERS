@@ -220,6 +220,8 @@ void cmd_config_fb_offset(uart_instance_t *inst, char *args);            /* CONF
 void cmd_config_fb_offset_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:OFFSet? */
 void cmd_config_fb_range(uart_instance_t *inst, char *args);             /* CONFig:FEEDback:RANGE */
 void cmd_config_fb_range_query(uart_instance_t *inst, char *args);       /* CONFig:FEEDback:RANGE? */
+void cmd_config_fb_dacratio(uart_instance_t *inst, char *args);          /* CONFig:FEEDback:DACRatio */
+void cmd_config_fb_dacratio_query(uart_instance_t *inst, char *args);    /* CONFig:FEEDback:DACRatio? */
 void cmd_config_fb_filter(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:FILTer */
 void cmd_config_fb_filter_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:FILTer? */
 void cmd_config_fb_clip(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:CLIPTime */

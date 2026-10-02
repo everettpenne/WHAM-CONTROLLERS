@@ -4,6 +4,7 @@
 #include "control_runtime.h"
 #include "ctrlr_config.h"
 #include "adc.h"
+#include "dac.h"
 #include "pfm.h"
 #include "state_machine.h"
 #include "supply_mode.h"
@@ -19,7 +20,9 @@ static sim_plant_t   g_sim;
 
 static uint8_t  g_loopMode = 0U;
 static uint8_t  g_fbChannel = 1U;                 /* PA1 = AnalogIn_02, the default feedback */
-static uint8_t  g_fbSim = 0U;
+static uint8_t  g_fbSim = 0U;                     /* 0 ADC, 1 simulated plant, 2 plant through the DAC and the real ADC */
+static float    g_dacRatio = 0.5f;                /* ADC volts per DAC volt of the DAC -> amplifier -> ADC loopback */
+#define DAC_PLANT_CHANNEL        (1U)       /* PA5 = AnalogOut_02 */
 static float    g_fbFilterHz = 0.0f;
 static float    g_clipMs = 10.0f;
 static uint32_t g_rateHz = CONTROL_RATE_HZ_DEFAULT;
@@ -49,6 +52,17 @@ static void ApplyFilter(void)
     Feedback_SetFilter(&g_cl.fb, g_fbFilterHz, g_cl.dt);
 }
 
+/* Puts the plant's output voltage on the DAC such that the feedback input sees what it would from the real
+   supply: process volts -> ADC volts (the feedback calibration, inverted) -> DAC volts (the loopback's gain). */
+static void SetDacFromPlant(float processVolts)
+{
+    float dacV = (processVolts / g_cl.fb.scale + g_cl.fb.offsetV) / g_dacRatio;
+
+    if (dacV < 0.0f) { dacV = 0.0f; }
+    if (dacV > (float)ANALOG_VREF_MV / 1000.0f) { dacV = (float)ANALOG_VREF_MV / 1000.0f; }
+    (void)Dac_SetMilliVolts(DAC_PLANT_CHANNEL, (uint16_t)(dacV * 1000.0f + 0.5f));
+}
+
 /* One control tick. Runs in the ADC DMA interrupt (priority 2). */
 static void OnBlock(const float *means)
 {
@@ -66,7 +80,7 @@ static void OnBlock(const float *means)
         g_skip = 0U;
         return;
     }
-    if (g_fbSim != 0U)
+    if (g_fbSim == 1U)
     {
         /* the plant model answers the step the controller commanded last; its voltage goes through the
            inverse of the feedback calibration so the loop sees what an ADC would read */
@@ -79,6 +93,13 @@ static void OnBlock(const float *means)
     }
     else
     {
+        if (g_fbSim == 2U)
+        {
+            /* hardware in the loop: the plant model's output goes out on the DAC and comes back through the
+               real feedback path (an amplifier/divider into the ADC input), so the ADC, the board and the loop
+               are all real; only the supply is a model. It reaches the ADC one tick later. */
+            SetDacFromPlant(SimPlant_Step(&g_sim, (g_cl.plant == CL_PLANT_LIMITER) ? 1U : 0U, g_lastPer, g_lastCmp, g_cl.dt));
+        }
         code = means[g_fbChannel];
     }
 
@@ -160,7 +181,7 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
     {
         return CTL_NO_TARGET;
     }
-    if (g_fbSim == 0U)
+    if (g_fbSim != 1U)
     {
         uint16_t code = 0U;
         uint16_t cal = 0U;
@@ -189,6 +210,10 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
     g_lastPer = per;
     g_lastCmp = cmp;
     SimPlant_Reset(&g_sim, 0.0f);
+    if (g_fbSim == 2U)
+    {
+        SetDacFromPlant(0.0f);      /* the plant's starting voltage is on the input before the first tick */
+    }
     PFM_LiveSet(per, cmp);
     PFM_SelectSource(PFM_SOURCE_LIVE);
     if (g_logArmed != 0U)
@@ -410,8 +435,22 @@ float Control_GetFeedbackFilterHz(void)
 ctl_set_result_t Control_SetFeedbackSim(uint8_t sim)
 {
     if (g_run != 0U) { return CTL_SET_BUSY; }
-    g_fbSim = (sim != 0U) ? 1U : 0U;
+    if (sim > 2U) { return CTL_SET_RANGE; }
+    g_fbSim = sim;
     return CTL_SET_OK;
+}
+
+ctl_set_result_t Control_SetDacRatio(float ratio)
+{
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    if ((ratio < 0.05f) || (ratio > 2.0f)) { return CTL_SET_RANGE; }
+    g_dacRatio = ratio;
+    return CTL_SET_OK;
+}
+
+float Control_GetDacRatio(void)
+{
+    return g_dacRatio;
 }
 
 uint8_t Control_GetFeedbackSim(void)
