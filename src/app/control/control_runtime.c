@@ -5,6 +5,7 @@
 #include "ctrlr_config.h"
 #include "adc.h"
 #include "dac.h"
+#include "duty_meter.h"
 #include "pfm.h"
 #include "state_machine.h"
 #include "supply_mode.h"
@@ -20,7 +21,10 @@ static sim_plant_t   g_sim;
 
 static uint8_t  g_loopMode = 0U;
 static uint8_t  g_fbChannel = 1U;                 /* PA1 = AnalogIn_02, the default feedback */
-static uint8_t  g_fbSim = 0U;                     /* 0 ADC, 1 simulated plant, 2 plant through the DAC and the real ADC */
+static uint8_t  g_fbSim = 0U;                     /* 0 ADC, 1 simulated plant, 2 plant through the DAC and the real ADC, 3 loopback */
+static uint8_t  g_meterOn = 0U;                   /* the duty meter is running for a loopback run */
+static uint32_t g_noEdgeTicks = 0U;               /* consecutive ticks with no new PFM_Input_01 period */
+#define LOOPBACK_NO_SIGNAL_TICKS (200U)           /* 20 ms at 10 kHz: the output the loop is measuring has stopped */
 static float    g_dacRatio = 0.5f;                /* ADC volts per DAC volt of the DAC -> amplifier -> ADC loopback */
 #define DAC_PLANT_CHANNEL        (1U)       /* PA5 = AnalogOut_02 */
 static float    g_fbFilterHz = 0.0f;
@@ -63,6 +67,15 @@ static void SetDacFromPlant(float processVolts)
     (void)Dac_SetMilliVolts(DAC_PLANT_CHANNEL, (uint16_t)(dacV * 1000.0f + 0.5f));
 }
 
+static void ReleaseLoopback(void)
+{
+    if (g_meterOn != 0U)
+    {
+        DutyMeter_Stop();
+        g_meterOn = 0U;
+    }
+}
+
 /* One control tick. Runs in the ADC DMA interrupt (priority 2). */
 static void OnBlock(const float *means)
 {
@@ -100,6 +113,29 @@ static void OnBlock(const float *means)
                are all real; only the supply is a model. It reaches the ADC one tick later. */
             SetDacFromPlant(SimPlant_Step(&g_sim, (g_cl.plant == CL_PLANT_LIMITER) ? 1U : 0U, g_lastPer, g_lastCmp, g_cl.dt));
         }
+        else if (g_fbSim == 3U)
+        {
+            /* loopback: the plant is measured off the controller's own output. PFM_Input_01 (Phase U wired to it)
+               gives the duty the HRTIM really produced; the Limiter model turns it into a voltage, the same lag as
+               the simulated plant is the digital low-pass, and that voltage goes out on the DAC and back in through
+               the real ADC input. */
+            float duty, hz;
+
+            if (DutyMeter_Read(&duty, &hz) != 0U)
+            {
+                g_noEdgeTicks = 0U;
+            }
+            else if (++g_noEdgeTicks > LOOPBACK_NO_SIGNAL_TICKS)
+            {
+                g_run = 0U;
+                Cl_Stop(&g_cl);
+                ReleaseLoopback();
+                PFM_LiveRequestStop();
+                SM_ReportControlFault(SM_FAULT_SRC_FEEDBACK);       /* PFM_Input_01 stopped toggling: nothing to measure */
+                return;
+            }
+            SetDacFromPlant(SimPlant_StepSteady(&g_sim, SimPlant_LimiterSteady(&g_sim, duty), g_cl.dt));
+        }
         code = means[g_fbChannel];
     }
 
@@ -125,6 +161,10 @@ static void OnBlock(const float *means)
             g_run = 0U;
             SM_ReportControlFault(SM_FAULT_SRC_FEEDBACK);
             break;
+    }
+    if (g_run == 0U)
+    {
+        ReleaseLoopback();
     }
 
     if ((g_logArmed != 0U) && (g_logCount < g_logMax))
@@ -203,14 +243,24 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
             }
         }
     }
+    if (g_fbSim == 3U)
+    {
+        if ((SupplyMode_Get() != SUPPLY_MODE_LIMITER) || (DutyMeter_Start() == 0U))
+        {
+            return CTL_NO_METER;
+        }
+        g_meterOn = 1U;
+        g_noEdgeTicks = 0U;
+    }
     if (Cl_Start(&g_cl, useProfile, g_holdVolts, &per, &cmp) == 0U)
     {
+        ReleaseLoopback();
         return CTL_BAD_CONFIG;
     }
     g_lastPer = per;
     g_lastCmp = cmp;
     SimPlant_Reset(&g_sim, 0.0f);
-    if (g_fbSim == 2U)
+    if ((g_fbSim == 2U) || (g_fbSim == 3U))
     {
         SetDacFromPlant(0.0f);      /* the plant's starting voltage is on the input before the first tick */
     }
@@ -241,6 +291,7 @@ void Control_Stop(void)
     {
         PFM_LiveRequestStop();
     }
+    ReleaseLoopback();
 }
 
 uint8_t Control_IsRunning(void)
@@ -435,7 +486,7 @@ float Control_GetFeedbackFilterHz(void)
 ctl_set_result_t Control_SetFeedbackSim(uint8_t sim)
 {
     if (g_run != 0U) { return CTL_SET_BUSY; }
-    if (sim > 2U) { return CTL_SET_RANGE; }
+    if (sim > 3U) { return CTL_SET_RANGE; }
     g_fbSim = sim;
     return CTL_SET_OK;
 }

@@ -29,6 +29,7 @@ typedef enum
     CTL_BAD_CONFIG,     /* e.g. the HVPS resonance leaves no usable band */
     CTL_NO_FEEDBACK,    /* the ADC sampler is not running */
     CTL_REF_BAD,        /* VREF+ is not what ANALOG_VREF_MV says (the buffer is out of regulation) */
+    CTL_NO_METER,       /* the loopback source needs the Limiter supply mode and a free PFM_Input_01 duty meter */
     CTL_BUSY            /* a closed-loop run is in progress */
 } ctl_result_t;
 
@@ -81,7 +82,7 @@ ctl_set_result_t Control_SetFeedbackRange(float vmax);               /* bipolar 
 float            Control_GetFeedbackRange(void);                     /* process volts at the top of the ADC range */
 ctl_set_result_t Control_SetFeedbackFilterHz(float hz);              /* 0 = off */
 float            Control_GetFeedbackFilterHz(void);
-ctl_set_result_t Control_SetFeedbackSim(uint8_t sim);                /* 0 ADC, 1 simulated plant, 2 plant through the DAC (PA5) and the real ADC */
+ctl_set_result_t Control_SetFeedbackSim(uint8_t sim);                /* 0 ADC, 1 simulated plant, 2 plant through the DAC (PA5) and the real ADC, 3 loopback: duty measured on PFM_Input_01 */
 ctl_set_result_t Control_SetDacRatio(float ratio);                   /* ADC volts per DAC volt of the DAC loopback, 0.05-2 */
 float            Control_GetDacRatio(void);
 uint8_t          Control_GetFeedbackSim(void);

@@ -1,6 +1,22 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-02  —  Loopback test: the plant measured off the controller's own output (CONFig:FEEDback:SOURce LOOP)
+-----------------------------------------------------------------------
+  Bench: Phase U wired to PFM_Input_01 (PA15); DAC PA5 -> amplifier -> ADC PA1 as before. The loop commands the Limiter duty; the
+  HRTIM produces it on Phase U; the firmware measures that duty on PFM_Input_01, turns it into a voltage with the Limiter model
+  (V = gain x vscale x (2D - 1)), applies the digital low-pass (the plant model's lag, SIM:PLANT:TAU 3 ms), puts it on the DAC, and
+  the loop reads it back through the real ADC input. Everything but the supply is real.
+  New: duty_meter.h / bsp duty_meter.c -- TIM2 in PWM-input mode on PA15 (TI1FP1 resets the counter, CCR1 = period, CCR2 = high
+  time), read by polling, no interrupt, no DMA; it borrows TIM2 from the PFM_Input capture and saves/restores TIM2's registers
+  around a run (Start refuses while a capture has TIM2's DIER on). SimPlant_StepSteady / SimPlant_LimiterSteady split out of
+  SimPlant_Step. SOURce LOOP faults (FB) if no new period arrives for 20 ms, releases the meter whenever a run ends.
+  Run: Limiter, SCALE 1 / OFFSet 0.8, VSCALE 0.7, DACRatio 0.552, gains 214.286 / 8571.429, +-0.5 V triangle, 100 ms: ended IDLE,
+  no fault, error 30 mV rms / 44 mV max after 5 ms (the constant ramp lag of a PI loop plus the 3 ms plant lag). The duty ran
+  8.7-95.0 %, reaching the 95 % limit at the peaks: the 3 ms low-pass makes the loop lead it. Measured duty recovered from the logged
+  feedback (inverting the 3 ms lag) = 1.003 x commanded - 2.2 points: slope 1, a constant offset of the order of the dead time
+  (open-loop PFM_Input demos showed -1.4 points). Not a test of HVPS; PFMIN captures and this meter cannot run together.
+
 2026-10-02  —  Closed loop on the real ADC path: CONFig:FEEDback:SOURce DAC (hardware in the loop), first real-ADC run
 -----------------------------------------------------------------------
   Bench: DAC PA5 -> buffer amplifier(s) with a divider -> ADC PA1 (AnalogIn_02). Sweep after the amplifier was fixed: PA1 =

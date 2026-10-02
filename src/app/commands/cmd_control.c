@@ -156,6 +156,9 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
         case CTL_REF_BAD:
             SendErr(inst, ERR_INVALID_STATE, "VREF+ is not at ANALOG_VREF_MV (check ADC:VREF?)");
             break;
+        case CTL_NO_METER:
+            SendErr(inst, ERR_INVALID_STATE, "SOURce LOOP needs the Limiter supply mode and PFM_Input_01 free (no PFMIN capture running)");
+            break;
         default:
             SendErr(inst, ERR_INVALID_STATE, "A closed-loop run is already in progress");
             break;
@@ -752,15 +755,16 @@ void cmd_config_fb_source(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:SOURce ADC|SIM|DAC");
+        SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:SOURce ADC|SIM|DAC|LOOP");
         return;
     }
     if (strcasecmp(tok, "ADC") == 0)        { sim = 0U; }
     else if (strcasecmp(tok, "SIM") == 0)   { sim = 1U; }
     else if (strcasecmp(tok, "DAC") == 0)   { sim = 2U; }
+    else if (strcasecmp(tok, "LOOP") == 0)  { sim = 3U; }
     else
     {
-        SendErr(inst, ERR_INVALID_ARGS, "source must be ADC, SIM or DAC");
+        SendErr(inst, ERR_INVALID_ARGS, "source must be ADC, SIM, DAC or LOOP");
         return;
     }
     ReplySet(inst, Control_SetFeedbackSim(sim), "bad source");
@@ -773,6 +777,7 @@ void cmd_config_fb_source_query(uart_instance_t *inst, char *args)
     {
         case 1U:  uart_send(inst, "OK SIM\r\n"); break;
         case 2U:  uart_send(inst, "OK DAC\r\n"); break;
+        case 3U:  uart_send(inst, "OK LOOP\r\n"); break;
         default:  uart_send(inst, "OK ADC\r\n"); break;
     }
 }

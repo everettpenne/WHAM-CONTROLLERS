@@ -27,7 +27,7 @@ float SimPlant_Step(sim_plant_t *p, uint8_t limiter, uint16_t per, uint16_t cmp,
     if (limiter != 0U)
     {
         float duty = (per != 0U) ? ((float)cmp / (float)per) : 0.5f;
-        target = p->gain * p->vscale * (2.0f * duty - 1.0f);
+        target = SimPlant_LimiterSteady(p, duty);
     }
     else
     {
@@ -35,6 +35,16 @@ float SimPlant_Step(sim_plant_t *p, uint8_t limiter, uint16_t per, uint16_t cmp,
         float x = (f - p->resonance) / p->width;
         target = p->gain * p->vpeak / (1.0f + x * x);
     }
-    p->v += (target - p->v) * (dt / p->tau);
+    return SimPlant_StepSteady(p, target, dt);
+}
+
+float SimPlant_StepSteady(sim_plant_t *p, float steadyVolts, float dt)
+{
+    p->v += (steadyVolts - p->v) * (dt / p->tau);
     return p->v;
+}
+
+float SimPlant_LimiterSteady(const sim_plant_t *p, float duty)
+{
+    return p->gain * p->vscale * (2.0f * duty - 1.0f);
 }

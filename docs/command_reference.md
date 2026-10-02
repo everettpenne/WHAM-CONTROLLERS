@@ -569,6 +569,7 @@ ends when the target ends: the HRTIM outputs are disabled at a period boundary.
 | `FILTer <Hz>` | low-pass on the measurement (0 = off); the overvoltage check ignores it |
 | `CLIPTime <ms>` | how long the ADC may sit at either end of its range before a fault (10 ms; 0 = off) |
 | `SOURce ADC\|SIM\|DAC` | the real ADC input; the firmware's simulated plant (nothing wired); or `DAC`, hardware in the loop: the plant model's voltage goes out on DAC PA5 and comes back through the board's amplifier into the real ADC input (one tick later) |
+| `SOURce LOOP` | loopback, Limiter only: the duty the HRTIM really produces is measured on PFM_Input_01 (Phase U wired to it; TIM2 in PWM-input mode, no interrupt, `duty_meter.h`), the Limiter model turns it into a voltage, `SIM:PLANT:TAU` is the digital low-pass, and the result goes out on DAC PA5 and back in through the real ADC input as for `DAC`. Refuses (ERR 13) outside Limiter mode or while a PFMIN capture owns TIM2; faults (FB) if PFM_Input_01 stops toggling for 20 ms. |
 | `DACRatio <x>` | for `SOURce DAC`: ADC volts per DAC volt of that loopback (0.05-2, default 0.5; measured 0.552 on the bench) |
 
 The Limiter's output swings -Vmax..+Vmax and the ADC reads only 0 to `ANALOG_VREF_MV`, so

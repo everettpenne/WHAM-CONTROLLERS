@@ -33,4 +33,10 @@ void SimPlant_Reset(sim_plant_t *p, float volts);
    Returns the output voltage. */
 float SimPlant_Step(sim_plant_t *p, uint8_t limiter, uint16_t per, uint16_t cmp, float dt);
 
+/* The same lag, fed a steady-state voltage directly (the loopback test feeds it the MEASURED duty). */
+float SimPlant_StepSteady(sim_plant_t *p, float steadyVolts, float dt);
+
+/* The Limiter's steady-state voltage for a duty 0..1: gain x vscale x (2D - 1). */
+float SimPlant_LimiterSteady(const sim_plant_t *p, float duty);
+
 #endif /* SIM_PLANT_H */
