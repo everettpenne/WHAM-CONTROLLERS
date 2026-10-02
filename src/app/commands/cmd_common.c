@@ -6,6 +6,7 @@
 #include "hrtim.h"
 #include "gate_driver.h"
 #include "pfm.h"
+#include "state_machine.h"
 #include <stdio.h>
 
 void SendErr(uart_instance_t *inst, int code, const char *msg)
@@ -23,5 +24,6 @@ void SendErr(uart_instance_t *inst, int code, const char *msg)
    fault state at the command layer. */
 uint8_t AnyFaultLatched(void)
 {
-    return (HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) || (PFM_UnderrunLatched() != 0U);
+    return (HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) || (PFM_UnderrunLatched() != 0U) ||
+           ((SM_GetFaultSources() & (SM_FAULT_SRC_OVERVOLT | SM_FAULT_SRC_FEEDBACK)) != 0U);
 }

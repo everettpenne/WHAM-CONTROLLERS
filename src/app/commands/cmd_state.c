@@ -32,13 +32,14 @@ void cmd_fault_query(uart_instance_t *inst, char *args)
    the per-period table running empty before the shot was over (an underrun). */
 void cmd_fault_sources_query(uart_instance_t *inst, char *args)
 {
-    char buf[64];
+    char buf[96];
     uint8_t m = SM_GetFaultSources();
     (void)args;
 
-    snprintf(buf, sizeof(buf), "OK PC10=%u GATEDRV=%u TABLE=%u TEST=%u\r\n",
+    snprintf(buf, sizeof(buf), "OK PC10=%u GATEDRV=%u TABLE=%u TEST=%u OVP=%u FB=%u\r\n",
              (unsigned)((m & SM_FAULT_SRC_PC10) != 0U), (unsigned)((m & SM_FAULT_SRC_GATEDRV) != 0U),
-             (unsigned)((m & SM_FAULT_SRC_UNDERRUN) != 0U), (unsigned)((m & SM_FAULT_SRC_TEST) != 0U));
+             (unsigned)((m & SM_FAULT_SRC_UNDERRUN) != 0U), (unsigned)((m & SM_FAULT_SRC_TEST) != 0U),
+             (unsigned)((m & SM_FAULT_SRC_OVERVOLT) != 0U), (unsigned)((m & SM_FAULT_SRC_FEEDBACK) != 0U));
     uart_send(inst, buf);
 }
 

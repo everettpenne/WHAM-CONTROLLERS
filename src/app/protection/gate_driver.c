@@ -24,6 +24,10 @@
    FAULT:CLEAR). volatile: written from ISR, read from the main loop
    via GateDriver_FaultIsLatched(). */
 static volatile uint8_t g_gdsFaultLatched = 0U;
+static volatile uint16_t g_dbgBadRaw = 0U;     /* the raw pins when the fault last latched (GDS:LAST?) */
+static volatile uint32_t g_dbgEdges = 0U;      /* GateDriver_CheckFault() calls since boot (GDS:LAST?) */
+uint16_t GateDriver_DebugBadRaw(void) { return g_dbgBadRaw; }
+uint32_t GateDriver_DebugEdges(void) { return g_dbgEdges; }
 
 uint16_t GateDriver_Read(void)
 {
@@ -34,6 +38,8 @@ void GateDriver_CheckFault(void)
 {
     uint16_t raw = GateDriver_Read();
     uint16_t badBits;
+
+    g_dbgEdges++;
 
     /* See ctrlr_config.h's GDS_FAULT_POLARITY comment -- exactly the
        "bitwise read PE0..PE11, fault on HIGH if normally-low / fault
@@ -49,6 +55,7 @@ void GateDriver_CheckFault(void)
 
     if (badBits != 0U)
     {
+        g_dbgBadRaw = raw;
         PFM_ForceStop();
         g_gdsFaultLatched = 1U;
     }

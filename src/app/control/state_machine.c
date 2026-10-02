@@ -15,10 +15,13 @@ static SM_FaultType_t g_faultType = SM_FAULT_NONE;
    hardware latch of its own); cleared by SM_ClearFault(). */
 static uint8_t g_softFaultLatched = 0U;
 
+/* The closed-loop faults (SM_FAULT_SRC_OVERVOLT / _FEEDBACK), latched until FAULT:CLEAR. */
+static volatile uint8_t g_controlFaults = 0U;
+
 static uint8_t AnySourceLatched(void)
 {
     return ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) ||
-            (PFM_UnderrunLatched() != 0U) || (g_softFaultLatched != 0U)) ? 1U : 0U;
+            (PFM_UnderrunLatched() != 0U) || (g_softFaultLatched != 0U) || (g_controlFaults != 0U)) ? 1U : 0U;
 }
 
 /* The single place a fault is latched into the state machine. Callers hold
@@ -124,7 +127,19 @@ uint8_t SM_GetFaultSources(void)
     if (GateDriver_FaultIsLatched() != 0U) { m |= SM_FAULT_SRC_GATEDRV; }
     if (PFM_UnderrunLatched() != 0U)       { m |= SM_FAULT_SRC_UNDERRUN; }
     if (g_softFaultLatched != 0U)          { m |= SM_FAULT_SRC_TEST; }
+    m |= g_controlFaults;
     return m;
+}
+
+void SM_ReportControlFault(uint8_t src)
+{
+    Mcu_IrqDisable();
+    g_controlFaults |= (uint8_t)(src & (SM_FAULT_SRC_OVERVOLT | SM_FAULT_SRC_FEEDBACK));
+    if (g_state != SM_STATE_FAULT)
+    {
+        EnterFault(SM_FAULT_GENERAL);
+    }
+    Mcu_IrqEnable();
 }
 
 void SM_ReportGeneralFault(void)
@@ -155,6 +170,7 @@ uint8_t SM_ClearFault(void)
 
     Mcu_IrqDisable();
     g_softFaultLatched = 0U;
+    g_controlFaults = 0U;
     if ((HRTIM1_FaultIsTripped() == 0U) && (GateDriver_FaultIsLatched() == 0U))
     {
         g_state     = SM_STATE_IDLE;

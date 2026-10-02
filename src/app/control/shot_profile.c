@@ -241,6 +241,41 @@ static void LoadSegment(uint16_t seg)
     g.slopeD   = ((int64_t)b->dutyHundredths - (int64_t)a->dutyHundredths) * 4294967296LL / dt;
 }
 
+/* {per, cmp} for a period in clocks and a duty in hundredths of a percent, clamped onto the
+   mode's limits: the period into [per1Min, per1Max], then the compare onto the mode's exact
+   integer duty limits (the relation SupplyMode_CheckStep() uses: cmp*100 against pct*per). */
+static void StepFromPeriod(uint32_t per1, uint32_t dutyHund, uint32_t per1Min, uint32_t per1Max,
+                           uint8_t dutyMinPct, uint8_t dutyMaxPct, uint32_t *perOut, uint32_t *cmpOut)
+{
+    uint32_t perV;
+    uint32_t cmpV;
+    uint32_t cmpLo;
+    uint32_t cmpHi;
+
+    if (per1 < per1Min)
+    {
+        per1 = per1Min;
+    }
+    if (per1 > per1Max)
+    {
+        per1 = per1Max;
+    }
+    perV  = per1 - 1U;
+    cmpV  = (perV * dutyHund + 5000U) / 10000U;
+    cmpLo = ((uint32_t)dutyMinPct * perV + 99U) / 100U;
+    cmpHi = ((uint32_t)dutyMaxPct * perV) / 100U;
+    if (cmpV < cmpLo)
+    {
+        cmpV = cmpLo;
+    }
+    if (cmpV > cmpHi)
+    {
+        cmpV = cmpHi;
+    }
+    *perOut = perV;
+    *cmpOut = cmpV;
+}
+
 uint8_t ShotGen_Start(uint8_t periodsPerEntry)
 {
     supply_limits_t lim;
@@ -270,11 +305,8 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
     uint64_t elapsed;
     int64_t  f;
     int64_t  d;
-    uint32_t per1;
     uint32_t perV;
     uint32_t cmpV;
-    uint32_t cmpLo;
-    uint32_t cmpHi;
     uint64_t end = (uint64_t)g_sp[g_count - 1U].tUs * TICKS_PER_US;
 
     if (g.active == 0U)
@@ -296,38 +328,38 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
     d = (int64_t)g.d0 + ((g.slopeD * (int64_t)elapsed) >> 32);
 
     /* period in clocks = round(CLK / f), f in millihertz */
-    per1 = PeriodClocks((uint32_t)f);
-    if (per1 < g.per1Min)
-    {
-        per1 = g.per1Min;
-    }
-    if (per1 > g.per1Max)
-    {
-        per1 = g.per1Max;
-    }
-    perV = per1 - 1U;
-
-    /* compare = round(duty * per); then onto the mode's exact integer limits
-       (the same relation SupplyMode_CheckStep() uses: cmp*100 against pct*per). */
-    cmpV  = (perV * (uint32_t)d + 5000U) / 10000U;
-    cmpLo = ((uint32_t)g.dutyMinPct * perV + 99U) / 100U;
-    cmpHi = ((uint32_t)g.dutyMaxPct * perV) / 100U;
-    if (cmpV < cmpLo)
-    {
-        cmpV = cmpLo;
-    }
-    if (cmpV > cmpHi)
-    {
-        cmpV = cmpHi;
-    }
+    StepFromPeriod(PeriodClocks((uint32_t)f), (uint32_t)d, g.per1Min, g.per1Max, g.dutyMinPct, g.dutyMaxPct, &perV, &cmpV);
 
     *per = (uint16_t)perV;
     *cmp = (uint16_t)cmpV;
-    g.tick += (uint64_t)per1 * g.periodsPerEntry;
+    g.tick += (uint64_t)(perV + 1U) * g.periodsPerEntry;   /* the CLAMPED period is what elapses */
     *last = (g.tick >= end) ? 1U : 0U;
     if (*last != 0U)
     {
         g.active = 0U;
     }
+    return 1U;
+}
+
+uint8_t ShotProfile_StepFor(uint32_t freqMilliHz, uint32_t dutyHundredths, uint16_t *per, uint16_t *cmp)
+{
+    supply_limits_t lim;
+    uint64_t clk = (uint64_t)HRTIM_TIMER_CLK_HZ;
+    uint32_t perV;
+    uint32_t cmpV;
+
+    if ((freqMilliHz == 0U) || (SupplyMode_GetLimits(SupplyMode_Get(), &lim) == 0U))
+    {
+        return 0U;
+    }
+    if (freqMilliHz >= (1UL << 27))
+    {
+        freqMilliHz = (1UL << 27) - 1U;   /* PeriodClocks()'s input range; the mode's period clamp governs anyway */
+    }
+    StepFromPeriod(PeriodClocks(freqMilliHz), dutyHundredths,
+                   (uint32_t)((clk + lim.freqMaxHz - 1U) / lim.freqMaxHz), (uint32_t)(clk / lim.freqMinHz),
+                   lim.dutyMinPct, lim.dutyMaxPct, &perV, &cmpV);
+    *per = (uint16_t)perV;
+    *cmp = (uint16_t)cmpV;
     return 1U;
 }

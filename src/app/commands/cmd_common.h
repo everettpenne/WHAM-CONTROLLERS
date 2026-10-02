@@ -27,9 +27,9 @@ typedef enum
     ERR_PFMIN_BAD_COUNT     = 9,   /* PFMIN:CAPTURE M out of 1-PFM_INPUT_MAX_PERIODS */
     ERR_OUT_OF_MODE_LIMITS  = 10,  /* TABle:STEP carrier or duty outside the selected supply mode's
                                       limits (was ERR_CARRIER_TOO_HIGH: carrier above 100 kHz) */
-    /* 11, 14, 15, 16: used by WHAM-XREX-PFMG474 only (invalid channel,
-       nickname, external enable) -- reserved so the shared numbers mean the
-       same thing on both projects. */
+    ERR_INVALID_CHANNEL     = 11,  /* PID:/SOURce:/LOG: loop number other than 1 (XREX: channel not 1-N) */
+    /* 14, 15, 16: used by WHAM-XREX-PFMG474 only (nickname, external enable) --
+       reserved so the shared numbers mean the same thing on both projects. */
     ERR_INVALID_ARGS        = 12,  /* wrong argument count, or non-numeric/out-of-range */
     ERR_INVALID_STATE       = 13,  /* not allowed in the current state */
     ERR_FWUPDATE            = 17   /* FWUPdate:* flash/CRC/image/option-byte failure */

@@ -130,13 +130,27 @@ typedef enum
 typedef enum
 {
     PFM_SOURCE_TABLE = 0U,
-    PFM_SOURCE_PROFILE
+    PFM_SOURCE_PROFILE,
+    PFM_SOURCE_LIVE       /* closed loop: the controller hands over the next {per, cmp} every tick */
 } PFM_Source_t;
 
 /* Chooses where the next shot's entries come from. Called when an upload
    completes (SHOT:END or TABle:END); never while FIRING. */
 void PFM_SelectSource(PFM_Source_t source);
 PFM_Source_t PFM_GetSource(void);
+
+/* Closed loop (control_runtime.c). PFM_SOURCE_LIVE bypasses the ring: the per-period interrupt
+   applies the LAST {per, cmp} given to PFM_LiveSet() (one atomic 32-bit store, so the interrupt
+   never sees a half-updated pair; the same compare goes to every phase). PFM_LiveSet() before the
+   shot sets the opening step; during it, the controller calls it once per control tick. */
+void PFM_LiveSet(uint16_t per, uint16_t cmp);
+
+/* Ends a live shot at the next period boundary, a coherent stop like the end of a table. */
+void PFM_LiveRequestStop(void);
+
+/* Sources: selecting PFM_SOURCE_LIVE remembers the previous open-loop source; this restores it
+   (an open-loop FIRE after a closed-loop run must play the open-loop shot again). */
+void PFM_RestoreOpenSource(void);
 
 /* 1 if the selected source holds something to fire (a complete time series,
    or at least one table entry). */

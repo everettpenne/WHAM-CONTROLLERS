@@ -48,3 +48,13 @@ void cmd_gds_query(uart_instance_t *inst, char *args)
 
     uart_send(inst, buf);
 }
+
+/* GDS:LAST? -- OK <raw pins when the last gate-driver fault latched, hex, bit 0 = GateDriverStatus_01> <fault checks since
+   boot>: which input(s) tripped the last GateDriverStatus fault. */
+void cmd_gds_last_query(uart_instance_t *inst, char *args)
+{
+    char buf[48];
+    (void)args;
+    snprintf(buf, sizeof(buf), "OK %03X %lu\r\n", (unsigned)GateDriver_DebugBadRaw(), (unsigned long)GateDriver_DebugEdges());
+    uart_send(inst, buf);
+}

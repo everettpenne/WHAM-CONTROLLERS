@@ -79,4 +79,9 @@ void GateDriver_FaultClear(void);
 }
 #endif
 
+/* Diagnostics for GDS:LAST?: the raw 12 pins (bit 0 = GateDriverStatus_01) when a fault last latched, and how
+   many times the fault check has run (edge interrupts and explicit calls) since boot. */
+uint16_t GateDriver_DebugBadRaw(void);
+uint32_t GateDriver_DebugEdges(void);
+
 #endif /* __GATE_DRIVER_H__ */

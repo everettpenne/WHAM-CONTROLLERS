@@ -12,6 +12,7 @@
 #include "hrtim.h"
 #include "state_machine.h"
 #include "supply_mode.h"
+#include "control_runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -247,6 +248,25 @@ void cmd_fire(uart_instance_t *inst, char *args)
         SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
         return;
     }
+
+    if (Control_GetLoopMode() != 0U)
+    {
+        /* closed loop: the TARGet:* profile, played by the controller through the live source */
+        if (Cmd_ReportCtlResult(inst, Control_Prepare(1U)) != 0U)
+        {
+            return;
+        }
+        if (SM_Fire() == 0U)
+        {
+            Control_Stop();
+            SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");
+            return;
+        }
+        Control_Go();
+        uart_send(inst, "OK\r\n");
+        return;
+    }
+    PFM_RestoreOpenSource();        /* an open-loop shot after a closed-loop run plays the uploaded shot again */
 
     if (PFM_ShotReady() == 0U)
     {

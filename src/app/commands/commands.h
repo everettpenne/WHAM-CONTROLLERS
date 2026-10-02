@@ -10,6 +10,7 @@ extern "C" {
 #include "ctrlr_config.h"
 #include "qspi_test.h"
 #include "pfm_input.h"
+#include "control_runtime.h"
 
 /* --------------------------------------------------------------------------
  * Command handler implementations for WHAM-HBRIDGE-PFMG474.
@@ -202,8 +203,78 @@ void cmd_config_mode_query(uart_instance_t *inst, char *args);    /* CONFig:MODE
 void cmd_config_limits_query(uart_instance_t *inst, char *args);  /* CONFig:LIMits? -- OK <mode> FREQ <min> <max> DUTY <min> <max> */
 void CmdTable_Discard(void);                                      /* drops the table; called on a mode change */
 
+/* Closed loop (control_runtime.h), see cmd_control.c */
+void cmd_config_pid_rate(uart_instance_t *inst, char *args);            /* CONFig:PIDRate */
+void cmd_config_pid_rate_query(uart_instance_t *inst, char *args);      /* CONFig:PIDRate? */
+void cmd_config_adc_average(uart_instance_t *inst, char *args);            /* CONFig:ADC:AVERage */
+void cmd_config_adc_average_query(uart_instance_t *inst, char *args);      /* CONFig:ADC:AVERage? */
+void cmd_config_adc_sample(uart_instance_t *inst, char *args);            /* CONFig:ADC:SAMPle */
+void cmd_config_adc_sample_query(uart_instance_t *inst, char *args);      /* CONFig:ADC:SAMPle? */
+void cmd_config_slew_rate(uart_instance_t *inst, char *args);            /* CONFig:SLEWRate */
+void cmd_config_slew_rate_query(uart_instance_t *inst, char *args);      /* CONFig:SLEWRate? */
+void cmd_config_max_volts(uart_instance_t *inst, char *args);            /* CONFig:MAXVolts */
+void cmd_config_max_volts_query(uart_instance_t *inst, char *args);      /* CONFig:MAXVolts? */
+void cmd_config_fb_scale(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:SCALE */
+void cmd_config_fb_scale_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:SCALE? */
+void cmd_config_fb_offset(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:OFFSet */
+void cmd_config_fb_offset_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:OFFSet? */
+void cmd_config_fb_filter(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:FILTer */
+void cmd_config_fb_filter_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:FILTer? */
+void cmd_config_fb_clip(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:CLIPTime */
+void cmd_config_fb_clip_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:CLIPTime? */
+void cmd_config_fb_channel(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:CHANnel */
+void cmd_config_fb_channel_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:CHANnel? */
+void cmd_config_fb_source(uart_instance_t *inst, char *args);            /* CONFig:FEEDback:SOURce */
+void cmd_config_fb_source_query(uart_instance_t *inst, char *args);      /* CONFig:FEEDback:SOURce? */
+void cmd_config_cl_duty(uart_instance_t *inst, char *args);            /* CONFig:CLOSEDloop:DUTY */
+void cmd_config_cl_duty_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:DUTY? */
+void cmd_config_cl_freq(uart_instance_t *inst, char *args);            /* CONFig:CLOSEDloop:FREQuency */
+void cmd_config_cl_freq_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:FREQuency? */
+void cmd_config_cl_res(uart_instance_t *inst, char *args);            /* CONFig:CLOSEDloop:RESonance */
+void cmd_config_cl_res_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:RESonance? */
+void cmd_config_cl_vpeak(uart_instance_t *inst, char *args);            /* CONFig:CLOSEDloop:VPEAK */
+void cmd_config_cl_vpeak_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:VPEAK? */
+void cmd_config_cl_vscale(uart_instance_t *inst, char *args);            /* CONFig:CLOSEDloop:VSCALE */
+void cmd_config_cl_vscale_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:VSCALE? */
+void cmd_config_cl_branch(uart_instance_t *inst, char *args);            /* CONFig:CLOSEDloop:BRANCH */
+void cmd_config_cl_branch_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:BRANCH? */
+void cmd_sim_plant_tau(uart_instance_t *inst, char *args);            /* SIM:PLANT:TAU */
+void cmd_sim_plant_tau_query(uart_instance_t *inst, char *args);      /* SIM:PLANT:TAU? */
+void cmd_sim_plant_gain(uart_instance_t *inst, char *args);            /* SIM:PLANT:GAIN */
+void cmd_sim_plant_gain_query(uart_instance_t *inst, char *args);      /* SIM:PLANT:GAIN? */
+void cmd_sim_plant_res(uart_instance_t *inst, char *args);            /* SIM:PLANT:RESonance */
+void cmd_sim_plant_res_query(uart_instance_t *inst, char *args);      /* SIM:PLANT:RESonance? */
+void cmd_sim_plant_width(uart_instance_t *inst, char *args);            /* SIM:PLANT:WIDTH */
+void cmd_sim_plant_width_query(uart_instance_t *inst, char *args);      /* SIM:PLANT:WIDTH? */
+void cmd_sim_plant_vpeak(uart_instance_t *inst, char *args);            /* SIM:PLANT:VPEAK */
+void cmd_sim_plant_vpeak_query(uart_instance_t *inst, char *args);      /* SIM:PLANT:VPEAK? */
+void cmd_sim_plant_vscale(uart_instance_t *inst, char *args);            /* SIM:PLANT:VSCALE */
+void cmd_sim_plant_vscale_query(uart_instance_t *inst, char *args);      /* SIM:PLANT:VSCALE? */
+void cmd_pid_loopmode(uart_instance_t *inst, char *args);            /* PID:LOOPMODE */
+void cmd_pid_loopmode_query(uart_instance_t *inst, char *args);      /* PID:LOOPMODE? */
+void cmd_pid_gains(uart_instance_t *inst, char *args);            /* PID:GAINS */
+void cmd_pid_gains_query(uart_instance_t *inst, char *args);      /* PID:GAINS? */
+void cmd_source_setpoint(uart_instance_t *inst, char *args);            /* SOURce:SETpoint */
+void cmd_source_setpoint_query(uart_instance_t *inst, char *args);      /* SOURce:SETpoint? */
+void cmd_source_run(uart_instance_t *inst, char *args);            /* SOURce:RUN */
+void cmd_source_stop(uart_instance_t *inst, char *args);            /* SOURce:STOP */
+void cmd_source_status(uart_instance_t *inst, char *args);            /* SOURce:STATus? */
+void cmd_target_begin(uart_instance_t *inst, char *args);            /* TARGet:BEGin */
+void cmd_target_step(uart_instance_t *inst, char *args);            /* TARGet:STEP */
+void cmd_target_end(uart_instance_t *inst, char *args);            /* TARGet:END */
+void cmd_target_clear(uart_instance_t *inst, char *args);            /* TARGet:CLEar */
+void cmd_target_query(uart_instance_t *inst, char *args);            /* TARGet? */
+void cmd_target_point_query(uart_instance_t *inst, char *args);            /* TARGet:POINt? */
+void cmd_log_arm(uart_instance_t *inst, char *args);            /* LOG:ARM */
+void cmd_log_data(uart_instance_t *inst, char *args);            /* LOG:DATA? */
+uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r);   /* ERR for a failed closed-loop start; 1 if r was an error */
+void CmdTarget_Discard(void);                                      /* drops the target profile */
+
+void cmd_gds_last_query(uart_instance_t *inst, char *args);       /* GDS:LAST? -- pins at the last latched fault */
+
 /* Analog inputs (adc.h), see cmd_adc.c */
 void cmd_adc_input_query(uart_instance_t *inst, char *args);      /* ADC:INPut? <1-4> -- OK <volts> <code> */
+void cmd_adc_status_query(uart_instance_t *inst, char *args);     /* ADC:STATus? -- OK <running> <tickHz> <scans> <sampleX10> <scanUs> <blocks> */
 void cmd_adc_vref_query(uart_instance_t *inst, char *args);       /* ADC:VREF? -- OK <volts> <vrefint code> <factory code> */
 
 /* Analog outputs (dac.h), see cmd_dac.c */

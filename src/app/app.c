@@ -17,6 +17,7 @@
 #include "vref.h"
 #include "dac.h"
 #include "adc.h"
+#include "control_runtime.h"
 #include "ctrlr_config.h"
 #include "git_version.h"
 #include <stdio.h>
@@ -64,6 +65,9 @@ void App_Init(void)
 
     /* PA0/PA1/PC0/PB0 as the four analog inputs, ADC1 calibrated and enabled (adc.h). */
     Adc_Init();
+
+    /* The closed-loop controller and the ADC sampler it ticks from (control_runtime.h). */
+    Control_Init();
 
     /* PFM_Input period/duty capture (PA15/PD4/PB2/PC12/PB4/PD12, TIM2/
        TIM3/TIM4/TIM5) -- see pfm_input.h. Configures the timers/GPIO

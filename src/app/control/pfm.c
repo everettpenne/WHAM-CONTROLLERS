@@ -35,6 +35,10 @@ static volatile uint8_t  g_genDone  = 1U;
 static volatile uint8_t  g_underrun = 0U;
 static volatile uint8_t  g_refillPended = 0U;   /* a refill is pended or running: don't pend again every period */
 static PFM_Source_t      g_source   = PFM_SOURCE_TABLE;
+static PFM_Source_t      g_openSource = PFM_SOURCE_TABLE;   /* the last non-live source selected */
+static volatile uint32_t g_live = 0U;                       /* per << 16 | cmp, the closed loop's next step */
+static volatile uint8_t  g_liveReady = 0U;
+static volatile uint8_t  g_liveStop = 0U;
 
 static uint32_t g_diagMinReady = 0U;
 static uint32_t g_diagRefills  = 0U;
@@ -205,9 +209,8 @@ static uint8_t    g_lastAppliedValid = 0U;
    at -O0 it cost ~800 cycles of a 1,360-cycle period at 125 kHz, starving the
    refill interrupt (docs/changelog.txt, 2026-10-01). */
 __attribute__((optimize("O2")))
-void PFM_ApplyCurrentStep(void)
+static void ApplyStep(const PFM_Step_t *pStep)
 {
-    const PFM_Step_t *pStep = &g_pfmTable[g_pfmIndex];
     uint16_t phase[HRTIM_NUM_CHANNELS];
 
     /* phase[] is not stored in PFM_Step_t -- it's a pure function of
@@ -231,6 +234,11 @@ void PFM_ApplyCurrentStep(void)
     }
 
     HRTIM1_ApplyPfmStep(pStep->per, pStep->cmp, phase);
+}
+
+void PFM_ApplyCurrentStep(void)
+{
+    ApplyStep(&g_pfmTable[g_pfmIndex]);
 }
 
 static void CycleBoundaryBody(void);
@@ -289,6 +297,32 @@ static void CycleBoundaryBody(void)
     if (HRTIM1_FaultIsTripped() != 0U)
     {
         PFM_ForceStop();
+        return;
+    }
+
+    /* Closed loop: no ring. Apply the controller's latest step; a stop request ends the shot here,
+       at a period boundary, like the end of a table. */
+    if (g_source == PFM_SOURCE_LIVE)
+    {
+        PFM_Step_t live;
+        uint32_t v;
+
+        if (g_liveStop != 0U)
+        {
+            g_liveStop = 0U;
+            g_liveReady = 0U;
+            HRTIM1_PWM_Stop();
+            g_pfmState = PFM_STATE_STOPPED;
+            PfmInput_OnShotEnd();
+            return;
+        }
+        v = g_live;
+        live.per = (uint16_t)(v >> 16);
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            live.cmp[ch] = (uint16_t)(v & 0xFFFFU);
+        }
+        ApplyStep(&live);
         return;
     }
 
@@ -407,6 +441,26 @@ void PFM_RefillHandler(void)
 void PFM_SelectSource(PFM_Source_t source)
 {
     g_source = source;
+    if (source != PFM_SOURCE_LIVE)
+    {
+        g_openSource = source;
+    }
+}
+
+void PFM_RestoreOpenSource(void)
+{
+    g_source = g_openSource;
+}
+
+void PFM_LiveSet(uint16_t per, uint16_t cmp)
+{
+    g_live = ((uint32_t)per << 16) | cmp;
+    g_liveReady = 1U;
+}
+
+void PFM_LiveRequestStop(void)
+{
+    g_liveStop = 1U;
 }
 
 PFM_Source_t PFM_GetSource(void)
@@ -416,6 +470,10 @@ PFM_Source_t PFM_GetSource(void)
 
 uint8_t PFM_ShotReady(void)
 {
+    if (g_source == PFM_SOURCE_LIVE)
+    {
+        return g_liveReady;
+    }
     return (g_source == PFM_SOURCE_PROFILE) ? ShotProfile_IsComplete()
                                             : ((g_pfmEntryCount > 0U) ? 1U : 0U);
 }
@@ -454,7 +512,20 @@ void PFM_Restart(void)
     g_diagProduced = 0U;
     g_diagRefillWall = 0U;
     g_diagRefillWallMax = 0U;
-    if (g_source == PFM_SOURCE_PROFILE)
+    if (g_source == PFM_SOURCE_LIVE)
+    {
+        /* the opening step goes into slot 0 so the common preload below applies it */
+        uint32_t v = g_live;
+        g_pfmTable[0].per = (uint16_t)(v >> 16);
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            g_pfmTable[0].cmp[ch] = (uint16_t)(v & 0xFFFFU);
+        }
+        g_ringHead = 1U;
+        g_genDone  = 1U;
+        g_liveStop = 0U;
+    }
+    else if (g_source == PFM_SOURCE_PROFILE)
     {
         g_ringHead = 0U;
         g_genDone  = (ShotGen_Start(PFM_HOLD_PERIODS) != 0U) ? 0U : 1U;

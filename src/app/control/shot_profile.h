@@ -91,4 +91,10 @@ uint8_t ShotGen_Start(uint8_t periodsPerEntry);
    SupplyMode_CheckStep() by construction (clamped onto the mode's limits). */
 uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last);
 
+/* The {per, cmp} for one period at a carrier frequency (millihertz) and duty (hundredths
+   of a percent), clamped onto the selected supply mode's limits exactly as the generator
+   does -- the closed-loop controller (closed_loop.c) builds its steps with this. Returns 0
+   (nothing written) with no mode selected or a zero frequency. */
+uint8_t ShotProfile_StepFor(uint32_t freqMilliHz, uint32_t dutyHundredths, uint16_t *per, uint16_t *cmp);
+
 #endif /* SHOT_PROFILE_H */

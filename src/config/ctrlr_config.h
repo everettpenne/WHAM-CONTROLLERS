@@ -202,6 +202,20 @@
 #define SHOT_MAX_DURATION_US     (1000000UL)
 #define PFM_TABLE_SIZE           (100U)
 
+/* The ADC sampler (adc.h): the default sampling time, in ADC clocks x10 (475 = 47.5 clocks). The
+   operator sets it at run time (CONFig:ADC:SAMPle): a high-impedance source needs a longer one,
+   a longer one limits the scan rate. The source impedance of the feedback is not known yet. */
+#define ADC_SAMPLE_X10_DEFAULT   (475U)
+
+/* The closed-loop control tick (control_task.h): ticks per second and ADC scans averaged per tick.
+   Both are set at run time (CONFig:PIDRate, CONFig:ADC:AVERage). */
+#define CONTROL_RATE_HZ_DEFAULT        (10000U)
+#define CONTROL_SCANS_PER_TICK_DEFAULT (4U)
+
+/* Closed-loop target profile (target_profile.h): setpoints of the time series of target
+   voltages, 8 bytes each. */
+#define TARGET_SETPOINT_MAX      (500U)
+
 /* --------------------------------------------------------------------------
  * PFM_Input capture depth (compile-time)
  *
@@ -239,6 +253,6 @@
  * measures the real value from the internal bandgap and the chip's factory
  * calibration, to check this setting against.
  * -------------------------------------------------------------------------- */
-#define ANALOG_VREF_MV          (2500U)
+#define ANALOG_VREF_MV          (2900U)
 
 #endif /* INC_CTRLR_CONFIG_H_ */

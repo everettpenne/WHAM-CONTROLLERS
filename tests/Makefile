@@ -16,7 +16,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
            -I$(ROOT)/src/app/protection -I$(ROOT)/build/generated -I$(OUT)
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_closed_loop
 
 .PHONY: all run clean
 all: run
@@ -48,6 +48,22 @@ $(OUT)/test_supply_mode: test_supply_mode.c $(ROOT)/src/app/control/supply_mode.
 $(OUT)/test_shot_profile: test_shot_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/shot_profile.h \
                           $(ROOT)/src/app/control/supply_mode.c test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -O2 -o $@ test_shot_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
+
+$(OUT)/test_pid_core: test_pid_core.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/pid_core.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -O2 -o $@ test_pid_core.c $(ROOT)/src/app/control/pid_core.c -lm
+
+$(OUT)/test_feedback: test_feedback.c $(ROOT)/src/app/control/feedback.c $(ROOT)/src/app/control/feedback.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -O2 -o $@ test_feedback.c $(ROOT)/src/app/control/feedback.c -lm
+
+$(OUT)/test_target_profile: test_target_profile.c $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/target_profile.h \
+                            $(ROOT)/src/app/control/shot_profile.c test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -O2 -o $@ test_target_profile.c $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
+
+CL_SRC := $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
+          $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
+
+$(OUT)/test_closed_loop: test_closed_loop.c $(CL_SRC) $(ROOT)/src/app/control/closed_loop.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -O2 -o $@ test_closed_loop.c $(CL_SRC) -lm
 
 clean:
 	rm -rf $(OUT)

@@ -1,6 +1,45 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-02  —  Closed-loop control: ADC DMA sampler, PID, target profile, live output (hardware outputs BLOCKED by a bench fault)
+-----------------------------------------------------------------------
+  Branch closed-loop. Decisions of 2026-10-02 (Everett): reference 2.9 V if possible else 2.5 V; six inputs PA0 PA1 PC0 PB0 PC1 PB1
+  with an operator-chosen feedback channel, default PA1; sampling time in config AND settable at run time; HVPS duty fixed
+  (default 50 %, within the mode's range) and frequency controlled; HVPS peaks near 19 kHz and falls either side (operate on one
+  branch); Limiter V ~ 2D - 1; hard overvoltage 4 V = immediate stop; a closed-loop shot ends by disabling the HRTIM outputs; the
+  target voltage is a SEPARATE command set (TARGet:*) because open loop may be used alone.
+  Built (all hardware-independent parts host-tested, 3,300+ checks):
+        pid_core.c        PID, fixed dt, derivative on the measurement, back-calculation anti-windup at the hard limit and
+                          conditional integration at the slew limit (back-calculating at the slew limit stalls the ramp: found by test)
+        feedback.c        raw ADC code -> process volts (scale, offset for a bipolar output, low-pass), full-scale clip count
+        target_profile.c  target voltage time series (signed, t=0 first, linear, limit per setpoint)
+        closed_loop.c     feedforward + PID per supply (HVPS: frequency, either branch of the resonance, polarity from the branch;
+                          Limiter: duty, V = Vscale (2D - 1)), overvoltage and clipping faults, profile end. Against simulated plants:
+                          Limiter tracks +-0.8 V triangle to 58 mV, both HVPS branches settle to ~5 mV, a 30 % mid-shot plant-gain
+                          loss is absorbed.
+        shot_profile.c    ShotProfile_StepFor(): the same period/duty clamp the open-loop generator uses (one shared helper; a refactor
+                          advanced time by the unclamped period at a mode limit: caught by the test count changing 22017 -> 22016)
+  Hardware layer:
+        adc.c (rewritten) TIM6-triggered scan of 7 channels (6 inputs + VREFINT) -> DMA2 ch1 circular, block-complete interrupt =
+                          the control tick; sampling time settable; VERIFIED on the simulator: 9,999 ticks/s for 10,000 configured,
+                          VREFINT 2.906 V, unwired inputs read 0.
+        pfm.c             PFM_SOURCE_LIVE: no ring, the per-period interrupt applies the last {per, cmp} the controller stored (one
+                          atomic 32-bit store); a stop request ends the shot at a period boundary
+        control_runtime.c the loop's runtime, settings, logging; sim_plant.c a firmware plant model so the whole loop runs with nothing
+                          wired (CONFig:FEEDback:SOURce SIM)
+        Commands (XREX pattern): PID:LOOPMODE, PID:GAINS, SOURce:RUN/STOP/SETpoint/STATus?, TARGet:*, LOG:ARM/DATA? (paged, SUM),
+                          CONFig:PIDRate/SLEWRate/MAXVolts/FEEDback:*/ADC:SAMPle/AVERage/CLOSEDloop:*, SIM:PLANT:*; FIRE plays the
+                          shot closed-loop when PID:LOOPMODE is 1. New faults OVP and FB in FAULT:SOURces?.
+  Reference: VREFBUF at 2.9 V works on this board: VREF+ measured 2.907 V (+0.24 %). It needs VDDA >= 3.15 V; Control_Prepare() refuses a
+        closed-loop start on the ADC if VREF+ is more than 3 % from ANALOG_VREF_MV.
+  FOUND, NOT RESOLVED -- a bench fault blocks every shot on the simulator today: GateDriverStatus_01 (PE0) and _09 (PE8) read HIGH
+        (GDS:LAST? = 0x101) within 40 ms of FIRE, in both modes, open loop or closed, so every shot ends in FAULT GENERAL. The LAST
+        KNOWN-GOOD IMAGE (commit 58e8951, which ran shots cleanly yesterday) does the same, and the fault is independent of the ADC
+        scan rate and of the 2.9 V reference, so it is NOT this firmware: something on the bench changed. The inputs read LOW whenever
+        the outputs are off. Not bypassed: PE0/PE8 may be wired to something real. Needs the user.
+  Not yet done: the closed-loop run with REAL output verified through the PFM_Input capture (blocked by the above), the demo/plot tool,
+        the closed-loop section of docs/command_reference.md, memory report.
+
 2026-10-02  —  PA0 / PA1 / PB0 / PC0 configured as the four ADC inputs; the analog reference found and fixed
 -----------------------------------------------------------------------
   Change:  AnalogIn_01..04 = PA0 (ADC1_IN1), PA1 (IN2), PC0 (IN6), PB0 (IN15). src/drivers/adc.h,

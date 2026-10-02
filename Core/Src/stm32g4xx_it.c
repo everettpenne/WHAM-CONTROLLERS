@@ -27,6 +27,7 @@
 #include "pfm.h"
 #include "gate_driver.h"
 #include "pfm_input_hw.h"
+#include "adc_hw.h"
 #include "boot_diag.h"
 /* USER CODE END Includes */
 
@@ -217,6 +218,12 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /* USER CODE BEGIN 1 */
+
+/* The ADC sampler's DMA (adc.c): half/full-transfer = one block of scans = the control tick. */
+void DMA2_Channel1_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(&hdmaAdc);
+}
 
 /* Software-triggered refill of the PFM per-period table (mcu.h, pfm.c). The
    FMAC peripheral is not used; its vector is borrowed as a free, lowest-cost

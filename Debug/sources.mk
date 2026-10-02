@@ -29,6 +29,7 @@ src/app \
 src/app/commands \
 src/app/control \
 src/app/protection \
+src/app/sim \
 src/bsp/stm32g4 \
 src/middleware/scpi \
 

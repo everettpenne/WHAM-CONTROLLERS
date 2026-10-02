@@ -94,7 +94,14 @@ void SM_ReportGeneralFault(void);
 #define SM_FAULT_SRC_GATEDRV    (0x02U)   /* a GateDriverStatus input */
 #define SM_FAULT_SRC_UNDERRUN   (0x04U)   /* the per-period table ran empty (pfm.h) */
 #define SM_FAULT_SRC_TEST       (0x08U)   /* GENERAL:TEST:FAULT */
+#define SM_FAULT_SRC_OVERVOLT   (0x10U)   /* closed loop: the feedback voltage above the hard limit */
+#define SM_FAULT_SRC_FEEDBACK   (0x20U)   /* closed loop: the feedback input at ADC full scale (the loop is blind) */
 uint8_t SM_GetFaultSources(void);
+
+/* A closed-loop fault (control_runtime.c): `src` is SM_FAULT_SRC_OVERVOLT or SM_FAULT_SRC_FEEDBACK.
+   Stops the output at once and latches FAULT GENERAL until FAULT:CLEAR, like every other fault.
+   Safe to call from the control interrupt. */
+void SM_ReportControlFault(uint8_t src);
 
 /* FAULT -> IDLE if both fault sources clear (each re-checks its physical
    input). Returns 1 if the state is now IDLE, 0 if it stays FAULT or was
