@@ -1,6 +1,18 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-02  —  Loopback test with a stronger low-pass (SIM:PLANT:TAU 6 and 10 ms)
+-----------------------------------------------------------------------
+  Same loopback run as the entry below (Phase U -> PFM_Input_01 -> model -> DAC PA5 -> amplifier -> ADC PA1, Limiter, +-0.5 V
+  triangle over 100 ms, gains 214.286 / 8571.429 unchanged), with the plant low-pass lengthened. No faults in any run.
+        tau 3 ms    error 30 mV rms / 44 mV max    duty 8.7-95.0 %
+        tau 6 ms    error 46 mV rms / 75 mV max    duty 5.0-95.0 % (touches both limits)
+        tau 10 ms   error 59 mV rms / 137 mV max   duty at 95 % for about 5 ms before each positive peak and at 5 % for about 6 ms
+                    before each negative one; the feedback only reaches about +0.40 / -0.44 V of the +-0.5 V target
+  The limit is physical, not tuning: a 12.5 ms ramp of 1 V through a 10 ms lag needs more than a 95 % duty can deliver, so the
+  output saturates and the loop is blind to the rest. Anti-windup behaved: after each saturated stretch the error recovers in a few
+  ms with no overshoot. A longer lag needs a slower target (or a bigger vscale), not different gains.
+
 2026-10-02  —  Loopback test: the plant measured off the controller's own output (CONFig:FEEDback:SOURce LOOP)
 -----------------------------------------------------------------------
   Bench: Phase U wired to PFM_Input_01 (PA15); DAC PA5 -> amplifier -> ADC PA1 as before. The loop commands the Limiter duty; the
