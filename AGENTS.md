@@ -476,6 +476,26 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
   history (DSLogic captures, exact failure signatures, dead ends) in
   `docs/changelog.txt`'s 2026-09-09 entries.
 
+## Closed-loop control (added 2026-10-02)
+
+The supply's output voltage can be held to a time-series target (`TARGet:*`)
+by reading it back over an ADC input: ADC1 scans six inputs (PA0 PA1 PC0 PB0
+PC1 PB1, default feedback PA1) plus VREFINT on a timer trigger into circular
+DMA; each DMA block is one control tick (`CONFig:PIDRate`, default 10 kHz).
+Feedforward from a plant model plus PID, output through the PFM engine's
+live source. HVPS: frequency (duty fixed), one side of the ~19 kHz peak
+(`CONFig:CLOSEDloop:BRANCH`); Limiter: duty (carrier fixed). Every voltage is
+in the loop's own units (process volts): `CONFig:FEEDback:SCALE/OFFSet` or
+`RANGE <Vmax>` (the Limiter's divider puts -Vmax at 0 V and +Vmax at full
+scale, zero at mid-scale) convert the ADC reading; `CONFig:MAXVolts` (the
+immediate-stop overvoltage limit) is in the same units, so it must be raised
+when the range is. Faults: overvoltage, ADC at full scale, and (only when the
+offset is non-zero) ADC at code 0 -- a dead feedback line on a mid-scale-zero
+range. `PID:LOOPMODE 1 1` makes `FIRE` play the target instead of the open-loop
+`SHOT:*`; leave it 0 for open-loop shots. `CONFig:FEEDback:SOURce SIM` runs the
+loop against a firmware plant model with nothing wired. Commands:
+`docs/command_reference.md`; history: `docs/changelog.txt` 2026-10-02.
+
 ## Source layout (standing rule -- keep it this way)
 
 Adopted 2026-09-29 (ported from WHAM-XREX-PFMG474, where it was
@@ -503,7 +523,10 @@ src/
                     product knowledge
   app/              the product: app.c (start-up, main loop), task_*.c
                     (main-loop tasks, tasks.h)
-    control/        pfm (the table playback engine)
+    control/        pfm (the table playback engine), shot_profile (SHOT:*),
+                    closed loop: pid_core, feedback, target_profile,
+                    closed_loop (pure logic, host-tested), control_runtime
+                    (the ADC-tick glue); sim/sim_plant (simulated supply)
     protection/     gate_driver (fault evaluation)
     commands/       command_table.c, commands.h, cmd_common.c/.h,
                     cmd_<subsystem>.c

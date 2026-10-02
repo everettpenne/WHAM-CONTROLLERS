@@ -1,7 +1,38 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
-2026-10-02  —  Closed-loop control: ADC DMA sampler, PID, target profile, live output (hardware outputs BLOCKED by a bench fault)
+2026-10-02  —  Bipolar feedback range (CONFig:FEEDback:RANGE) and the dead-feedback-line fault; the bench fault was miscabling
+-----------------------------------------------------------------------
+  The "every shot ends in FAULT GENERAL (PE0/PE8 high)" bench problem recorded in the entry below was a MISCABLING on the
+  bench, found and fixed by Everett; no firmware change was involved. Re-verified the same day on the simulator, closed-loop
+  build: 5 x 50 ms Limiter shots, 0 faults; closed-loop Limiter and HVPS (both branches) against the simulated plant ran to
+  IDLE with FAULT:SOURces? all 0 (Limiter 23 mV rms on a 0.8 V triangle; HVPS above/below 125/76 mV rms with untuned gains);
+  open-loop HVPS and Limiter 50 ms demos measured on the PFM inputs matched the programmed frequency (mean error < 3 Hz) and
+  duty (about -1.4 points).
+  Everett's correction of the Limiter feedback: V_out = V_cap (2D - 1) with V_cap about 900 V, and the divider maps -Vmax -> 0 V,
+  +Vmax -> 2.9 V (zero volts at 1.45 V), so the ADC never sees a negative voltage. The existing scale/offset calibration already
+  expresses this; tested on the simulator with scale 2 Vmax / 2.9 and offset 1.45: a +-720 V triangle in a +-900 V range tracked
+  to 20 V rms, 34 V max, shot ended IDLE. Added (decided with Everett: keep every voltage in the loop's own units):
+        CONFig:FEEDback:RANGE <Vmax> / RANGE?   one command for the calibration above (scale 2 Vmax / vref, offset vref / 2);
+                                                 RANGE? = process volts at the top of the ADC range
+        FEEDBACK_VMAX_DEFAULT_V (ctrlr_config.h) compile-time default for it; 0 (uncalibrated) for now -- the real divider
+                                                 does not exist yet
+        low-end clip fault   an ADC reading at code <= 5 for CLIPTime (10 ms) faults (FAULT:SOURces? FB), but ONLY when the
+                             offset is non-zero. On a mid-scale-zero range code 0 means -Vmax or a dead/shorted/wrong-channel
+                             feedback line, which the loop would read as a huge negative voltage and answer by driving the output
+                             up with nothing behind it. HVPS (offset 0, feedback 0 V at the start of every shot) is not affected.
+        CONFig:MAXVolts range raised from 1000 to 10000 (it is in process volts and a 900 V supply needs it above 900).
+  Verified on hardware (simulator): RANGE 900 -> SCALE 620.6897, OFFSet 1.4500; bipolar closed loop as above; ADC source with
+  nothing wired + RANGE 900 -> FAULT GENERAL with FB=1 after exactly 10 ms (duty had run up to 95 % in that time -- lower
+  CLIPTime for a real supply); HVPS with offset 0 and the same unwired ADC -> no fault, ran to IDLE. Host tests added to
+  test_feedback (range, low clip counted only with an offset) and test_closed_loop (+-900 V triangle, 52 V worst / 35 V rms =
+  exactly the 1 V version times 900; low-clip fault and its reset). Note for tests: +-800 V against Vscale 900 is 98.8 % of what
+  a 95 % duty reaches, so the output saturates at the turnarounds; use targets inside about +-0.9 x Vscale x 0.9.
+  Gotchas found: FIRE follows PID:LOOPMODE (leave it at 1 0 for open-loop shots, or the closed-loop target plays instead);
+  gains are per process volt, so for a 900 V range they are about 900 times smaller than for a 1 V range.
+  Closed-loop commands are now documented in command_reference.md.
+
+2026-10-02  —  Closed-loop control: ADC DMA sampler, PID, target profile, live output (hardware outputs were blocked by a bench fault -- miscabling, see the entry above)
 -----------------------------------------------------------------------
   Branch closed-loop. Decisions of 2026-10-02 (Everett): reference 2.9 V if possible else 2.5 V; six inputs PA0 PA1 PC0 PB0 PC1 PB1
   with an operator-chosen feedback channel, default PA1; sampling time in config AND settable at run time; HVPS duty fixed

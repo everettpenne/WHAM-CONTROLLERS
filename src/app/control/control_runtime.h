@@ -77,6 +77,8 @@ ctl_set_result_t Control_SetFeedbackScale(float scale);              /* process 
 float            Control_GetFeedbackScale(void);
 ctl_set_result_t Control_SetFeedbackOffset(float adcVolts);          /* ADC volts that read as 0 V */
 float            Control_GetFeedbackOffset(void);
+ctl_set_result_t Control_SetFeedbackRange(float vmax);               /* bipolar +-vmax: -vmax -> ADC 0 V, +vmax -> full scale */
+float            Control_GetFeedbackRange(void);                     /* process volts at the top of the ADC range */
 ctl_set_result_t Control_SetFeedbackFilterHz(float hz);              /* 0 = off */
 float            Control_GetFeedbackFilterHz(void);
 ctl_set_result_t Control_SetFeedbackSim(uint8_t sim);                /* 0 ADC, 1 simulated plant */

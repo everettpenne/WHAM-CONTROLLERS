@@ -99,6 +99,7 @@ static void OnBlock(const float *means)
             SM_ReportControlFault(SM_FAULT_SRC_OVERVOLT);
             break;
         case CL_FAULT_CLIPPED:
+        case CL_FAULT_CLIPPED_LOW:
         default:
             g_run = 0U;
             SM_ReportControlFault(SM_FAULT_SRC_FEEDBACK);
@@ -128,6 +129,9 @@ static uint8_t RestartSampler(void)
 void Control_Init(void)
 {
     Cl_Init(&g_cl, g_rateHz, (float)ANALOG_VREF_MV / 1000.0f);
+#if (FEEDBACK_VMAX_DEFAULT_V > 0)
+    Feedback_SetBipolarRange(&g_cl.fb, (float)FEEDBACK_VMAX_DEFAULT_V);
+#endif
     SimPlant_Init(&g_sim);
     ApplyClip();
     ApplyFilter();
@@ -375,6 +379,20 @@ float Control_GetFeedbackOffset(void)
     return g_cl.fb.offsetV;
 }
 
+ctl_set_result_t Control_SetFeedbackRange(float vmax)
+{
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    if ((vmax <= 0.0f) || (vmax > 1.0e5f)) { return CTL_SET_RANGE; }
+    Feedback_SetBipolarRange(&g_cl.fb, vmax);
+    return CTL_SET_OK;
+}
+
+float Control_GetFeedbackRange(void)
+{
+    /* the process voltage at the top of the ADC range -- +Vmax for a bipolar calibration */
+    return (g_cl.fb.vrefV - g_cl.fb.offsetV) * g_cl.fb.scale;
+}
+
 ctl_set_result_t Control_SetFeedbackFilterHz(float hz)
 {
     if (g_run != 0U) { return CTL_SET_BUSY; }
@@ -404,7 +422,7 @@ uint8_t Control_GetFeedbackSim(void)
 ctl_set_result_t Control_SetMaxVolts(float volts)
 {
     if (g_run != 0U) { return CTL_SET_BUSY; }
-    if ((volts <= 0.0f) || (volts > 1000.0f)) { return CTL_SET_RANGE; }
+    if ((volts <= 0.0f) || (volts > 10000.0f)) { return CTL_SET_RANGE; }
     g_cl.cfg.maxVolts = volts;
     return CTL_SET_OK;
 }

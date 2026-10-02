@@ -521,6 +521,82 @@ off, as it is at reset, VREF+ sits near 0 V: every ADC conversion reads 4095 and
 DAC outputs are scaled to nothing. This reference is the full scale of both the ADC
 inputs and the DAC outputs.
 
+### Closed loop: `PID:*`, `SOURce:*`, `TARGet:*`, `LOG:*`, `CONFig:FEEDback:*`, `CONFig:CLOSEDloop:*`, `SIM:PLANT:*`
+
+The controller can hold the supply's output voltage to a time-series **target** by
+reading it back over an ADC input and adjusting the output (HVPS: frequency, duty
+fixed; Limiter: duty, carrier fixed). The command layout follows the XREX controller's.
+All voltages are in the loop's own units ("process volts"): the target, the measurement
+and `CONFig:MAXVolts` are the same unit, set by the feedback calibration below (ADC volts
+by default, real supply volts once `CONFig:FEEDback:RANGE` or `SCALE`/`OFFSet` is set).
+The loop number is always `1` (the Limiter's three independent loops are not built yet).
+
+**Running it.** `CONFig:MODE`, then `PID:LOOPMODE 1 1`, then a target (`TARGet:*`), then
+`ARM` and `FIRE` (or `SOURce:RUN`, which runs a constant `SOURce:SETpoint` instead of a
+profile). With `PID:LOOPMODE 1 0` (the default) `FIRE` plays the open-loop `SHOT:*` as before.
+The loop ticks at `CONFig:PIDRate` (default 10 kHz, one tick per ADC block: the sampler
+timer starts the ADC, DMA fills the scan buffer, the block interrupt runs the loop). A run
+ends when the target ends: the HRTIM outputs are disabled at a period boundary.
+
+```
+> PID:LOOPMODE 1 1                 loop, 0 = open loop, 1 = closed loop (loop 0 = all)
+> PID:GAINS 1 0.167 6.667 0        kp ki kd, up to 3 decimals; Hz per V (HVPS), % duty per V (Limiter)
+< OK
+> TARGet:BEGin
+> TARGet:STEP 0 0                  t_us volts; the first setpoint must be t = 0; linear between setpoints
+> TARGet:STEP 25000 720
+> TARGet:END
+< OK 3 25000                       setpoints, duration in us
+> LOG:ARM 1 1000 1               loop, max samples (<= 1000), decimation (ticks per sample)
+> ARM
+> FIRE
+> LOG:DATA? 1 0 40               loop, start, count (<= 40 per reply, SUM= check value)
+< OK 1000 10000 SUM=... 3 0 50638 ...   count, tick rate, then target mV, measured mV, output (milli-Hz or milli-%)
+> SOURce:STATus? 1
+< OK 0 -0.003 0.228 65.02          running, target, measured, output
+```
+
+`TARGet:STEP` refuses a voltage beyond `CONFig:MAXVolts`. Other target commands:
+`TARGet:CLEar`, `TARGet?`, `TARGet:POINt? <i>`. `SOURce:RUN`, `SOURce:STOP`, `SOURce:SETpoint <ch> <volts>`.
+
+**Feedback input and calibration** (`CONFig:FEEDback:*`, default input PA1):
+
+| Command | Meaning |
+|---|---|
+| `CHANnel <1-6 or PA0 PA1 PC0 PB0 PC1 PB1>` | the ADC input used as feedback |
+| `SCALE <x>`, `OFFSet <adc volts>` | process volts = (ADC volts - offset) x scale |
+| `RANGE <Vmax>` | sets scale and offset for a bipolar output: -Vmax -> 0 V at the ADC, +Vmax -> full scale, zero at mid-scale (offset = vref/2, scale = 2 Vmax / vref). `RANGE?` returns the process volts at the top of the ADC range. |
+| `FILTer <Hz>` | low-pass on the measurement (0 = off); the overvoltage check ignores it |
+| `CLIPTime <ms>` | how long the ADC may sit at either end of its range before a fault (10 ms; 0 = off) |
+| `SOURce ADC\|SIM` | the real ADC input, or the firmware's simulated plant (nothing wired) |
+
+The Limiter's output swings -Vmax..+Vmax and the ADC reads only 0 to `ANALOG_VREF_MV`, so
+its divider is expected to put zero volts at mid-scale; `CONFig:FEEDback:RANGE 900` is the
+one command for that. `FEEDBACK_VMAX_DEFAULT_V` in `ctrlr_config.h` makes it the power-on
+default (0 = uncalibrated). For an HVPS the offset stays 0 (its feedback is 0 V at the
+start of a shot).
+
+**Protection.** (`FAULT:SOURces?` bits `OVP` and `FB`.) Overvoltage: the unfiltered
+measurement beyond +-`CONFig:MAXVolts` (default 4, range up to 10000 process volts) stops the
+output immediately. Clipping: the ADC at full scale for `CLIPTime`. Dead feedback line: the
+ADC at the bottom of its range (code <= 5) for `CLIPTime`, checked only when the offset is not 0
+-- on a mid-scale-zero range a reading of code 0 means -Vmax or a broken line, and the loop
+would otherwise drive the output up on nothing real. All three raise `FAULT GENERAL`.
+A closed-loop start also refuses if VREF+ is more than 3 % from `ANALOG_VREF_MV`.
+
+**Plant models** (what the controller assumes, for its feedforward; the loop corrects the rest):
+`CONFig:CLOSEDloop:` `DUTY` (HVPS duty, within the HVPS limits), `FREQuency` (Limiter carrier),
+`RESonance` and `VPEAK` (HVPS curve), `VSCALE` (Limiter volts at |2D-1| = 1; with `RANGE`
+this is the capacitor-bank voltage), `BRANCH ABOVE|BELOW` (which side of the HVPS peak to
+run on; gains stay positive either way). `CONFig:PIDRate`, `CONFig:SLEWRate <per tick>`,
+`CONFig:ADC:AVERage`, `CONFig:ADC:SAMPle` set the loop rate, the output slew limit and the
+sampling.
+
+**Simulated plant** (`CONFig:FEEDback:SOURce SIM`): the firmware answers its own commands
+through a first-order lag, so the loop runs with nothing wired. `SIM:PLANT:TAU`, `GAIN`
+(a mid-shot disturbance knob), `RESonance`, `WIDTH`, `VPEAK`, `VSCALE`. Set the simulated
+plant differently from the controller's model to test it against a supply it does not know.
+
 ### `GDS?`
 
 Raw `HIGH`/`LOW` snapshot of the 12 GateDriverStatus_01..12 pins

@@ -20,6 +20,11 @@ void Feedback_SetCalibration(feedback_t *fb, float scale, float offsetV)
     fb->offsetV = offsetV;
 }
 
+void Feedback_SetBipolarRange(feedback_t *fb, float vmax)
+{
+    Feedback_SetCalibration(fb, 2.0f * vmax / fb->vrefV, fb->vrefV * 0.5f);
+}
+
 void Feedback_SetFilter(feedback_t *fb, float cutoffHz, float dt)
 {
     if ((cutoffHz <= 0.0f) || (dt <= 0.0f))
@@ -40,6 +45,7 @@ void Feedback_Reset(feedback_t *fb)
     fb->volts = 0.0f;
     fb->primed = 0U;
     fb->clipHighTicks = 0U;
+    fb->clipLowTicks = 0U;
 }
 
 float Feedback_Process(feedback_t *fb, float meanCode)
@@ -64,6 +70,14 @@ float Feedback_Process(feedback_t *fb, float meanCode)
     else
     {
         fb->clipHighTicks = 0U;
+    }
+    if ((fb->offsetV > 0.0f) && (meanCode <= (float)FEEDBACK_CLIP_LOW_CODE))
+    {
+        fb->clipLowTicks++;
+    }
+    else
+    {
+        fb->clipLowTicks = 0U;
     }
     return fb->volts;
 }

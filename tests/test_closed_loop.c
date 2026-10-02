@@ -113,6 +113,50 @@ static void TestLimiterTracksTriangle(void)
     CHECK(sqrtf(sumSq / (float)n) < 0.045f);                   /* a 128 V/s ramp against a 2 ms lag */
 }
 
+/* the real shape of the Limiter: a +-900 V output, the divider mapping -900 V -> 0 V and +900 V -> full scale,
+   calibrated with Feedback_SetBipolarRange (CONFig:FEEDback:RANGE), a +-720 V triangle (the same 89 % of what a 95 % duty
+   reaches as the 1 V version's +-0.8 V), gains scaled to volts */
+static void TestLimiter900V(void)
+{
+    closed_loop_t cl;
+    plant_t pl = { 1, 900.0f, 0.0f, 0.0f, 0.0f, 0.002f, 1.0f, 0.0f };
+    uint16_t per, cmp;
+    float worst = 0.0f, sumSq = 0.0f; int n = 0;
+    cl_status_t st;
+    const uint32_t t[5]  = { 0U, 12500U, 25000U, 37500U, 50000U };
+    const int32_t  mv[5] = { -720000, 720000, -720000, 720000, -720000 };
+
+    SupplyMode_Set(SUPPLY_MODE_LIMITER);
+    Target_Clear();
+    for (int i = 0; i < 5; i++) { CHECK(Target_Append(t[i], mv[i], 1000000) == TARGET_APPEND_OK); }
+    Cl_Init(&cl, RATE, VREF);
+    Feedback_SetBipolarRange(&cl.fb, 900.0f);
+    cl.cfg.maxVolts = 1000.0f;
+    cl.cfg.kp[CL_PLANT_LIMITER] = 150.0f / 900.0f;
+    cl.cfg.ki[CL_PLANT_LIMITER] = 6000.0f / 900.0f;
+    cl.cfg.limiterFreqHz = 100000.0f;
+    cl.cfg.limiterVscale = 900.0f;
+    cl.cfg.clipTicks = 50U;
+    CHECK(Cl_Start(&cl, 1U, 0.0f, &per, &cmp) == 1U);
+    pl.v = -720.0f;
+    for (int i = 0; i < 6000; i++)
+    {
+        PlantStep(&pl, per, cmp);
+        st = Cl_Tick(&cl, CodeFor(pl.v, cl.fb.scale, cl.fb.offsetV), &per, &cmp);
+        if (st != CL_RUNNING) { break; }
+        if (i > 200)
+        {
+            float e = Abs(pl.v - cl.sp);
+            if (e > worst) { worst = e; }
+            sumSq += e * e; n++;
+        }
+    }
+    CHECK(st == CL_FINISHED);                  /* no overvoltage and no clipping at +-720 of +-900 */
+    printf("  limiter +-900 V range: worst error %.2f V, rms %.2f V\n", worst, sqrtf(sumSq / (float)n));
+    CHECK(worst < 54.0f);                      /* the same 6 % as the 1 V version */
+    CHECK(sqrtf(sumSq / (float)n) < 40.5f);
+}
+
 static void RunHvpsRamp(uint8_t above, float *worst, float *finalErr, int *monotonicOk)
 {
     closed_loop_t cl;
@@ -277,6 +321,22 @@ static void TestProtection(void)
     cl.cfg.clipTicks = 0U;                                           /* switched off */
     CHECK(Cl_Start(&cl, 0U, 0.0f, &per, &cmp) == 1U);
     for (int i = 0; i < 50; i++) { CHECK(Cl_Tick(&cl, 4095.0f, &per, &cmp) == CL_RUNNING); }
+
+    /* the bottom of the range: a dead feedback line reads 0, which on a mid-scale-zero (bipolar) range would read as
+       -Vmax and send the output up. Counted only with a non-zero offset, with the same 5-tick limit. */
+    Feedback_SetBipolarRange(&cl.fb, 50.0f);
+    cl.cfg.maxVolts = 100.0f;
+    cl.cfg.clipTicks = 5U;
+    CHECK(Cl_Start(&cl, 0U, 0.0f, &per, &cmp) == 1U);
+    for (int i = 0; i < 4; i++) { CHECK(Cl_Tick(&cl, 0.0f, &per, &cmp) == CL_RUNNING); }
+    CHECK(Cl_Tick(&cl, 0.0f, &per, &cmp) == CL_FAULT_CLIPPED_LOW);
+    CHECK(cl.active == 0U);
+    CHECK(Cl_Start(&cl, 0U, 0.0f, &per, &cmp) == 1U);
+    for (int i = 0; i < 4; i++) { Cl_Tick(&cl, 0.0f, &per, &cmp); }
+    CHECK(Cl_Tick(&cl, 2000.0f, &per, &cmp) == CL_RUNNING);          /* a good reading resets the count */
+    Feedback_SetCalibration(&cl.fb, 1.0f, 0.0f);                     /* offset 0 (HVPS): 0 V is a normal reading */
+    CHECK(Cl_Start(&cl, 0U, 0.0f, &per, &cmp) == 1U);
+    for (int i = 0; i < 50; i++) { CHECK(Cl_Tick(&cl, 0.0f, &per, &cmp) == CL_RUNNING); }
 }
 
 static void TestStartRefusals(void)
@@ -317,6 +377,7 @@ static void TestStartRefusals(void)
 int main(void)
 {
     TestLimiterTracksTriangle();
+    TestLimiter900V();
     TestHvpsBothBranches();
     TestDisturbanceRejection();
     TestHoldMode();

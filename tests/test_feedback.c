@@ -75,8 +75,39 @@ static void TestClipping(void)
     CHECK(fb.clipHighTicks == 0U && fb.primed == 0U);
 }
 
+static void TestBipolarRangeAndLowClip(void)
+{
+    feedback_t fb;
+
+    /* a +-900 V output: -900 -> 0 V, 0 -> 1.45 V, +900 -> 2.9 V */
+    Feedback_Init(&fb, 2.9f);
+    Feedback_SetBipolarRange(&fb, 900.0f);
+    CHECK(Abs(fb.scale - 1800.0f / 2.9f) < 1e-3f && Abs(fb.offsetV - 1.45f) < 1e-6f);
+    CHECK(Abs(Feedback_Process(&fb, 0.0f) + 900.0f) < 0.01f);
+    CHECK(Abs(Feedback_Process(&fb, 4095.0f) - 900.0f) < 0.01f);
+    CHECK(Abs(Feedback_Process(&fb, 2047.5f)) < 0.01f);
+
+    /* the bottom of the range counts when the zero is mid-scale... */
+    Feedback_Reset(&fb);
+    for (int i = 0; i < 3; i++) { Feedback_Process(&fb, 0.0f); }
+    CHECK(fb.clipLowTicks == 3U);
+    Feedback_Process(&fb, 5.0f);                                        /* at the threshold still counts */
+    CHECK(fb.clipLowTicks == 4U);
+    Feedback_Process(&fb, 6.0f);                                        /* above it resets */
+    CHECK(fb.clipLowTicks == 0U);
+    Feedback_Process(&fb, 0.0f);
+    Feedback_Reset(&fb);
+    CHECK(fb.clipLowTicks == 0U);
+
+    /* ...and not when it is not (offset 0: a feedback that is 0 V at the start of a shot) */
+    Feedback_Init(&fb, 2.9f);
+    for (int i = 0; i < 10; i++) { Feedback_Process(&fb, 0.0f); }
+    CHECK(fb.clipLowTicks == 0U);
+}
+
 int main(void)
 {
+    TestBipolarRangeAndLowClip();
     TestScaling();
     TestFilter();
     TestClipping();

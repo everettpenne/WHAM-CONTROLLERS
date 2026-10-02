@@ -589,11 +589,13 @@ FLOAT_SETTING(cmd_config_adc_sample, SetSmp,   GetSmp,   1U, "CONFig:ADC:SAMPle 
 FLOAT_SETTING(cmd_config_slew_rate,  Control_SetSlewPerTick, Control_GetSlewPerTick, 3U, "CONFig:SLEWRate <Hz or % per tick, 0 = off>",
               "slew must be >= 0")
 FLOAT_SETTING(cmd_config_max_volts,  Control_SetMaxVolts, Control_GetMaxVolts, 3U, "CONFig:MAXVolts <volts>",
-              "max volts must be > 0 and <= 1000")
+              "max volts must be > 0 and <= 10000")
 FLOAT_SETTING(cmd_config_fb_scale,   Control_SetFeedbackScale, Control_GetFeedbackScale, 4U, "CONFig:FEEDback:SCALE <process volts per ADC volt>",
               "scale must be > 0")
 FLOAT_SETTING(cmd_config_fb_offset,  Control_SetFeedbackOffset, Control_GetFeedbackOffset, 4U, "CONFig:FEEDback:OFFSet <ADC volts that read as 0>",
               "offset must be 0 to the ADC full scale")
+FLOAT_SETTING(cmd_config_fb_range,   Control_SetFeedbackRange, Control_GetFeedbackRange, 3U, "CONFig:FEEDback:RANGE <Vmax in process volts>",
+              "Vmax must be > 0 and <= 100000")
 FLOAT_SETTING(cmd_config_fb_filter,  Control_SetFeedbackFilterHz, Control_GetFeedbackFilterHz, 1U, "CONFig:FEEDback:FILTer <cutoff Hz, 0 = off>",
               "cutoff must be 0 or below half the tick rate")
 FLOAT_SETTING(cmd_config_fb_clip,    Control_SetClipMs, Control_GetClipMs, 1U, "CONFig:FEEDback:CLIPTime <ms, 0 = off>",

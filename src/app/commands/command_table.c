@@ -56,6 +56,8 @@ static const scpi_command_t command_table[] = {
     { "CONFig:FEEDback:SCALE?",             cmd_config_fb_scale_query },
     { "CONFig:FEEDback:OFFSet",             cmd_config_fb_offset },
     { "CONFig:FEEDback:OFFSet?",            cmd_config_fb_offset_query },
+    { "CONFig:FEEDback:RANGE",              cmd_config_fb_range },
+    { "CONFig:FEEDback:RANGE?",             cmd_config_fb_range_query },
     { "CONFig:FEEDback:FILTer",             cmd_config_fb_filter },
     { "CONFig:FEEDback:FILTer?",            cmd_config_fb_filter_query },
     { "CONFig:FEEDback:CLIPTime",           cmd_config_fb_clip },

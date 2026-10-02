@@ -207,6 +207,11 @@ cl_status_t Cl_Tick(closed_loop_t *cl, float meanCode, uint16_t *per, uint16_t *
         cl->active = 0U;
         return CL_FAULT_CLIPPED;
     }
+    if ((cl->cfg.clipTicks != 0U) && (cl->fb.clipLowTicks >= cl->cfg.clipTicks))
+    {
+        cl->active = 0U;
+        return CL_FAULT_CLIPPED_LOW;
+    }
     if ((cl->useProfile != 0U) &&
         ((((uint64_t)cl->tick * 1000000ULL) / cl->rateHz) >= Target_DurationUs()))
     {

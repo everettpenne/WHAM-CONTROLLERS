@@ -255,4 +255,18 @@
  * -------------------------------------------------------------------------- */
 #define ANALOG_VREF_MV          (2900U)
 
+/* --------------------------------------------------------------------------
+ * Feedback range for a bipolar output (added 2026-10-02)
+ *
+ * The Limiter's output swings -Vmax..+Vmax; its divider maps -Vmax to 0 V and
+ * +Vmax to the ADC full scale (zero volts at mid-scale), so the ADC never sees
+ * a negative voltage. A non-zero value here makes the loop's voltages -- the
+ * target, the measurement, CONFig:MAXVolts -- read in real supply volts out of
+ * the box (the same as CONFig:FEEDback:RANGE <Vmax> at run time). 0 leaves the
+ * feedback uncalibrated (the loop works in ADC volts, scale 1, offset 0), which
+ * is also what an HVPS wants. Projected capacitor bank: about 900 V -- left at
+ * 0 until the real divider is built and calibrated.
+ * -------------------------------------------------------------------------- */
+#define FEEDBACK_VMAX_DEFAULT_V (0U)
+
 #endif /* INC_CTRLR_CONFIG_H_ */

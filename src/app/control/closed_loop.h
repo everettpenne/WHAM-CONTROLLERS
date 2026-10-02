@@ -40,7 +40,8 @@ typedef enum
     CL_RUNNING = 0,
     CL_FINISHED,            /* the target profile reached its end */
     CL_FAULT_OVERVOLTAGE,
-    CL_FAULT_CLIPPED
+    CL_FAULT_CLIPPED,       /* the ADC sat at full scale */
+    CL_FAULT_CLIPPED_LOW    /* the ADC sat at the bottom of a mid-scale-zero range: a dead feedback line, or beyond -Vmax */
 } cl_status_t;
 
 enum { CL_PLANT_HVPS = 0, CL_PLANT_LIMITER = 1, CL_PLANT_COUNT = 2 };
