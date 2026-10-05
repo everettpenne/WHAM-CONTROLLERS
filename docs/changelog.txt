@@ -23,7 +23,7 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
         (its checks moved to test_scpi_util); the 7 remaining atol sites (PFMIN, TABle:STEP) and the slot parser are strict, keeping their own error codes.
   Verified on the simulator: the full profile round trip (30 queried values, shot/target/curve points) is identical before/after; bad arguments now
         answer e.g. "PFMIN:DATA? 1x -> ERR 8 not a number: 1x", "PFMIN:CAPTURE abc -> ERR 9 ...", "TABle:STEP 1 2 x 4 -> ERR 4 ...", "*RCL 1x -> ERR 12";
-        valid forms, set/query pairs, DAC/ADC/PHASe/SHOT commands unchanged. Flash 92,6 KB (was 97 KB: the formatter and helpers deduplicated).
+        valid forms, set/query pairs, DAC/ADC/PHASe/SHOT commands unchanged. Flash 92.6 KB (was 97 KB: the formatter and helpers deduplicated).
 
 2026-10-05  —  PHASe:ENAble / PHASe:SELect: choose which of the three phases U, V, W drive their outputs
 -----------------------------------------------------------------------
