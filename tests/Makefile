@@ -16,7 +16,8 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
            -I$(ROOT)/src/app/protection -I$(ROOT)/build/generated -I$(OUT)
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_settings $(OUT)/test_closed_loop
+SCPI_UTIL := $(ROOT)/src/middleware/scpi/scpi_util.c
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_settings $(OUT)/test_closed_loop
 
 .PHONY: all run clean
 all: run
@@ -30,11 +31,14 @@ $(OUT):
 $(OUT)/test_scpi_parser: test_scpi_parser.c fake_uart.c $(SCPI) test_util.h fake_uart.h | $(OUT)
 	$(CC) $(CFLAGS) -o $@ test_scpi_parser.c fake_uart.c $(SCPI)
 
+$(OUT)/test_scpi_util: test_scpi_util.c fake_uart.c $(SCPI_UTIL) $(ROOT)/src/middleware/scpi/scpi_util.h test_util.h fake_uart.h | $(OUT)
+	$(CC) $(CFLAGS) -o $@ test_scpi_util.c fake_uart.c $(SCPI_UTIL) -lm
+
 # Every { "PATTERN", handler } row of the real command table, as C strings.
 $(OUT)/command_patterns.inc: $(ROOT)/src/app/commands/command_table.c | $(OUT)
 	sed -n 's/^[[:space:]]*{ *\("[^"]*"\),.*/\1,/p' $< > $@
 
-$(OUT)/test_command_table: test_command_table.c $(OUT)/command_patterns.inc fake_uart.c $(SCPI) test_util.h | $(OUT)
+$(OUT)/test_command_table: test_command_table.c known_short_collisions.inc $(OUT)/command_patterns.inc fake_uart.c $(SCPI) test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -o $@ test_command_table.c fake_uart.c $(SCPI)
 
 $(OUT)/test_state_machine: test_state_machine.c $(ROOT)/src/app/control/state_machine.c \
@@ -57,7 +61,7 @@ $(OUT)/test_feedback: test_feedback.c $(ROOT)/src/app/control/feedback.c $(ROOT)
 
 $(OUT)/test_target_profile: test_target_profile.c $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/target_profile.h \
                             $(ROOT)/src/app/control/shot_profile.c test_util.h | $(OUT)
-	$(CC) $(CFLAGS) -O2 -o $@ test_target_profile.c $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
+	$(CC) $(CFLAGS) -O2 -o $@ test_target_profile.c $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c $(SCPI_UTIL) fake_uart.c
 
 $(OUT)/test_phase_mask: test_phase_mask.c $(ROOT)/src/app/control/phase_mask.c $(ROOT)/src/app/control/phase_mask.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -O2 -o $@ test_phase_mask.c $(ROOT)/src/app/control/phase_mask.c
@@ -67,16 +71,17 @@ $(OUT)/test_hvps_curve: test_hvps_curve.c $(ROOT)/src/app/control/hvps_curve.c $
 
 SETTINGS := $(ROOT)/src/app/settings
 
-$(OUT)/test_settings_codec: test_settings_codec.c $(SETTINGS)/settings_codec.c $(SETTINGS)/settings_codec.h test_util.h | $(OUT)
-	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c -lm
+$(OUT)/test_settings_codec: test_settings_codec.c $(SETTINGS)/settings_codec.c $(SETTINGS)/settings_codec.h $(SCPI_UTIL) fake_uart.c test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c $(SCPI_UTIL) fake_uart.c -lm
 
 $(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(SETTINGS)/profile_store.c \
                            $(SETTINGS)/profile_store.h $(SETTINGS)/settings_codec.c test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_profile_store.c fake_nvstore.c $(SETTINGS)/profile_store.c \
-	    $(SETTINGS)/settings_codec.c
+	    $(SETTINGS)/settings_codec.c $(SCPI_UTIL) fake_uart.c
 
 # the saved-profile glue against a fake control layer and the real tables, supply modes and flash store
 SET_SRC := $(SETTINGS)/settings.c $(SETTINGS)/settings_codec.c $(SETTINGS)/profile_store.c fake_nvstore.c fake_control.c \
+           $(SCPI_UTIL) fake_uart.c \
            $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
            $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/shot_profile.c \
            $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/supply_mode.c
@@ -84,7 +89,7 @@ SET_SRC := $(SETTINGS)/settings.c $(SETTINGS)/settings_codec.c $(SETTINGS)/profi
 $(OUT)/test_settings: test_settings.c $(SET_SRC) $(SETTINGS)/settings.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -I$(SETTINGS) -I$(ROOT)/src/app/sim -O1 -o $@ test_settings.c $(SET_SRC) -lm
 
-CL_SRC := $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
+CL_SRC := $(SCPI_UTIL) fake_uart.c $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
           $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
 
 $(OUT)/test_closed_loop: test_closed_loop.c $(CL_SRC) $(ROOT)/src/app/control/closed_loop.h test_util.h | $(OUT)

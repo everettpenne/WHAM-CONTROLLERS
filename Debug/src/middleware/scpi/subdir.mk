@@ -5,13 +5,16 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/middleware/scpi/scpi_parser.c
+../src/middleware/scpi/scpi_parser.c \
+../src/middleware/scpi/scpi_util.c
 
 OBJS += \
-./src/middleware/scpi/scpi_parser.o
+./src/middleware/scpi/scpi_parser.o \
+./src/middleware/scpi/scpi_util.o
 
 C_DEPS += \
-./src/middleware/scpi/scpi_parser.d
+./src/middleware/scpi/scpi_parser.d \
+./src/middleware/scpi/scpi_util.d
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -21,7 +24,7 @@ src/middleware/scpi/%.o src/middleware/scpi/%.su src/middleware/scpi/%.cyclo: ..
 clean: clean-src-2f-middleware-2f-scpi
 
 clean-src-2f-middleware-2f-scpi:
-	-$(RM) ./src/middleware/scpi/scpi_parser.cyclo ./src/middleware/scpi/scpi_parser.d ./src/middleware/scpi/scpi_parser.o ./src/middleware/scpi/scpi_parser.su
+	-$(RM) ./src/middleware/scpi/scpi_parser.cyclo ./src/middleware/scpi/scpi_parser.d ./src/middleware/scpi/scpi_parser.o ./src/middleware/scpi/scpi_parser.su ./src/middleware/scpi/scpi_util.cyclo ./src/middleware/scpi/scpi_util.d ./src/middleware/scpi/scpi_util.o ./src/middleware/scpi/scpi_util.su
 
 .PHONY: clean-src-2f-middleware-2f-scpi
 

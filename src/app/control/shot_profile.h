@@ -23,7 +23,7 @@
  *
  * Units: time in microseconds; frequency in millihertz; duty in hundredths of
  * a percent (so 47.5 % is 4750). The wire takes Hz and percent with decimals
- * (ShotProfile_ParseScaled()).
+ * (Scpi_ParseScaled(), scpi_util.h).
  *
  * All integer math (64-bit where needed), so the host tool can reproduce the
  * generated table exactly: python/pfm_shot_test.py generate_profile(). Pure
@@ -70,12 +70,6 @@ uint32_t ShotProfile_DurationUs(void);
 uint8_t  ShotProfile_Get(uint16_t index, shot_setpoint_t *out);
 /* A usable shot: at least two setpoints (the first is t = 0 by construction). */
 uint8_t  ShotProfile_IsComplete(void);
-
-/* Parses a non-negative decimal such as "20000", "47.5" or "0.125" into
-   hundredths-style fixed point: the value times 10^decimals, as an integer.
-   At most `decimals` digits after the point; no sign, no exponent, no
-   spaces. Returns 1 on success, 0 on anything else (including overflow). */
-uint8_t ShotProfile_ParseScaled(const char *text, uint8_t decimals, uint32_t *out);
 
 /* ---- generator ---- */
 

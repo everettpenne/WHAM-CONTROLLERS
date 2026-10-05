@@ -198,12 +198,7 @@ uint8_t SettingsCodec_Decode(const uint8_t *buf, uint16_t len, settings_snapshot
 
 /* ---- text and comparison, for CONFig:PROFile:* ---- */
 
-/* A float as text like printf's "%g" (6 significant digits, trailing zeros dropped, exponent form outside
-   1e-4..1e6) -- without printf's float support, which newlib-nano leaves out unless the link asks for it
-   (-u _printf_float costs ~6 KB and is lost silently if the project's build settings are regenerated). */
-void SettingsCodec_FormatFloat(float v, char *out, size_t n);
-
-/* Field value as text (floats as SettingsCodec_FormatFloat, U8/U32 decimal). */
+/* Field value as text (floats as Scpi_FormatFloat (scpi_util.h), U8/U32 decimal). */
 void SettingsCodec_FormatValue(const settings_snapshot_t *s, uint8_t fieldIdx, uint8_t ch,
                                char *out, size_t n);
 

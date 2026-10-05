@@ -29,18 +29,16 @@ static settings_snapshot_t g_saved;
 /* Parses the slot argument into 0-based *slot; sends ERR 12 and returns 0 on a missing/invalid one. */
 static uint8_t ParseSlot(uart_instance_t *inst, const char *tok, uint8_t *slot)
 {
-    long v;
-    char *end = NULL;
+    long v = 0L;
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "needs a slot number");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "needs a slot number");
         return 0U;
     }
-    v = strtol(tok, &end, 10);
-    if (end == tok || *end != '\0' || v < 1L || v > (long)PROFILE_SLOT_COUNT)
+    if (Scpi_ParseLong(tok, &v) == 0U || v < 1L || v > (long)PROFILE_SLOT_COUNT)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "slot must be 1-8");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "slot must be 1-8");
         return 0U;
     }
     *slot = (uint8_t)(v - 1L);
@@ -56,7 +54,7 @@ static uint8_t RequireIdle(uart_instance_t *inst, const char *what)
         return 1U;
     }
     snprintf(msg, sizeof(msg), "%s only in IDLE", what);
-    SendErr(inst, ERR_INVALID_STATE, msg);
+    Scpi_SendErr(inst, ERR_INVALID_STATE, msg);
     return 0U;
 }
 
@@ -73,7 +71,7 @@ static void SendProfileErr(uart_instance_t *inst, uint8_t slot, profile_status_t
     {
         snprintf(msg, sizeof(msg), "slot %u: %s", (unsigned int)(slot + 1U), ProfileStore_StatusText(rc));
     }
-    SendErr(inst, ERR_PROFILE, msg);
+    Scpi_SendErr(inst, ERR_PROFILE, msg);
 }
 
 /* *SAV <slot> [label] -- save the current settings and tables. */
@@ -92,7 +90,7 @@ void cmd_sav(uart_instance_t *inst, char *args)
     label = strtok(NULL, " \r\n");
     if (label != NULL && (strlen(label) > PROFILE_LABEL_MAX || strcmp(label, "-") == 0))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "label must be 1-15 characters, no spaces (\"-\" is reserved)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "label must be 1-15 characters, no spaces (\"-\" is reserved)");
         return;
     }
     if (RequireIdle(inst, "*SAV") == 0U)
@@ -105,7 +103,7 @@ void cmd_sav(uart_instance_t *inst, char *args)
         SendProfileErr(inst, slot, rc);
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* *RCL <slot> -- apply a saved profile. Reply: OK APPLIED=<n> FAILED=<k> [<names>] [IGNORED=<m>]. */
@@ -164,7 +162,7 @@ void cmd_rcl(uart_instance_t *inst, char *args)
     }
     else
     {
-        uart_send(inst, "OK\r\n");
+        Scpi_ReplyOk(inst);
     }
 }
 
@@ -210,7 +208,7 @@ static uint8_t Inspect(uart_instance_t *inst, uint8_t slot, settings_tables_t *t
     {
         if (rc == PROFILE_ERR_CORRUPT)
         {
-            SendErr(inst, ERR_PROFILE, "saved data could not be decoded");
+            Scpi_SendErr(inst, ERR_PROFILE, "saved data could not be decoded");
         }
         else
         {
@@ -355,5 +353,5 @@ void cmd_profile_clear(uart_instance_t *inst, char *args)
         SendProfileErr(inst, slot, rc);
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }

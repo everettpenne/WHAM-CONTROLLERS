@@ -53,7 +53,7 @@ void cmd_config_mode(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:MODE needs one argument: LIMiter or HVPS");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:MODE needs one argument: LIMiter or HVPS");
         return;
     }
     if ((strcasecmp(tok, "LIM") == 0) || (strcasecmp(tok, "LIMITER") == 0))
@@ -66,12 +66,12 @@ void cmd_config_mode(uart_instance_t *inst, char *args)
     }
     else
     {
-        SendErr(inst, ERR_INVALID_ARGS, "mode must be LIMiter or HVPS");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "mode must be LIMiter or HVPS");
         return;
     }
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "CONFig:MODE only in IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "CONFig:MODE only in IDLE");
         return;
     }
     if (SupplyMode_Set(mode) != 0U)
@@ -79,7 +79,7 @@ void cmd_config_mode(uart_instance_t *inst, char *args)
         CmdTable_Discard();
         CmdShot_Discard();
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_mode_query(uart_instance_t *inst, char *args)

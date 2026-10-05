@@ -2,7 +2,7 @@
  * target_profile.c -- see target_profile.h.
  */
 #include "target_profile.h"
-#include "shot_profile.h"   /* ShotProfile_ParseScaled(): the shared unsigned decimal parser */
+#include "scpi_util.h"      /* Scpi_ParseScaled(): the shared unsigned decimal parser */
 #include <stddef.h>
 
 static target_setpoint_t g_sp[TARGET_SETPOINT_MAX];
@@ -127,7 +127,7 @@ uint8_t Target_ParseMilliVolts(const char *text, int32_t *out)
         neg = 1U;
         text++;
     }
-    if ((ShotProfile_ParseScaled(text, 3U, &mag) == 0U) || (mag > 2147483647UL))
+    if ((Scpi_ParseScaled(text, 3U, &mag) == 0U) || (mag > 2147483647UL))
     {
         return 0U;
     }

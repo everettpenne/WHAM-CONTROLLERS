@@ -7,14 +7,6 @@
 #include "gate_driver.h"
 #include "pfm.h"
 #include "state_machine.h"
-#include <stdio.h>
-
-void SendErr(uart_instance_t *inst, int code, const char *msg)
-{
-    char buf[128];
-    snprintf(buf, sizeof(buf), "ERR %d %s\r\n", code, msg);
-    uart_send(inst, buf);
-}
 
 /* True if EITHER fault source is latched: PC10/HRTIM1_FLT6 (native
    hardware, hrtim.h) or the GateDriverStatus EXTI interrupt

@@ -43,7 +43,7 @@ static uint8_t RefuseWhileFiring(uart_instance_t *inst)
 {
     if (SM_GetState() == SM_STATE_FIRING)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Table can't change while FIRING");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Table can't change while FIRING");
         return 1U;
     }
     return 0U;
@@ -68,13 +68,13 @@ void cmd_table_begin(uart_instance_t *inst, char *args)
     }
     if (SupplyMode_Get() == SUPPLY_MODE_NONE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
         return;
     }
     PFM_TableReset();
     g_tableUploadActive = 1U;
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* per + one compare value per channel -- see ctrlr_config.h's
@@ -93,7 +93,7 @@ static void SendTableStepCountErr(uart_instance_t *inst)
     snprintf(msg, sizeof(msg),
              "TABLE:STEP needs exactly %u values: per cmp0 .. cmp(N-1)",
              (unsigned int)TABLE_STEP_TOKEN_COUNT);
-    SendErr(inst, ERR_TABLE_STEP_INVALID, msg);
+    Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, msg);
 }
 
 void cmd_table_step(uart_instance_t *inst, char *args)
@@ -105,7 +105,7 @@ void cmd_table_step(uart_instance_t *inst, char *args)
 
     if (g_tableUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TABLE:BEGIN first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TABLE:BEGIN first");
         return;
     }
     if (RefuseWhileFiring(inst) != 0U)
@@ -131,10 +131,10 @@ void cmd_table_step(uart_instance_t *inst, char *args)
             break;
         }
 
-        v = atol(tok);
+        SCPI_NEED_LONG_ERR(inst, tok, v, ERR_TABLE_STEP_INVALID);
         if (v < 0L || v > 65535L)
         {
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "Value out of uint16 range (0-65535)");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "Value out of uint16 range (0-65535)");
             return;
         }
 
@@ -163,7 +163,7 @@ void cmd_table_step(uart_instance_t *inst, char *args)
         {
             if (SupplyMode_GetLimits(SupplyMode_Get(), &lim) == 0U)
             {
-                SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
+                Scpi_SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
                 return;
             }
             if ((res == SUPPLY_STEP_FREQ_LOW) || (res == SUPPLY_STEP_FREQ_HIGH))
@@ -180,18 +180,18 @@ void cmd_table_step(uart_instance_t *inst, char *args)
                          SupplyMode_Name(SupplyMode_Get()),
                          (unsigned)lim.dutyMinPct, (unsigned)lim.dutyMaxPct);
             }
-            SendErr(inst, ERR_OUT_OF_MODE_LIMITS, msg);
+            Scpi_SendErr(inst, ERR_OUT_OF_MODE_LIMITS, msg);
             return;
         }
     }
 
     if (PFM_AppendStep((uint16_t)vals[0], cmp) == 0U)
     {
-        SendErr(inst, ERR_TABLE_FULL, "Table full");
+        Scpi_SendErr(inst, ERR_TABLE_FULL, "Table full");
         return;
     }
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_table_end(uart_instance_t *inst, char *args)
@@ -239,13 +239,13 @@ void cmd_fire(uart_instance_t *inst, char *args)
 
     if (AnyFaultLatched() != 0U)
     {
-        SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
+        Scpi_SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
         return;
     }
 
     if (SM_GetState() != SM_STATE_ARMED)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
         return;
     }
 
@@ -259,28 +259,28 @@ void cmd_fire(uart_instance_t *inst, char *args)
         if (SM_Fire() == 0U)
         {
             Control_Stop();
-            SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");
             return;
         }
         Control_Go();
-        uart_send(inst, "OK\r\n");
+        Scpi_ReplyOk(inst);
         return;
     }
     PFM_RestoreOpenSource();        /* an open-loop shot after a closed-loop run plays the uploaded shot again */
 
     if (PFM_ShotReady() == 0U)
     {
-        SendErr(inst, ERR_TABLE_EMPTY, "Nothing to fire -- upload a shot first (SHOT:BEGin/STEP/END)");
+        Scpi_SendErr(inst, ERR_TABLE_EMPTY, "Nothing to fire -- upload a shot first (SHOT:BEGin/STEP/END)");
         return;
     }
 
     if (SM_Fire() == 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");   /* narrow race only */
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");   /* narrow race only */
         return;
     }
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* --------------------------------------------------------------------------

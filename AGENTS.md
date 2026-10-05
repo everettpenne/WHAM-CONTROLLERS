@@ -519,10 +519,24 @@ sets goes through the same setter the serial command uses (`control_runtime.h`);
 field id in `settings_codec.h`, a capture/apply line in `settings.c`, and a decision on whether it belongs in a
 profile (bench-simulation knobs and run state do not). `QSPI:SELFtest` is the bench check of the flash driver.
 
+## SCPI protocol layer shared with WHAM-XREX-PFMG474 (added 2026-10-05)
+
+The parser, the error-code enum (`scpi_err.h`), the reply and strict-argument helpers (`scpi_util.h`: `Scpi_SendErr`,
+`Scpi_ReplyOk`, `Scpi_ReplyFixed`, `Scpi_ParseLong/Float/Scaled`, `SCPI_NEED_LONG/FLOAT`, `SCPI_FLOAT_SETTING`,
+`Scpi_FormatFixed/Float`) and their tests are byte-identical in both controller repos, together with
+`tests/test_command_table.c`; `python/check_shared.py` compares them. What is described once, in
+`docs/scpi_conventions.md`: the reply grammar, the error codes (never renumbered or reused), mnemonic matching, the
+strict argument rules and where the two command sets differ. Handlers use `Scpi_*` and never `atol`/`atof`/
+`uart_send("OK")`: a numeric argument must be the WHOLE token (`12x`, `abc`, `1.5` for an integer are refused with
+`ERR 12 not a number: ...`, or the command's own code such as `ERR 8`/`ERR 9`/`ERR 4`/`ERR 11`); add a handler
+with a row in `command_table.c`, a declaration in `commands.h`, and documentation in `command_reference.md`.
+The product vocabularies stay separate (the same name can mean different units: see the table in
+`docs/scpi_conventions.md`).
+
 ## Code shared with WHAM-XREX-PFMG474 (2026-10-05)
 
 `nvstore`, `qspi_test`, `profile_store`, `tests/test_profile_store.c`, `fake_nvstore` and
-`SettingsCodec_FormatFloat` are byte-identical in both controller repos (same board, same flash chip, separate
+`Scpi_FormatFloat` (scpi_util) are byte-identical in both controller repos (same board, same flash chip, separate
 regions and magics: `docs/saved_profiles_shared.md`). Change them in both and run `python3 python/check_shared.py`
 (the same script is in both repos).
 

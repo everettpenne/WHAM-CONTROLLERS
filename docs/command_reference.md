@@ -2,39 +2,12 @@
 
 USART2, **115200 8N1** (raised from 9600 on 2026-09-04 — see `docs/changelog.txt`; WHAM-HBRIDGE-PFMG474-only, the sibling PFM-STM32G474 project still uses 9600). Commands are terminated by `\r`, `\n`, or `\r\n`.
 
-## Response conventions
+## Protocol conventions
 
-Ported from the sibling PFM-STM32G474 project, per project decision:
-
-| Form | Meaning |
-|---|---|
-| `OK\r\n` | Accepted, no data |
-| `OK <value>\r\n` | Accepted, with a return value |
-| `ERR <n> <msg>\r\n` | Rejected; error codes are stable across firmware versions |
-
-### Error codes
-
-| Code | Meaning |
-|---|---|
-| 1 | Unknown command |
-| 2 | Not currently uploading a table — send `TABLE:BEGIN` first |
-| 3 | Table full (`PFM_TABLE_SIZE` entries already appended) |
-| 4 | Invalid `TABLE:STEP` arguments (wrong count — must be `1 + HRTIM_NUM_CHANNELS`, see `CONFig:CHANnels?` — or a value outside uint16 range 0-65535) |
-| 5 | Table is empty — `FIRE` has nothing to play back |
-| 6 | Fault latched — PC10/HRTIM1_FLT6, the GateDriverStatus_01..12 inputs (`PE0`-`PE11`) or `GENERAL:TEST:FAULT` — `FAULT:CLEAR` required before `ARM`/`FIRE` will work again |
-| 7 | QUADSPI command failed or timed out (see `QSPI:ID?`) |
-| 8 | Invalid `PFM_Input` channel (1-6) |
-| 9 | `M` out of range for `PFMIN:CAPTURE` (1-`PFM_INPUT_MAX_PERIODS`) |
-| 10 | `TABLE:STEP` carrier frequency or a channel's duty is outside the selected supply mode's limits (`CONFig:MODE`); before 2026-09-29 this meant "carrier above 100 kHz" |
-| 12 | Invalid command arguments — see the specific command's own usage |
-| 13 | Not allowed in the current state (includes `TABLE:BEGIN` / `TABLE:STEP` with no supply mode selected, and `CONFig:MODE` when not `IDLE`): `FIRE` when not `ARMED`, `ARM` when not `IDLE`, `TABLE:BEGIN`/`STEP` while `FIRING`, `BOOT` while `ARMED`/`FIRING`, `FWUPdate:*` when not `IDLE` or with no transfer/verified image |
-| 17 | `FWUPdate:*` flash/CRC/image/option-byte failure |
-| 18 | Saved profiles (`*SAV`, `*RCL`, `CONFig:PROFile:*`): the slot is empty or corrupt, or the external flash failed |
-
-Codes are never renumbered or reused once assigned, matching the
-sibling project's convention. 11, 14, 15 and 16 are used only by
-WHAM-XREX-PFMG474 (channels, nicknames, external enable) and are reserved
-here so the shared numbers mean the same thing on both projects.
+Replies (`OK` / `OK <values>` / `ERR <n> <msg>`), the error codes, mnemonic matching (short and long forms, `?`
+queries) and the strict argument rules are common to both controllers and are described once, in
+[`docs/scpi_conventions.md`](scpi_conventions.md). Codes are never renumbered or reused. Each command's own
+section below says which errors it can return and how many decimals its numbers have.
 
 ### Unsolicited `!BOOT` banner (every boot)
 
@@ -72,29 +45,10 @@ and the command link is live. `!BOOT` never collides with a reply
 The first line can arrive with a garbage byte in front of it: the reset
 itself glitches the TX line. `python/fw_update.py` allows for this.
 
-## Mnemonic syntax (SCPI-style)
+## Mnemonic syntax
 
-Commands are matched by `scpi_parser.c`'s `scpi_match()` against a flat
-table of patterns — see that file's header comment for the full
-specification. Summary:
-
-- **Hierarchical**: pattern levels are separated by `:`, e.g.
-  `SOURce:VOLTage:LIMit`. A leading `:` on the input is tolerated but
-  never required (there's no "current path" concept — every command is
-  matched from the root).
-- **Short/long form, per level**: in a pattern token, the leading
-  UPPERCASE run is the mandatory short form; any lowercase letters
-  after it are an optional long-form suffix that must be matched *in
-  full* if used at all — no partial-long-form matches. Example:
-  `VERSion` accepts `VERS`, `VERSION`, `version` — not `VERSI`.
-- **Case-insensitive** throughout.
-- **Query suffix `?` must match exactly**: a pattern ending in `?` only
-  matches input also ending in `?`, and vice versa.
-- **Common (IEEE 488.2) commands** like `*IDN?` are just zero-colon
-  patterns — no special-casing needed.
-
-Compound commands (`;`-separated, multiple mnemonics on one line) are
-**not** supported yet.
+See [`docs/scpi_conventions.md`](scpi_conventions.md) ("Mnemonic matching"); the parser itself is
+`src/middleware/scpi/scpi_parser.c`.
 
 ## Commands
 

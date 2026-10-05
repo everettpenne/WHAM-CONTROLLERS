@@ -18,31 +18,6 @@ static shot_append_result_t Add(uint32_t t, uint32_t fHz, uint16_t dutyHund)
     return ShotProfile_Append(t, fHz * 1000U, dutyHund);
 }
 
-static void TestParse(void)
-{
-    uint32_t v = 0U;
-    CHECK(ShotProfile_ParseScaled("20000", 3U, &v) == 1U && v == 20000000U);
-    CHECK(ShotProfile_ParseScaled("20000.5", 3U, &v) == 1U && v == 20000500U);
-    CHECK(ShotProfile_ParseScaled("0.125", 3U, &v) == 1U && v == 125U);
-    CHECK(ShotProfile_ParseScaled("47.5", 2U, &v) == 1U && v == 4750U);
-    CHECK(ShotProfile_ParseScaled("50", 2U, &v) == 1U && v == 5000U);
-    CHECK(ShotProfile_ParseScaled("100.", 2U, &v) == 1U && v == 10000U);
-    CHECK(ShotProfile_ParseScaled("1500", 0U, &v) == 1U && v == 1500U);
-    CHECK(ShotProfile_ParseScaled(".5", 2U, &v) == 1U && v == 50U);
-    CHECK(ShotProfile_ParseScaled("47.555", 2U, &v) == 0U);      /* more decimals than the unit has */
-    CHECK(ShotProfile_ParseScaled("1.5", 0U, &v) == 0U);         /* no decimals allowed */
-    CHECK(ShotProfile_ParseScaled("", 2U, &v) == 0U);
-    CHECK(ShotProfile_ParseScaled(".", 2U, &v) == 0U);
-    CHECK(ShotProfile_ParseScaled("-5", 2U, &v) == 0U);
-    CHECK(ShotProfile_ParseScaled("1e3", 2U, &v) == 0U);
-    CHECK(ShotProfile_ParseScaled("1.2.3", 2U, &v) == 0U);
-    CHECK(ShotProfile_ParseScaled("5 ", 2U, &v) == 0U);
-    CHECK(ShotProfile_ParseScaled("4294967296", 0U, &v) == 0U);  /* overflow */
-    CHECK(ShotProfile_ParseScaled("4294967295", 0U, &v) == 1U && v == 4294967295U);
-    CHECK(ShotProfile_ParseScaled("99999999999", 3U, &v) == 0U);
-    CHECK(ShotProfile_ParseScaled(NULL, 2U, &v) == 0U);
-}
-
 static void TestUploadRules(void)
 {
     ShotProfile_Clear();
@@ -292,7 +267,6 @@ static void TestPeriodDivision(void)
 
 int main(void)
 {
-    TestParse();
     TestUploadRules();
     TestGeneratorFlat();
     TestGeneratorRamp();

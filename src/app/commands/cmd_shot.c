@@ -35,7 +35,7 @@ static uint8_t RefuseWhileFiring(uart_instance_t *inst)
 {
     if (SM_GetState() == SM_STATE_FIRING)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Shot can't change while FIRING");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Shot can't change while FIRING");
         return 1U;
     }
     return 0U;
@@ -60,12 +60,12 @@ void cmd_shot_begin(uart_instance_t *inst, char *args)
     }
     if (SupplyMode_Get() == SUPPLY_MODE_NONE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
         return;
     }
     ShotProfile_Clear();
     g_shotUploadActive = 1U;
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 static void SendLimitErr(uart_instance_t *inst, shot_append_result_t res)
@@ -87,7 +87,7 @@ static void SendLimitErr(uart_instance_t *inst, shot_append_result_t res)
                  (res == SHOT_APPEND_DUTY_LOW) ? "below" : "above", SupplyMode_Name(mode),
                  (unsigned)lim.dutyMinPct, (unsigned)lim.dutyMaxPct);
     }
-    SendErr(inst, ERR_OUT_OF_MODE_LIMITS, msg);
+    Scpi_SendErr(inst, ERR_OUT_OF_MODE_LIMITS, msg);
 }
 
 void cmd_shot_step(uart_instance_t *inst, char *args)
@@ -103,7 +103,7 @@ void cmd_shot_step(uart_instance_t *inst, char *args)
 
     if (g_shotUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send SHOT:BEGin first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send SHOT:BEGin first");
         return;
     }
     if (RefuseWhileFiring(inst) != 0U)
@@ -119,14 +119,14 @@ void cmd_shot_step(uart_instance_t *inst, char *args)
     }
     if ((tokD == NULL) || (extra != NULL))
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "SHOT:STEP needs exactly three values: t_us freq_hz duty_pct");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "SHOT:STEP needs exactly three values: t_us freq_hz duty_pct");
         return;
     }
-    if ((ShotProfile_ParseScaled(tokT, 0U, &tUs) == 0U) ||
-        (ShotProfile_ParseScaled(tokF, 3U, &fMilli) == 0U) ||
-        (ShotProfile_ParseScaled(tokD, 2U, &dHund) == 0U) || (dHund > 65535U))
+    if ((Scpi_ParseScaled(tokT, 0U, &tUs) == 0U) ||
+        (Scpi_ParseScaled(tokF, 3U, &fMilli) == 0U) ||
+        (Scpi_ParseScaled(tokD, 2U, &dHund) == 0U) || (dHund > 65535U))
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID,
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID,
                 "values must be non-negative decimals: t_us integer, freq_hz up to 3 decimals, duty_pct up to 2");
         return;
     }
@@ -135,25 +135,25 @@ void cmd_shot_step(uart_instance_t *inst, char *args)
     switch (res)
     {
         case SHOT_APPEND_OK:
-            uart_send(inst, "OK\r\n");
+            Scpi_ReplyOk(inst);
             break;
         case SHOT_APPEND_NO_MODE:
-            SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
             break;
         case SHOT_APPEND_FULL:
-            SendErr(inst, ERR_TABLE_FULL, "Shot full (SHOT_SETPOINT_MAX setpoints)");
+            Scpi_SendErr(inst, ERR_TABLE_FULL, "Shot full (SHOT_SETPOINT_MAX setpoints)");
             break;
         case SHOT_APPEND_FIRST_NOT_ZERO:
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "The first setpoint must be at t=0");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "The first setpoint must be at t=0");
             break;
         case SHOT_APPEND_NOT_INCREASING:
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "Time must be greater than the previous setpoint's");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "Time must be greater than the previous setpoint's");
             break;
         case SHOT_APPEND_TOO_LONG:
         {
             char msg[64];
             snprintf(msg, sizeof(msg), "Time is beyond the longest shot (%lu us)", (unsigned long)SHOT_MAX_DURATION_US);
-            SendErr(inst, ERR_TABLE_STEP_INVALID, msg);
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, msg);
             break;
         }
         default:
@@ -169,7 +169,7 @@ void cmd_shot_end(uart_instance_t *inst, char *args)
 
     if (g_shotUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send SHOT:BEGin first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send SHOT:BEGin first");
         return;
     }
     if (RefuseWhileFiring(inst) != 0U)
@@ -178,7 +178,7 @@ void cmd_shot_end(uart_instance_t *inst, char *args)
     }
     if (ShotProfile_IsComplete() == 0U)
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "A shot needs at least two setpoints: t=0 and the end of the shot");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "A shot needs at least two setpoints: t=0 and the end of the shot");
         return;
     }
     g_shotUploadActive = 0U;
@@ -197,7 +197,7 @@ void cmd_shot_clear(uart_instance_t *inst, char *args)
         return;
     }
     CmdShot_Discard();
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_shot_query(uart_instance_t *inst, char *args)
@@ -218,14 +218,14 @@ void cmd_shot_point_query(uart_instance_t *inst, char *args)
     uint32_t index = 0U;
     shot_setpoint_t sp;
 
-    if ((tok == NULL) || (ShotProfile_ParseScaled(tok, 0U, &index) == 0U))
+    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &index) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:POINt? needs one argument: the setpoint index (from 0)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:POINt? needs one argument: the setpoint index (from 0)");
         return;
     }
     if ((index > 0xFFFFU) || (ShotProfile_Get((uint16_t)index, &sp) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "No such setpoint");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "No such setpoint");
         return;
     }
     snprintf(buf, sizeof(buf), "OK %lu %lu.%03lu %u.%02u\r\n", (unsigned long)sp.tUs,

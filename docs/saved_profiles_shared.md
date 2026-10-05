@@ -41,8 +41,8 @@ the sibling checkout and reports any drift:
 * `tests/test_profile_store.c`, `fake_nvstore.c/.h` -- the host tests, including a power cut injected at every
   step of small saves and at a spread of steps of a large multi-sector save (the test adapts to the product's
   copy size);
-* the float-to-text routine in `settings_codec` (`SettingsCodec_FormatFloat`, a printf-free `%g`) and its
-  declaration.
+* the float-to-text routine, now `Scpi_FormatFloat` in `src/middleware/scpi/scpi_util.c` (a printf-free `%g`, used by
+  the profile previews and by the SCPI float replies; see `docs/scpi_conventions.md`).
 
 ## What stays different (by design)
 

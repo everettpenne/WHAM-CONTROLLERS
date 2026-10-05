@@ -1,6 +1,30 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-05  —  SCPI protocol layer shared with XREX: strict arguments, shared reply helpers and error codes (branch scpi-shared)
+-----------------------------------------------------------------------
+  Request: compare the two SCPI command libraries and bring them into harmony (steps A and B of that comparison).
+  The parser, its tests and the fake UART were already byte-identical; the differences were in the command layer. Done:
+  A  scpi_err.h -- the error-code enum is ONE shared header (codes 10/11/14-16 differ only in meaning, now written for both products;
+        ERR_CARRIER_TOO_HIGH stays as XREX's name for code 10); docs/scpi_conventions.md -- the single description of framing, replies,
+        error codes (with a "used by" column), mnemonic matching, strict arguments, how to write a handler, and where the two command sets
+        overlap but differ (53 shared mnemonics, 8 with different meaning/units: SOURce:SETpoint Hz vs V, PID:LOOPMODE default, LOG:DATA? streamed vs
+        paged, SHOT:* ...); each command_reference.md now points there instead of carrying its own copy; tests/test_command_table.c is one shared
+        file (each product's known short-form collisions live in tests/known_short_collisions.inc: XREX 6 entries, HBRIDGE none);
+        python/check_shared.py now also compares the parser, scpi_util, scpi_err, the tests and the two shared docs (the formatter blocks it
+        compared before are gone: the function moved whole).
+  B  src/middleware/scpi/scpi_util.c/.h (+ test_scpi_util.c, 20,201 checks) -- reply builders (Scpi_SendErr, ReplyOk, ReplyFixed, ReplyFloat/Float3,
+        ReplySet), STRICT argument parsing (Scpi_ParseLong/Float/Bool/Scaled/Unsigned; the whole token must be the number: "12x", "abc", "1.5" for an
+        integer, "nan", "0x10" are refused), handler shorthands (SCPI_NEED_LONG/FLOAT with an optional per-command error code, explicit Scpi_GetLong/
+        GetFloat for value-returning helpers), the SCPI_FLOAT_SETTING generator, and number text with no printf float support (Scpi_FormatFixed,
+        Scpi_FormatFloat = the %g formatter that had lived in settings_codec). SendErr is now Scpi_SendErr everywhere.
+  HBRIDGE: cmd_control.c's private ParseUnsigned/Fixed/ReplyOk/ReplyFixed/ReplySet and the FLOAT_SETTING macro are gone in favour of the shared ones
+        (FLOAT_SETTING is now a one-line alias of SCPI_FLOAT_SETTING); ShotProfile_ParseScaled was the same code as Scpi_ParseScaled and is removed
+        (its checks moved to test_scpi_util); the 7 remaining atol sites (PFMIN, TABle:STEP) and the slot parser are strict, keeping their own error codes.
+  Verified on the simulator: the full profile round trip (30 queried values, shot/target/curve points) is identical before/after; bad arguments now
+        answer e.g. "PFMIN:DATA? 1x -> ERR 8 not a number: 1x", "PFMIN:CAPTURE abc -> ERR 9 ...", "TABle:STEP 1 2 x 4 -> ERR 4 ...", "*RCL 1x -> ERR 12";
+        valid forms, set/query pairs, DAC/ADC/PHASe/SHOT commands unchanged. Flash 92,6 KB (was 97 KB: the formatter and helpers deduplicated).
+
 2026-10-05  —  PHASe:ENAble / PHASe:SELect: choose which of the three phases U, V, W drive their outputs
 -----------------------------------------------------------------------
   Branch phase-enable. Request: a command so an operator can output with only U and W, only W, or any combination.

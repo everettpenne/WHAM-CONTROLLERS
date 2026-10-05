@@ -45,7 +45,7 @@ static uint8_t ParseList(uart_instance_t *inst, const char *tok, uint8_t allowNo
         return 1U;
     }
     snprintf(msg, sizeof(msg), "%s%s", kListHelp, (allowNone != 0U) ? " or NONE" : "");
-    SendErr(inst, ERR_INVALID_ARGS, msg);
+    Scpi_SendErr(inst, ERR_INVALID_ARGS, msg);
     return 0U;
 }
 
@@ -58,7 +58,7 @@ static uint8_t RequireIdle(uart_instance_t *inst, const char *what)
         return 1U;
     }
     snprintf(msg, sizeof(msg), "%s only in IDLE", what);
-    SendErr(inst, ERR_INVALID_STATE, msg);
+    Scpi_SendErr(inst, ERR_INVALID_STATE, msg);
     return 0U;
 }
 
@@ -73,7 +73,7 @@ void cmd_phase_enable(uart_instance_t *inst, char *args)
 
     if ((tokFlag == NULL) || (extra != NULL) || ((strcmp(tokFlag, "0") != 0) && (strcmp(tokFlag, "1") != 0)))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PHASe:ENAble needs <phases> <0|1>, e.g. PHASe:ENAble UW 1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PHASe:ENAble needs <phases> <0|1>, e.g. PHASe:ENAble UW 1");
         return;
     }
     if (ParseList(inst, tokList, 0U, &mask) == 0U || RequireIdle(inst, "PHASe:ENAble") == 0U)
@@ -82,7 +82,7 @@ void cmd_phase_enable(uart_instance_t *inst, char *args)
     }
     now = PFM_GetPhaseMask();
     PFM_SetPhaseMask((tokFlag[0] == '1') ? (uint8_t)(now | mask) : (uint8_t)(now & (uint8_t)~mask));
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* PHASe:ENAble? [<phase>] */
@@ -116,7 +116,7 @@ void cmd_phase_enable_query(uart_instance_t *inst, char *args)
         }
         if ((one == 0U) || ((one & (uint8_t)(one - 1U)) != 0U))     /* exactly one phase */
         {
-            SendErr(inst, ERR_INVALID_ARGS, "PHASe:ENAble? takes one phase (U, V, W) or none");
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, "PHASe:ENAble? takes one phase (U, V, W) or none");
             return;
         }
         snprintf(buf, sizeof(buf), "OK %u\r\n", (unsigned int)(((mask & one) != 0U) ? 1U : 0U));
@@ -132,7 +132,7 @@ void cmd_phase_select(uart_instance_t *inst, char *args)
 
     if ((tok != NULL) && (strtok(NULL, " \r\n") != NULL))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PHASe:SELect takes one list, e.g. PHASe:SELect UW");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PHASe:SELect takes one list, e.g. PHASe:SELect UW");
         return;
     }
     if (ParseList(inst, tok, 1U, &mask) == 0U || RequireIdle(inst, "PHASe:SELect") == 0U)
@@ -140,7 +140,7 @@ void cmd_phase_select(uart_instance_t *inst, char *args)
         return;
     }
     PFM_SetPhaseMask(mask);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* PHASe:SELect? */

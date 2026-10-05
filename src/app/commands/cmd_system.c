@@ -51,7 +51,7 @@ void cmd_boot(uart_instance_t *inst, char *args)
        IDLE and FAULT (a faulted board may need new firmware). */
     if ((SM_GetState() == SM_STATE_ARMED) || (SM_GetState() == SM_STATE_FIRING))
     {
-        SendErr(inst, ERR_INVALID_STATE, "BOOT refused while ARMED or FIRING -- DISARM first");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "BOOT refused while ARMED or FIRING -- DISARM first");
         return;
     }
 
@@ -93,7 +93,7 @@ void cmd_qspi_id(uart_instance_t *inst, char *args)
 
     if (QspiTest_ReadId(id) == 0U)
     {
-        SendErr(inst, ERR_QSPI_FAILED, "QUADSPI command failed or timed out");
+        Scpi_SendErr(inst, ERR_QSPI_FAILED, "QUADSPI command failed or timed out");
         return;
     }
 
@@ -137,7 +137,7 @@ static void SelftestFail(uart_instance_t *inst, const char *step, nvstore_status
     char msg[64];
 
     snprintf(msg, sizeof(msg), "selftest %s: %s", step, NvStore_StatusText(st));
-    SendErr(inst, ERR_QSPI_FAILED, msg);
+    Scpi_SendErr(inst, ERR_QSPI_FAILED, msg);
 }
 
 void cmd_qspi_selftest(uart_instance_t *inst, char *args)
@@ -155,7 +155,7 @@ void cmd_qspi_selftest(uart_instance_t *inst, char *args)
 
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "QSPI:SELFtest only in IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "QSPI:SELFtest only in IDLE");
         return;
     }
 
@@ -209,7 +209,7 @@ void cmd_qspi_selftest(uart_instance_t *inst, char *args)
             {
                 snprintf(buf, sizeof(buf), "selftest compare: offset %u is %02X, expected %02X",
                          (unsigned int)pos, (unsigned int)chunk[i], (unsigned int)want);
-                SendErr(inst, ERR_QSPI_FAILED, buf);
+                Scpi_SendErr(inst, ERR_QSPI_FAILED, buf);
                 return;
             }
         }
@@ -278,5 +278,5 @@ void cmd_diag_rstcause_clear(uart_instance_t *inst, char *args)
 {
     (void)args;
     Mcu_ClearResetFlags();   /* resets every flag above to 0 */
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }

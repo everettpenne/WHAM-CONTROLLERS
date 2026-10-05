@@ -14,7 +14,7 @@
 #include "ctrlr_config.h"
 #include "adc.h"
 #include "control_runtime.h"
-#include "shot_profile.h"   /* ShotProfile_ParseScaled(): the shared decimal parser */
+#include "shot_profile.h"   /* Scpi_ParseScaled(): the shared decimal parser */
 #include <stdio.h>
 #include <string.h>
 
@@ -26,14 +26,14 @@ void cmd_adc_input_query(uart_instance_t *inst, char *args)
     uint32_t mv;
     char buf[48];
 
-    if ((tok == NULL) || (ShotProfile_ParseScaled(tok, 0U, &ch) == 0U) || (ch < 1U) || (ch > ADC_NUM_CHANNELS))
+    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &ch) == 0U) || (ch < 1U) || (ch > ADC_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "channel must be 1 to 6");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "channel must be 1 to 6");
         return;
     }
     if (Adc_Read((uint8_t)(ch - 1U), &code) == 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "ADC not ready or conversion timed out");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "ADC not ready or conversion timed out");
         return;
     }
     mv = ((uint32_t)code * ANALOG_VREF_MV + 2047U) / 4095U;
@@ -66,7 +66,7 @@ void cmd_adc_vref_query(uart_instance_t *inst, char *args)
 
     if ((Adc_ReadVrefint(&code, &cal) == 0U) || (code == 0U) || (cal == 0U))
     {
-        SendErr(inst, ERR_INVALID_STATE, "ADC not ready or conversion timed out");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "ADC not ready or conversion timed out");
         return;
     }
     mv = (3000U * (uint32_t)cal + (code / 2U)) / code;   /* the factory code was taken with VREF+ = 3.0 V */

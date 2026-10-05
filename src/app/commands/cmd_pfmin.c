@@ -30,20 +30,20 @@ void cmd_pfmin_capture(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_PFMIN_BAD_COUNT, "PFMIN:CAPTURE needs one argument: M (1-PFM_INPUT_MAX_PERIODS)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_COUNT, "PFMIN:CAPTURE needs one argument: M (1-PFM_INPUT_MAX_PERIODS)");
         return;
     }
 
-    m = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, m, ERR_PFMIN_BAD_COUNT);
     if ((m < 1L) || (m > (long)PFM_INPUT_MAX_PERIODS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_COUNT, "M out of range (1-PFM_INPUT_MAX_PERIODS)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_COUNT, "M out of range (1-PFM_INPUT_MAX_PERIODS)");
         return;
     }
 
     PfmInput_Arm((uint16_t)m);
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_pfmin_status(uart_instance_t *inst, char *args)
@@ -104,22 +104,30 @@ static uint8_t ParsePage(uart_instance_t *inst, const char *name, const char *to
 
     if (tokStart != NULL)
     {
-        s = atol(tokStart);
+        if (Scpi_GetLong(inst, ERR_INVALID_ARGS, tokStart, &s) == 0U)
+        {
+            return 0U;
+        }
         if ((s < 0L) || (s > (long)total))
         {
             snprintf(msg, sizeof(msg), "%s start must be 0..count", name);
-            SendErr(inst, ERR_INVALID_ARGS, msg);
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, msg);
             return 0U;
         }
     }
     n = (long)total - s;
     if (tokCount != NULL)
     {
-        long req = atol(tokCount);
+        long req;
+
+        if (Scpi_GetLong(inst, ERR_INVALID_ARGS, tokCount, &req) == 0U)
+        {
+            return 0U;
+        }
         if (req < 1L)
         {
             snprintf(msg, sizeof(msg), "%s count must be at least 1", name);
-            SendErr(inst, ERR_INVALID_ARGS, msg);
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, msg);
             return 0U;
         }
         if (req < n)
@@ -156,21 +164,21 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:DATA? needs one argument: channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:DATA? needs one argument: channel (1-6)");
         return;
     }
 
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_PFMIN_BAD_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
         return;
     }
     ch = (uint8_t)(chArg - 1L);   /* 1-6 on the wire -> 0-5 internally */
 
     if (PfmInput_GetEdgeMode(ch) != 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "channel is in BOTH-edge mode -- use PFMIN:RAW?");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "channel is in BOTH-edge mode -- use PFMIN:RAW?");
         return;
     }
 
@@ -233,13 +241,13 @@ void cmd_pfmin_edges(uart_instance_t *inst, char *args)
 
     if ((tokCh == NULL) || (tokMode == NULL))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PFMIN:EDGes needs two arguments: channel (1-6) RISING|BOTH");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PFMIN:EDGes needs two arguments: channel (1-6) RISING|BOTH");
         return;
     }
-    chArg = atol(tokCh);
+    SCPI_NEED_LONG_ERR(inst, tokCh, chArg, ERR_PFMIN_BAD_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
         return;
     }
     if (strcasecmp(tokMode, "BOTH") == 0)
@@ -252,16 +260,16 @@ void cmd_pfmin_edges(uart_instance_t *inst, char *args)
     }
     else
     {
-        SendErr(inst, ERR_INVALID_ARGS, "mode must be RISING or BOTH");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "mode must be RISING or BOTH");
         return;
     }
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "PFMIN:EDGes only in IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "PFMIN:EDGes only in IDLE");
         return;
     }
     (void)PfmInput_SetEdgeMode((uint8_t)(chArg - 1L), both);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_pfmin_edges_query(uart_instance_t *inst, char *args)
@@ -295,20 +303,20 @@ void cmd_pfmin_raw(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:RAW? needs one argument: channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:RAW? needs one argument: channel (1-6)");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_PFMIN_BAD_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
     stamps = PfmInput_GetStamps(ch);
     if ((stamps == NULL) || (PfmInput_CapturedBothEdges(ch) == 0U))
     {
-        SendErr(inst, ERR_INVALID_STATE, "channel is not in BOTH-edge mode (PFMIN:EDGes)");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "channel is not in BOTH-edge mode (PFMIN:EDGes)");
         return;
     }
     count = PfmInput_GetCount(ch);

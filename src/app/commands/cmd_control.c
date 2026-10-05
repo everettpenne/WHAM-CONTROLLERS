@@ -33,20 +33,6 @@
 
 /* ---- small helpers ---- */
 
-static uint8_t ParseUnsigned(const char *tok, uint8_t decimals, float *out)
-{
-    uint32_t v = 0U;
-    float div = 1.0f;
-
-    if (ShotProfile_ParseScaled(tok, decimals, &v) == 0U)
-    {
-        return 0U;
-    }
-    for (uint8_t i = 0U; i < decimals; i++) { div *= 10.0f; }
-    *out = (float)v / div;
-    return 1U;
-}
-
 static uint8_t ParseSignedVolts(const char *tok, float *out)
 {
     int32_t mv = 0;
@@ -59,57 +45,16 @@ static uint8_t ParseSignedVolts(const char *tok, float *out)
     return 1U;
 }
 
-/* v with `decimals` decimals into buf, signed: "-1.250" */
-static void Fixed(char *buf, size_t n, float v, uint8_t decimals)
-{
-    uint32_t scale = 1U;
-    int32_t scaled;
-    uint32_t mag;
-    char sign = ' ';
+/* ctl_set_result_t is what scpi_util.h's SCPI_SET_* mean */
+typedef char ctl_set_ok_matches[(CTL_SET_OK == SCPI_SET_OK) ? 1 : -1];
+typedef char ctl_set_range_matches[(CTL_SET_RANGE == SCPI_SET_RANGE) ? 1 : -1];
+typedef char ctl_set_busy_matches[(CTL_SET_BUSY == SCPI_SET_BUSY) ? 1 : -1];
 
-    for (uint8_t i = 0U; i < decimals; i++) { scale *= 10U; }
-    scaled = (int32_t)(v * (float)scale + ((v < 0.0f) ? -0.5f : 0.5f));
-    if (scaled < 0) { sign = '-'; mag = (uint32_t)(-scaled); } else { mag = (uint32_t)scaled; }
-    if (decimals == 0U)
-    {
-        snprintf(buf, n, "%s%lu", (sign == '-') ? "-" : "", (unsigned long)mag);
-    }
-    else
-    {
-        snprintf(buf, n, "%s%lu.%0*lu", (sign == '-') ? "-" : "", (unsigned long)(mag / scale), (int)decimals,
-                 (unsigned long)(mag % scale));
-    }
-}
-
-static void ReplyOk(uart_instance_t *inst)
-{
-    uart_send(inst, "OK\r\n");
-}
-
-static void ReplyFixed(uart_instance_t *inst, float v, uint8_t decimals)
-{
-    char num[24];
-    char buf[40];
-
-    Fixed(num, sizeof(num), v, decimals);
-    snprintf(buf, sizeof(buf), "OK %s\r\n", num);
-    uart_send(inst, buf);
-}
+#define CTL_BUSY_MSG  "Not while a closed-loop run is in progress"
 
 static void ReplySet(uart_instance_t *inst, ctl_set_result_t r, const char *rangeMsg)
 {
-    if (r == CTL_SET_OK)
-    {
-        ReplyOk(inst);
-    }
-    else if (r == CTL_SET_BUSY)
-    {
-        SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
-    }
-    else
-    {
-        SendErr(inst, ERR_INVALID_ARGS, rangeMsg);
-    }
+    Scpi_ReplySet(inst, (int)r, rangeMsg, CTL_BUSY_MSG);
 }
 
 /* The loop argument: 1 (the only loop), or 0 for "all" where allowZero. Sends ERR 11 and returns 0 otherwise. */
@@ -117,9 +62,9 @@ static uint8_t ParseLoop(uart_instance_t *inst, const char *tok, uint8_t allowZe
 {
     uint32_t v = 0U;
 
-    if ((tok == NULL) || (ShotProfile_ParseScaled(tok, 0U, &v) == 0U) || (v > 1U) || ((v == 0U) && (allowZero == 0U)))
+    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &v) == 0U) || (v > 1U) || ((v == 0U) && (allowZero == 0U)))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid loop (1 is the only loop; 0 = all where accepted)");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid loop (1 is the only loop; 0 = all where accepted)");
         return 0U;
     }
     return 1U;
@@ -129,7 +74,7 @@ static uint8_t RefuseWhileFiring(uart_instance_t *inst)
 {
     if (SM_GetState() == SM_STATE_FIRING)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Can't change while FIRING");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't change while FIRING");
         return 1U;
     }
     return 0U;
@@ -143,25 +88,25 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
         case CTL_OK:
             return 0U;
         case CTL_NO_MODE:
-            SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "No supply mode selected -- send CONFig:MODE LIMiter|HVPS first");
             break;
         case CTL_NO_TARGET:
-            SendErr(inst, ERR_TABLE_EMPTY, "No target profile -- upload one first (TARGet:BEGin/STEP/END)");
+            Scpi_SendErr(inst, ERR_TABLE_EMPTY, "No target profile -- upload one first (TARGet:BEGin/STEP/END)");
             break;
         case CTL_BAD_CONFIG:
-            SendErr(inst, ERR_INVALID_ARGS, "Closed-loop configuration unusable (the HVPS resonance leaves no band inside the mode's range, the CURVe table is invalid, or an HVPS target is below 0 V)");
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, "Closed-loop configuration unusable (the HVPS resonance leaves no band inside the mode's range, the CURVe table is invalid, or an HVPS target is below 0 V)");
             break;
         case CTL_NO_FEEDBACK:
-            SendErr(inst, ERR_INVALID_STATE, "The ADC sampler is not running");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "The ADC sampler is not running");
             break;
         case CTL_REF_BAD:
-            SendErr(inst, ERR_INVALID_STATE, "VREF+ is not at ANALOG_VREF_MV (check ADC:VREF?)");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "VREF+ is not at ANALOG_VREF_MV (check ADC:VREF?)");
             break;
         case CTL_NO_METER:
-            SendErr(inst, ERR_INVALID_STATE, "SOURce LOOP needs Phase U enabled (PHASe:ENAble) and PFM_Input_01 free (no PFMIN capture running)");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce LOOP needs Phase U enabled (PHASe:ENAble) and PFM_Input_01 free (no PFMIN capture running)");
             break;
         default:
-            SendErr(inst, ERR_INVALID_STATE, "A closed-loop run is already in progress");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "A closed-loop run is already in progress");
             break;
     }
     return 1U;
@@ -180,7 +125,7 @@ void cmd_pid_loopmode(uart_instance_t *inst, char *args)
     }
     if ((tokV == NULL) || ((strcmp(tokV, "0") != 0) && (strcmp(tokV, "1") != 0)))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE needs <ch> <0|1>");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE needs <ch> <0|1>");
         return;
     }
     if (RefuseWhileFiring(inst) != 0U)
@@ -188,7 +133,7 @@ void cmd_pid_loopmode(uart_instance_t *inst, char *args)
         return;
     }
     Control_SetLoopMode((uint8_t)(tokV[0] - '0'));
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_pid_loopmode_query(uart_instance_t *inst, char *args)
@@ -216,15 +161,15 @@ void cmd_pid_gains(uart_instance_t *inst, char *args)
     {
         return;
     }
-    if ((t[3] == NULL) || (strtok(NULL, " \r\n") != NULL) || (ParseUnsigned(t[1], 3U, &kp) == 0U) ||
-        (ParseUnsigned(t[2], 3U, &ki) == 0U) || (ParseUnsigned(t[3], 3U, &kd) == 0U))
+    if ((t[3] == NULL) || (strtok(NULL, " \r\n") != NULL) || (Scpi_ParseUnsigned(t[1], 3U, &kp) == 0U) ||
+        (Scpi_ParseUnsigned(t[2], 3U, &ki) == 0U) || (Scpi_ParseUnsigned(t[3], 3U, &kd) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PID:GAINS needs <ch> <kp> <ki> <kd>, each non-negative with up to 3 decimals (max about 4 million)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PID:GAINS needs <ch> <kp> <ki> <kd>, each non-negative with up to 3 decimals (max about 4 million)");
         return;
     }
     if (SupplyMode_Get() == SUPPLY_MODE_NONE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "No supply mode selected: the gains belong to the selected supply's loop");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "No supply mode selected: the gains belong to the selected supply's loop");
         return;
     }
     ReplySet(inst, Control_SetGains(kp, ki, kd), "gains must be non-negative");
@@ -241,9 +186,9 @@ void cmd_pid_gains_query(uart_instance_t *inst, char *args)
         return;
     }
     Control_GetGains(&kp, &ki, &kd);
-    Fixed(a, sizeof(a), kp, 3U);
-    Fixed(b, sizeof(b), ki, 3U);
-    Fixed(c, sizeof(c), kd, 3U);
+    Scpi_FormatFixed(a, sizeof(a), kp, 3U);
+    Scpi_FormatFixed(b, sizeof(b), ki, 3U);
+    Scpi_FormatFixed(c, sizeof(c), kd, 3U);
     snprintf(buf, sizeof(buf), "OK %s %s %s\r\n", a, b, c);
     uart_send(inst, buf);
 }
@@ -256,17 +201,17 @@ void cmd_source_run(uart_instance_t *inst, char *args)
 
     if (AnyFaultLatched() != 0U)
     {
-        SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
+        Scpi_SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
         return;
     }
     if (SM_GetState() != SM_STATE_ARMED)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
         return;
     }
     if (Control_GetLoopMode() == 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "PID:LOOPMODE is 0 (open loop): SOURce:RUN is a closed-loop hold");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "PID:LOOPMODE is 0 (open loop): SOURce:RUN is a closed-loop hold");
         return;
     }
     if (Cmd_ReportCtlResult(inst, Control_Prepare(0U)) != 0U)
@@ -276,18 +221,18 @@ void cmd_source_run(uart_instance_t *inst, char *args)
     if (SM_Fire() == 0U)
     {
         Control_Stop();
-        SendErr(inst, ERR_INVALID_STATE, "SOURce:RUN refused -- state changed");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce:RUN refused -- state changed");
         return;
     }
     Control_Go();
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_source_stop(uart_instance_t *inst, char *args)
 {
     (void)args;
     Control_Stop();
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_source_setpoint(uart_instance_t *inst, char *args)
@@ -302,16 +247,16 @@ void cmd_source_setpoint(uart_instance_t *inst, char *args)
     }
     if ((tokV == NULL) || (ParseSignedVolts(tokV, &v) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SOURce:SETpoint needs <ch> <volts> (signed, up to 3 decimals)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SOURce:SETpoint needs <ch> <volts> (signed, up to 3 decimals)");
         return;
     }
     if ((v > Control_GetMaxVolts()) || (v < -Control_GetMaxVolts()))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "Setpoint is beyond CONFig:MAXVolts");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "Setpoint is beyond CONFig:MAXVolts");
         return;
     }
     Control_SetHoldVolts(v);
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_source_setpoint_query(uart_instance_t *inst, char *args)
@@ -322,7 +267,7 @@ void cmd_source_setpoint_query(uart_instance_t *inst, char *args)
     {
         return;
     }
-    ReplyFixed(inst, Control_GetHoldVolts(), 3U);
+    Scpi_ReplyFixed(inst, Control_GetHoldVolts(), 3U);
 }
 
 void cmd_source_status(uart_instance_t *inst, char *args)
@@ -336,9 +281,9 @@ void cmd_source_status(uart_instance_t *inst, char *args)
         return;
     }
     Control_GetStatus(&sp, &pv, &out);
-    Fixed(a, sizeof(a), sp, 3U);
-    Fixed(b, sizeof(b), pv, 3U);
-    Fixed(c, sizeof(c), out, 2U);
+    Scpi_FormatFixed(a, sizeof(a), sp, 3U);
+    Scpi_FormatFixed(b, sizeof(b), pv, 3U);
+    Scpi_FormatFixed(c, sizeof(c), out, 2U);
     snprintf(buf, sizeof(buf), "OK %u %s %s %s\r\n", (unsigned)Control_IsRunning(), a, b, c);
     uart_send(inst, buf);
 }
@@ -362,7 +307,7 @@ void cmd_target_begin(uart_instance_t *inst, char *args)
     }
     Target_Clear();
     g_targetUploadActive = 1U;
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_target_step(uart_instance_t *inst, char *args)
@@ -374,7 +319,7 @@ void cmd_target_step(uart_instance_t *inst, char *args)
 
     if (g_targetUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TARGet:BEGin first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TARGet:BEGin first");
         return;
     }
     if (RefuseWhileFiring(inst) != 0U)
@@ -389,38 +334,38 @@ void cmd_target_step(uart_instance_t *inst, char *args)
     }
     if ((tokV == NULL) || (extra != NULL))
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "TARGet:STEP needs exactly two values: t_us volts");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "TARGet:STEP needs exactly two values: t_us volts");
         return;
     }
-    if ((ShotProfile_ParseScaled(tokT, 0U, &tUs) == 0U) || (Target_ParseMilliVolts(tokV, &mv) == 0U))
+    if ((Scpi_ParseScaled(tokT, 0U, &tUs) == 0U) || (Target_ParseMilliVolts(tokV, &mv) == 0U))
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "t_us must be a non-negative integer, volts a signed decimal (3 places)");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "t_us must be a non-negative integer, volts a signed decimal (3 places)");
         return;
     }
     if ((mv < 0) && (SupplyMode_Get() == SUPPLY_MODE_HVPS))
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "HVPS targets are power: not below 0 V");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "HVPS targets are power: not below 0 V");
         return;
     }
     switch (Target_Append(tUs, mv, limit))
     {
         case TARGET_APPEND_OK:
-            ReplyOk(inst);
+            Scpi_ReplyOk(inst);
             break;
         case TARGET_APPEND_FULL:
-            SendErr(inst, ERR_TABLE_FULL, "Target profile full (TARGET_SETPOINT_MAX setpoints)");
+            Scpi_SendErr(inst, ERR_TABLE_FULL, "Target profile full (TARGET_SETPOINT_MAX setpoints)");
             break;
         case TARGET_APPEND_FIRST_NOT_ZERO:
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "The first setpoint must be at t=0");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "The first setpoint must be at t=0");
             break;
         case TARGET_APPEND_NOT_INCREASING:
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "Time must be greater than the previous setpoint's");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "Time must be greater than the previous setpoint's");
             break;
         case TARGET_APPEND_TOO_LONG:
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "Time is beyond the longest shot (SHOT_MAX_DURATION_US)");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "Time is beyond the longest shot (SHOT_MAX_DURATION_US)");
             break;
         default:
-            SendErr(inst, ERR_OUT_OF_MODE_LIMITS, "Target voltage is beyond CONFig:MAXVolts");
+            Scpi_SendErr(inst, ERR_OUT_OF_MODE_LIMITS, "Target voltage is beyond CONFig:MAXVolts");
             break;
     }
 }
@@ -432,12 +377,12 @@ void cmd_target_end(uart_instance_t *inst, char *args)
 
     if (g_targetUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TARGet:BEGin first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TARGet:BEGin first");
         return;
     }
     if (Target_IsComplete() == 0U)
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "A target profile needs at least two setpoints: t=0 and the end of the shot");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "A target profile needs at least two setpoints: t=0 and the end of the shot");
         return;
     }
     g_targetUploadActive = 0U;
@@ -453,7 +398,7 @@ void cmd_target_clear(uart_instance_t *inst, char *args)
         return;
     }
     CmdTarget_Discard();
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_target_query(uart_instance_t *inst, char *args)
@@ -472,17 +417,17 @@ void cmd_target_point_query(uart_instance_t *inst, char *args)
     target_setpoint_t sp;
     char v[24], buf[64];
 
-    if ((tok == NULL) || (ShotProfile_ParseScaled(tok, 0U, &i) == 0U) || (i > 0xFFFFU))
+    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &i) == 0U) || (i > 0xFFFFU))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "TARGet:POINt? needs one argument: the setpoint index (from 0)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "TARGet:POINt? needs one argument: the setpoint index (from 0)");
         return;
     }
     if (Target_Get((uint16_t)i, &sp) == 0U)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "No such setpoint");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "No such setpoint");
         return;
     }
-    Fixed(v, sizeof(v), (float)sp.milliVolts / 1000.0f, 3U);
+    Scpi_FormatFixed(v, sizeof(v), (float)sp.milliVolts / 1000.0f, 3U);
     snprintf(buf, sizeof(buf), "OK %lu %s\r\n", (unsigned long)sp.tUs, v);
     uart_send(inst, buf);
 }
@@ -504,14 +449,14 @@ void cmd_log_arm(uart_instance_t *inst, char *args)
     {
         return;
     }
-    if ((t[2] == NULL) || (ShotProfile_ParseScaled(t[1], 0U, &max) == 0U) || (ShotProfile_ParseScaled(t[2], 0U, &decim) == 0U) ||
+    if ((t[2] == NULL) || (Scpi_ParseScaled(t[1], 0U, &max) == 0U) || (Scpi_ParseScaled(t[2], 0U, &decim) == 0U) ||
         (max < 1U) || (max > 1000U) || (decim < 1U) || (decim > 10000U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "LOG:ARM needs <ch> <maxSamples 1-1000> <decim 1-10000>");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "LOG:ARM needs <ch> <maxSamples 1-1000> <decim 1-10000>");
         return;
     }
     Control_LogArm((uint16_t)max, (uint16_t)decim);
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 /* LOG:DATA? <ch> [<start> [<count>]] -- OK <count> <rateHz> SUM=<s> sp1 pv1 out1 sp2 ... (millivolts, millivolts,
@@ -537,10 +482,10 @@ void cmd_log_data(uart_instance_t *inst, char *args)
     {
         return;
     }
-    if (((t[1] != NULL) && (ShotProfile_ParseScaled(t[1], 0U, &start) == 0U)) ||
-        ((t[2] != NULL) && ((ShotProfile_ParseScaled(t[2], 0U, &want) == 0U) || (want < 1U))) || (start > count))
+    if (((t[1] != NULL) && (Scpi_ParseScaled(t[1], 0U, &start) == 0U)) ||
+        ((t[2] != NULL) && ((Scpi_ParseScaled(t[2], 0U, &want) == 0U) || (want < 1U))) || (start > count))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "LOG:DATA? <ch> [<start> [<count>]]");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "LOG:DATA? <ch> [<start> [<count>]]");
         return;
     }
     if (want > 40U) { want = 40U; }
@@ -565,22 +510,7 @@ void cmd_log_data(uart_instance_t *inst, char *args)
 /* ---- settings: one generated pair (set, query) per float setting ---- */
 
 #define FLOAT_SETTING(FN, SETTER, GETTER, DEC, USAGE, RANGEMSG) \
-void FN(uart_instance_t *inst, char *args) \
-{ \
-    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL; \
-    float v; \
-    if ((tok == NULL) || (strtok(NULL, " \r\n") != NULL) || (ParseUnsigned(tok, (DEC), &v) == 0U)) \
-    { \
-        SendErr(inst, ERR_INVALID_ARGS, USAGE); \
-        return; \
-    } \
-    ReplySet(inst, SETTER(v), RANGEMSG); \
-} \
-void FN##_query(uart_instance_t *inst, char *args) \
-{ \
-    (void)args; \
-    ReplyFixed(inst, GETTER(), (DEC)); \
-}
+    SCPI_FLOAT_SETTING(FN, SETTER, GETTER, DEC, USAGE, RANGEMSG, CTL_BUSY_MSG)
 
 static ctl_set_result_t SetRate(float v)  { return Control_SetRateHz((uint32_t)(v + 0.5f)); }
 static float            GetRate(void)     { return (float)Control_GetRateHz(); }
@@ -629,22 +559,22 @@ void cmd_config_cl_branch(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:CLOSEDloop:BRANCH ABOVE|BELOW");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:CLOSEDloop:BRANCH ABOVE|BELOW");
         return;
     }
     if (Control_IsRunning() != 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
         return;
     }
     if (strcasecmp(tok, "ABOVE") == 0)       { Control_Loop()->cfg.hvpsAbove = 1U; }
     else if (strcasecmp(tok, "BELOW") == 0)  { Control_Loop()->cfg.hvpsAbove = 0U; }
     else
     {
-        SendErr(inst, ERR_INVALID_ARGS, "branch must be ABOVE or BELOW resonance");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "branch must be ABOVE or BELOW resonance");
         return;
     }
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_cl_branch_query(uart_instance_t *inst, char *args)
@@ -664,10 +594,10 @@ void cmd_config_fb_channel(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:CHANnel <1-6 or PA0 PA1 PC0 PB0 PC1 PB1>");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:CHANnel <1-6 or PA0 PA1 PC0 PB0 PC1 PB1>");
         return;
     }
-    if ((ShotProfile_ParseScaled(tok, 0U, &n) != 0U) && (n >= 1U) && (n <= ADC_NUM_CHANNELS))
+    if ((Scpi_ParseScaled(tok, 0U, &n) != 0U) && (n >= 1U) && (n <= ADC_NUM_CHANNELS))
     {
         idx = (int)n - 1;
     }
@@ -680,7 +610,7 @@ void cmd_config_fb_channel(uart_instance_t *inst, char *args)
     }
     if (idx < 0)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "channel must be 1-6 or one of PA0 PA1 PC0 PB0 PC1 PB1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "channel must be 1-6 or one of PA0 PA1 PC0 PB0 PC1 PB1");
         return;
     }
     ReplySet(inst, Control_SetFeedbackChannel((uint8_t)idx), "bad channel");
@@ -704,7 +634,7 @@ void cmd_config_fb_source(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:SOURce ADC|SIM|DAC|LOOP");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:SOURce ADC|SIM|DAC|LOOP");
         return;
     }
     if (strcasecmp(tok, "ADC") == 0)        { sim = 0U; }
@@ -713,7 +643,7 @@ void cmd_config_fb_source(uart_instance_t *inst, char *args)
     else if (strcasecmp(tok, "LOOP") == 0)  { sim = 3U; }
     else
     {
-        SendErr(inst, ERR_INVALID_ARGS, "source must be ADC, SIM, DAC or LOOP");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "source must be ADC, SIM, DAC or LOOP");
         return;
     }
     ReplySet(inst, Control_SetFeedbackSim(sim), "bad source");
@@ -740,7 +670,7 @@ static uint8_t RefuseCurveWhileRunning(uart_instance_t *inst)
 {
     if (Control_IsRunning() != 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
         return 1U;
     }
     return 0U;
@@ -755,7 +685,7 @@ void cmd_curve_begin(uart_instance_t *inst, char *args)
     }
     HvpsCurve_Clear(&g_curveStage);
     g_curveUploadActive = 1U;
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_curve_step(uart_instance_t *inst, char *args)
@@ -765,7 +695,7 @@ void cmd_curve_step(uart_instance_t *inst, char *args)
 
     if (g_curveUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send CONFig:CLOSEDloop:CURVe:BEGin first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send CONFig:CLOSEDloop:CURVe:BEGin first");
         return;
     }
     if (args != NULL)
@@ -774,21 +704,21 @@ void cmd_curve_step(uart_instance_t *inst, char *args)
         tokV = (tokF != NULL) ? strtok(NULL, " \r\n") : NULL;
         extra = (tokV != NULL) ? strtok(NULL, " \r\n") : NULL;
     }
-    if ((tokV == NULL) || (extra != NULL) || (ParseUnsigned(tokF, 1U, &hz) == 0U) || (ParseUnsigned(tokV, 3U, &volts) == 0U))
+    if ((tokV == NULL) || (extra != NULL) || (Scpi_ParseUnsigned(tokF, 1U, &hz) == 0U) || (Scpi_ParseUnsigned(tokV, 3U, &volts) == 0U))
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "CURVe:STEP needs exactly two values: <Hz> <volts>, both non-negative (power is never negative)");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "CURVe:STEP needs exactly two values: <Hz> <volts>, both non-negative (power is never negative)");
         return;
     }
     switch (HvpsCurve_Append(&g_curveStage, hz, volts))
     {
         case HVPS_CURVE_OK:
-            ReplyOk(inst);
+            Scpi_ReplyOk(inst);
             break;
         case HVPS_CURVE_FULL:
-            SendErr(inst, ERR_TABLE_FULL, "Curve full (HVPS_CURVE_MAX_POINTS points)");
+            Scpi_SendErr(inst, ERR_TABLE_FULL, "Curve full (HVPS_CURVE_MAX_POINTS points)");
             break;
         default:
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "Frequency must be above the previous point's");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "Frequency must be above the previous point's");
             break;
     }
 }
@@ -800,7 +730,7 @@ void cmd_curve_end(uart_instance_t *inst, char *args)
 
     if (g_curveUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send CONFig:CLOSEDloop:CURVe:BEGin first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send CONFig:CLOSEDloop:CURVe:BEGin first");
         return;
     }
     if (RefuseCurveWhileRunning(inst) != 0U)
@@ -809,14 +739,14 @@ void cmd_curve_end(uart_instance_t *inst, char *args)
     }
     if (HvpsCurve_IsValid(&g_curveStage) == 0U)
     {
-        SendErr(inst, ERR_TABLE_STEP_INVALID, "A curve needs at least two points and a single peak (rising then falling)");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "A curve needs at least two points and a single peak (rising then falling)");
         return;
     }
     g_curveUploadActive = 0U;
     Control_Loop()->cfg.curve = g_curveStage;
     Control_Loop()->cfg.curveCustom = 1U;
-    Fixed(pk, sizeof(pk), HvpsCurve_PeakHz(&g_curveStage), 1U);
-    Fixed(pv, sizeof(pv), HvpsCurve_PeakVolts(&g_curveStage), 3U);
+    Scpi_FormatFixed(pk, sizeof(pk), HvpsCurve_PeakHz(&g_curveStage), 1U);
+    Scpi_FormatFixed(pv, sizeof(pv), HvpsCurve_PeakVolts(&g_curveStage), 3U);
     snprintf(buf, sizeof(buf), "OK %u %s %s\r\n", (unsigned)g_curveStage.n, pk, pv);
     uart_send(inst, buf);
 }
@@ -830,7 +760,7 @@ void cmd_curve_clear(uart_instance_t *inst, char *args)
     }
     g_curveUploadActive = 0U;
     Control_Loop()->cfg.curveCustom = 0U;       /* back to the linear default */
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_curve_query(uart_instance_t *inst, char *args)
@@ -843,8 +773,8 @@ void cmd_curve_query(uart_instance_t *inst, char *args)
         uart_send(inst, "OK LINEAR\r\n");
         return;
     }
-    Fixed(pk, sizeof(pk), HvpsCurve_PeakHz(&Control_Loop()->cfg.curve), 1U);
-    Fixed(pv, sizeof(pv), HvpsCurve_PeakVolts(&Control_Loop()->cfg.curve), 3U);
+    Scpi_FormatFixed(pk, sizeof(pk), HvpsCurve_PeakHz(&Control_Loop()->cfg.curve), 1U);
+    Scpi_FormatFixed(pv, sizeof(pv), HvpsCurve_PeakVolts(&Control_Loop()->cfg.curve), 3U);
     snprintf(buf, sizeof(buf), "OK TABLE %u %s %s\r\n", (unsigned)Control_Loop()->cfg.curve.n, pk, pv);
     uart_send(inst, buf);
 }
@@ -856,18 +786,18 @@ void cmd_curve_point_query(uart_instance_t *inst, char *args)
     char f[24], v[24], buf[64];
     const hvps_curve_t *cv = &Control_Loop()->cfg.curve;
 
-    if ((tok == NULL) || (ShotProfile_ParseScaled(tok, 0U, &i) == 0U))
+    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &i) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CURVe:POINt? needs one argument: the point index (from 0)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CURVe:POINt? needs one argument: the point index (from 0)");
         return;
     }
     if ((Control_Loop()->cfg.curveCustom == 0U) || (i >= cv->n))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "No such point (no table loaded, or index out of range)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "No such point (no table loaded, or index out of range)");
         return;
     }
-    Fixed(f, sizeof(f), cv->hz[i], 1U);
-    Fixed(v, sizeof(v), cv->volts[i], 3U);
+    Scpi_FormatFixed(f, sizeof(f), cv->hz[i], 1U);
+    Scpi_FormatFixed(v, sizeof(v), cv->volts[i], 3U);
     snprintf(buf, sizeof(buf), "OK %s %s\r\n", f, v);
     uart_send(inst, buf);
 }
@@ -894,22 +824,22 @@ void cmd_sim_plant_shape(uart_instance_t *inst, char *args)
 
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:PLANT:SHAPE LINEAR|LORENTZ");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:PLANT:SHAPE LINEAR|LORENTZ");
         return;
     }
     if (SimBusy() != CTL_SET_OK)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
         return;
     }
     if (strcasecmp(tok, "LINEAR") == 0)        { Control_SimPlant()->shape = SIM_SHAPE_LINEAR; }
     else if (strcasecmp(tok, "LORENTZ") == 0)  { Control_SimPlant()->shape = SIM_SHAPE_LORENTZ; }
     else
     {
-        SendErr(inst, ERR_INVALID_ARGS, "shape must be LINEAR or LORENTZ");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "shape must be LINEAR or LORENTZ");
         return;
     }
-    ReplyOk(inst);
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sim_plant_shape_query(uart_instance_t *inst, char *args)

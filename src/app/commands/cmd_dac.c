@@ -12,7 +12,7 @@
 #include "cmd_common.h"
 #include "ctrlr_config.h"
 #include "dac.h"
-#include "shot_profile.h"   /* ShotProfile_ParseScaled(): the shared decimal parser */
+#include "shot_profile.h"   /* Scpi_ParseScaled(): the shared decimal parser */
 #include <stdio.h>
 #include <string.h>
 
@@ -20,9 +20,9 @@ static uint8_t ParseChannel(uart_instance_t *inst, const char *tok, uint8_t *cha
 {
     uint32_t v = 0U;
 
-    if ((tok == NULL) || (ShotProfile_ParseScaled(tok, 0U, &v) == 0U) || (v < 1U) || (v > DAC_NUM_CHANNELS))
+    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &v) == 0U) || (v < 1U) || (v > DAC_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "channel must be 1 or 2");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "channel must be 1 or 2");
         return 0U;
     }
     *channel = (uint8_t)(v - 1U);
@@ -42,19 +42,19 @@ void cmd_dac_output(uart_instance_t *inst, char *args)
     {
         return;
     }
-    if ((tokV == NULL) || (extra != NULL) || (ShotProfile_ParseScaled(tokV, 3U, &milliVolts) == 0U))
+    if ((tokV == NULL) || (extra != NULL) || (Scpi_ParseScaled(tokV, 3U, &milliVolts) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "DAC:OUTPut needs a channel and a voltage: DAC:OUTPut <1|2> <volts>");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "DAC:OUTPut needs a channel and a voltage: DAC:OUTPut <1|2> <volts>");
         return;
     }
     if ((milliVolts > ANALOG_VREF_MV) || (Dac_SetMilliVolts(channel, (uint16_t)milliVolts) == 0U))
     {
         snprintf(msg, sizeof(msg), "voltage must be 0 to %u.%03u V", (unsigned)(ANALOG_VREF_MV / 1000U),
                  (unsigned)(ANALOG_VREF_MV % 1000U));
-        SendErr(inst, ERR_INVALID_ARGS, msg);
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, msg);
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_dac_output_query(uart_instance_t *inst, char *args)

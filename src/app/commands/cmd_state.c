@@ -48,7 +48,7 @@ void cmd_fault_clear(uart_instance_t *inst, char *args)
 {
     (void)args;
     (void)SM_ClearFault();
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* --------------------------------------------------------------------------
@@ -64,32 +64,32 @@ void cmd_arm(uart_instance_t *inst, char *args)
 
     if ((SM_GetState() == SM_STATE_FAULT) || (AnyFaultLatched() != 0U))
     {
-        SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
+        Scpi_SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
         return;
     }
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- not currently IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- not currently IDLE");
         return;
     }
     if (PFM_GetPhaseMask() == 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- no phase is enabled (PHASe:ENAble U|V|W|ALL 1)");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- no phase is enabled (PHASe:ENAble U|V|W|ALL 1)");
         return;
     }
     if (SM_Arm() == 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- arm conditions not met");   /* narrow race only */
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- arm conditions not met");   /* narrow race only */
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_disarm(uart_instance_t *inst, char *args)
 {
     (void)args;
     SM_Disarm();
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_state_query(uart_instance_t *inst, char *args)
@@ -119,5 +119,5 @@ void cmd_general_test_fault(uart_instance_t *inst, char *args)
 {
     (void)args;
     SM_ReportGeneralFault();
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
