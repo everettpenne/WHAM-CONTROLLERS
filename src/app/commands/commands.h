@@ -139,6 +139,12 @@ void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW
  * that module is disabled. */
 #if (QSPI_TEST_FEATURE_ENABLED != 0)
 void cmd_qspi_id(uart_instance_t *inst, char *args); /* QSPI:ID? -- OK <MFR> <TYPE> <CAP>, hex bytes */
+void cmd_sav(uart_instance_t *inst, char *args);                    /* *SAV <slot> [label] -- save settings and tables, IDLE only */
+void cmd_rcl(uart_instance_t *inst, char *args);                    /* *RCL <slot> -- apply a saved profile, IDLE only */
+void cmd_profile_catalog(uart_instance_t *inst, char *args);        /* CONFig:PROFile:CATalog? */
+void cmd_profile_query(uart_instance_t *inst, char *args);          /* CONFig:PROFile? <slot> -- preview, nothing applied */
+void cmd_profile_diff(uart_instance_t *inst, char *args);           /* CONFig:PROFile:DIFF? <slot> */
+void cmd_profile_clear(uart_instance_t *inst, char *args);          /* CONFig:PROFile:CLEar <slot>, IDLE only */
 void cmd_qspi_selftest(uart_instance_t *inst, char *args); /* QSPI:SELFtest -- erase/program/read-back of the scratch sector, IDLE only */
 #endif
 

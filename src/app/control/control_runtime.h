@@ -71,6 +71,16 @@ uint16_t         Control_GetSampleTimeX10(void);
 /* gains of the plant selected by the supply mode; units Hz/V (HVPS), %/V (Limiter) */
 ctl_set_result_t Control_SetGains(float kp, float ki, float kd);
 void             Control_GetGains(float *kp, float *ki, float *kd);
+ctl_set_result_t Control_SetGainsFor(uint8_t plant, float kp, float ki, float kd);   /* a plant by index (CL_PLANT_*), whatever the mode */
+void             Control_GetGainsFor(uint8_t plant, float *kp, float *ki, float *kd);
+
+/* the closed-loop plant parameters (CONFig:CLOSEDloop:*), validated against the supply modes' own limits */
+ctl_set_result_t Control_SetHvpsDuty(float pct);        float   Control_GetHvpsDuty(void);
+ctl_set_result_t Control_SetLimiterFreq(float hz);      float   Control_GetLimiterFreq(void);
+ctl_set_result_t Control_SetHvpsResonance(float hz);    float   Control_GetHvpsResonance(void);
+ctl_set_result_t Control_SetHvpsVpeak(float volts);     float   Control_GetHvpsVpeak(void);
+ctl_set_result_t Control_SetLimiterVscale(float volts); float   Control_GetLimiterVscale(void);
+ctl_set_result_t Control_SetHvpsAbove(uint8_t above);   uint8_t Control_GetHvpsAbove(void);
 
 ctl_set_result_t Control_SetFeedbackChannel(uint8_t channelIndex);   /* 0..5 */
 uint8_t          Control_GetFeedbackChannel(void);

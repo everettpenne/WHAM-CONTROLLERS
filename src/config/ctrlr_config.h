@@ -269,4 +269,30 @@
  * -------------------------------------------------------------------------- */
 #define FEEDBACK_VMAX_DEFAULT_V (0U)
 
+/* --------------------------------------------------------------------------
+ * Saved profiles (flash_profiles, added 2026-10-05)
+ *
+ * Numbered slots of saved settings in the external W25Q128 (nvstore.h):
+ * *SAV / *RCL / CONFig:PROFile:*. Each slot is two alternating "copies" (a save
+ * never touches the copy holding the newest valid data, so a power cut mid-save
+ * loses nothing); a copy is PROFILE_COPY_SECTORS 4 KiB sectors holding a
+ * 48-byte header and the payload. HBRIDGE profiles carry the shot and target
+ * time series and the HVPS curve (about 10 KB for 500-point tables), so a copy
+ * is 4 sectors (16 KiB): 8 slots x 2 copies x 16 KiB = 256 KiB.
+ * XREX uses 1 sector (1 KiB payload) with the same code, in the first 64 KiB of the chip.
+ *
+ * PROFILE_STORE_BASE gives each product its own REGION of the shared chip: XREX's slots occupy 0..64 KiB,
+ * so HBRIDGE starts at 64 KiB. A board that has run both keeps both products' profiles (neither overwrites
+ * the other's), and the magic below stops either from decoding the other's.
+ *
+ * PROFILE_MAGIC tags the PRODUCT: the two controllers share this board and
+ * this flash chip, and a profile written by one must never be decoded by the
+ * other (field ids overlap). A different magic reads as "corrupt" in the
+ * other product's catalog rather than being applied.
+ * -------------------------------------------------------------------------- */
+#define PROFILE_STORE_BASE      (65536UL)
+#define PROFILE_SLOT_COUNT      (8U)
+#define PROFILE_COPY_SECTORS    (4U)
+#define PROFILE_MAGIC_BYTES     { 'H', 'S', 'P', 'F' }
+
 #endif /* INC_CTRLR_CONFIG_H_ */

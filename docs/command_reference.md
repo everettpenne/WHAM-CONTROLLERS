@@ -29,6 +29,7 @@ Ported from the sibling PFM-STM32G474 project, per project decision:
 | 12 | Invalid command arguments — see the specific command's own usage |
 | 13 | Not allowed in the current state (includes `TABLE:BEGIN` / `TABLE:STEP` with no supply mode selected, and `CONFig:MODE` when not `IDLE`): `FIRE` when not `ARMED`, `ARM` when not `IDLE`, `TABLE:BEGIN`/`STEP` while `FIRING`, `BOOT` while `ARMED`/`FIRING`, `FWUPdate:*` when not `IDLE` or with no transfer/verified image |
 | 17 | `FWUPdate:*` flash/CRC/image/option-byte failure |
+| 18 | Saved profiles (`*SAV`, `*RCL`, `CONFig:PROFile:*`): the slot is empty or corrupt, or the external flash failed |
 
 Codes are never renumbered or reused once assigned, matching the
 sibling project's convention. 11, 14, 15 and 16 are used only by
@@ -749,6 +750,51 @@ instead, traced to a QUADSPI sample-timing setting
 (`SampleShifting`) — see `docs/changelog.txt` and `qspi_test.c`'s own
 bugfix comment for the full diagnosis (an exact 1-bit shift of the
 correct value, not random noise) and fix.
+
+### `QSPI:SELFtest`
+
+Bench proof of the external-flash driver (`nvstore.h`) against the real W25Q128JVS, ported from XREX
+(2026-10-05). IDLE only. It works on the reserved scratch sector (the last 4 KiB of the chip) and leaves it erased:
+reads the status registers, erases, programs a 300-byte pattern that crosses a page boundary, reads the whole
+sector back (pattern plus everything else still `0xFF`), erases again.
+
+```
+> QSPI:SELFtest
+< OK PASS sr=00,02,60 erase=59ms prog=1ms read=8ms
+```
+
+`ERR 7 selftest <step>: <reason>` names the first step that failed; `ERR 13` if not IDLE.
+
+### Saved profiles: `*SAV`, `*RCL`, `CONFig:PROFile:*`
+
+Eight numbered slots (1-8) in the external flash keep the operator-configurable settings **and** the shot,
+target and HVPS-curve tables. Same commands and rules as XREX; design, what is stored and the differences:
+`docs/saved_profiles.md`. Loading is always explicit -- nothing is applied at boot. `*SAV`, `*RCL` and `CLEar`
+work only in IDLE (they erase or write flash, or change live settings); the read-only commands work in any
+state. A save or recall takes a fraction of a second, during which the serial link is not serviced.
+
+```
+> *SAV 1 bench                     save everything live into slot 1 (label optional: 1-15 characters, no spaces)
+< OK
+> CONFig:PROFile:CATalog?
+< OK 1=bench/v0.9 2=empty 3=empty 4=empty 5=empty 6=empty 7=empty 8=empty     <label>/<firmware that saved it>
+> CONFig:PROFile? 1                preview: every saved value, then the tables' point counts
+< OK label=bench fw=v0.9 MODE=2 PIDRate=8000 ... hvps.kp=4000 lim.kp=0.167 ... shot=500 target=8 curve=21
+> CONFig:PROFile:DIFF? 1           what *RCL would change: <name>=<live>><saved>, or SAME
+< OK PIDRate=10000>8000 ... shot=0>500 target=0>8 curve=0>21
+> *RCL 1
+< OK APPLIED=23 FAILED=0           [<names of what was refused>] [IGNORED=<records skipped>]
+> CONFig:PROFile:CLEar 1
+< OK
+```
+
+In `DIFF?` a table is compared by point count (`shot=500>500*` means the same count but different points);
+`curve=0` is the linear default. `ERR 18` for an empty or corrupt slot or a flash failure, `ERR 12` for a bad slot
+number or label, `ERR 13` when not IDLE. A recall that refuses a value still applies the rest; a table that fails
+part way is left empty.
+
+**Not saved:** run state (`ARM`, `FIRE`, `SOURce:*`), the DAC outputs, and the bench-simulation settings
+(`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`).
 
 ## Adding a command
 

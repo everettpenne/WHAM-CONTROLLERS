@@ -32,7 +32,9 @@ typedef enum
        reserved so the shared numbers mean the same thing on both projects. */
     ERR_INVALID_ARGS        = 12,  /* wrong argument count, or non-numeric/out-of-range */
     ERR_INVALID_STATE       = 13,  /* not allowed in the current state */
-    ERR_FWUPDATE            = 17   /* FWUPdate:* flash/CRC/image/option-byte failure */
+    ERR_FWUPDATE            = 17,  /* FWUPdate:* flash/CRC/image/option-byte failure */
+    ERR_PROFILE             = 18   /* saved profiles (*SAV, *RCL, CONFig:PROFile): empty, corrupt, or a flash error
+                                      -- same number as WHAM-XREX-PFMG474 */
 } cmd_err_t;
 
 /* Send "ERR <code> <msg>\r\n". code is an int, not cmd_err_t, so every call

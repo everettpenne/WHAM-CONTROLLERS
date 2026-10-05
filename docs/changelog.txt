@@ -1,6 +1,36 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-05  —  Saved profiles in the external flash (nvstore, QSPI:SELFtest, *SAV / *RCL / CONFig:PROFile:*), ported from XREX
+-----------------------------------------------------------------------
+  Branch flash-profiles. Design, what is stored and the XREX comparison: docs/saved_profiles.md.
+  Step 1-2: nvstore (read / 4 KiB sector erase / page program + verify on the W25Q128, shared QUADSPI handle) and QSPI:SELFtest ported
+        unchanged from XREX. Real chip: QSPI:ID? EF 40 18, SELFtest PASS (sr=00,02,60, erase 59 ms, program 1 ms, read 8 ms) -- the same numbers XREX saw.
+  Step 3: profile_store (slots, alternating copies, 48-byte header with CRC) generalized: copy size in sectors, region base and product
+        magic are config (PROFILE_COPY_SECTORS 4, PROFILE_STORE_BASE 64 KiB, magic "HSPF"); a STREAMING writer (header written LAST) and
+        reader so a payload need not fit in RAM (free RAM is ~14 KB). settings_codec: HBRIDGE's scalar snapshot (18 system fields, kp/ki/kd per
+        plant, frozen ids) in the same tagged-record framing, plus chunked table records (shot 64/65, target 66/67, HVPS curve 68/69).
+  Step 4: settings (capture, apply through the same setters as the commands, streamed table save/recall), cmd_profile (same commands,
+        replies and rules as XREX), ERR 18. The closed-loop plant setters moved from cmd_control.c into control_runtime.c and per-plant gain
+        accessors were added so commands and profiles share them. Recall order: mode, ADC/PIDRate (retried in the other order when refused
+        against each other), calibration/limits/plant parameters, gains, loop mode, then tables; a rejected value is named, the rest apply;
+        a table failing part way is left EMPTY; a good shot recall selects the PROFILE source like SHOT:END (found on the bench: without it
+        the recalled shot would not have played on FIRE).
+  Not saved: run state, DAC outputs, bench-simulation knobs (SOURce/DACRatio/SIM:PLANT:*) -- a profile must not switch a real loop onto a model.
+  Also: SettingsCodec_FormatFloat, a printf-free %g (the first bench run of CONFig:PROFile? printed blanks for every float: the newlib-nano
+        printf-float trap AGENTS.md documents for XREX; no linker flag added). HBRIDGE and XREX now use separate flash regions and magics
+        (XREX 0-64 KiB, HBRIDGE from 64 KiB) so a board that ran both keeps both products' profiles.
+  Host tests: test_profile_store 5,567 checks (RAM fake flash; a power cut at every step of small saves and at a spread of steps of a 9 KB
+        multi-sector save; streaming, magic, usage errors), test_settings_codec 20,366 (frozen ids, round trip, stream reader, float text vs printf),
+        test_settings 260 (whole-profile round trip incl. a 500-point shot, failure rules, timing-order retry, a cut during a save).
+  Real flash (simulator board, v0.9): the whole test state -- 20 scalars, a 500-point shot, an 8-point target and a 21-point curve -- saved to slot 2
+        (*SAV 173 ms; CATalog/PROFile?/DIFF? SAME), every setting scrambled, *RCL 2 -> APPLIED=23 FAILED=0 (65 ms), DIFF? SAME, and all 30 queried values
+        (including shot points 0/1/250/499, target and curve points) identical. A saved slot survived three firmware updates (each reboots the
+        board): after one, the live state was back at defaults, DIFF? listed exactly the differences, *RCL restored everything. The recalled shot
+        played for its full 0.998 s on FIRE (FIRING for 1.02 s, no fault). Error paths (empty slot, slot 0/9/missing, bad label -> ERR 12/18) and IDLE
+        gating (ERR 13 in ARMED for *SAV/*RCL/CLEar, CATalog? still answers) as designed; three saves into one slot alternate copies and the newest
+        wins; CLEar empties it. Cost: about +12 KB flash, +0.6 KB RAM. The controller board has not been tested.
+
 2026-10-05  —  HVPS output is power: frequency -> volts lookup table (CONFig:CLOSEDloop:CURVe:*), linear default, no negative targets
 -----------------------------------------------------------------------
   Everett's description of the HVPS plant: the feedback voltage stands in for POWER, which is never negative, peaks at the resonant

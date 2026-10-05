@@ -612,72 +612,15 @@ FLOAT_SETTING(cmd_config_fb_filter,  Control_SetFeedbackFilterHz, Control_GetFee
 FLOAT_SETTING(cmd_config_fb_clip,    Control_SetClipMs, Control_GetClipMs, 1U, "CONFig:FEEDback:CLIPTime <ms, 0 = off>",
               "clip time must be 0-1000 ms")
 
-/* closed-loop plant settings, validated against the supply modes' own limits */
-static ctl_set_result_t CheckBusy(void) { return (Control_IsRunning() != 0U) ? CTL_SET_BUSY : CTL_SET_OK; }
-
-static ctl_set_result_t SetClDuty(float v)
-{
-    supply_limits_t lim;
-    ctl_set_result_t b = CheckBusy();
-    (void)SupplyMode_GetLimits(SUPPLY_MODE_HVPS, &lim);
-    if (b != CTL_SET_OK) { return b; }
-    if ((v < (float)lim.dutyMinPct) || (v > (float)lim.dutyMaxPct)) { return CTL_SET_RANGE; }
-    Control_Loop()->cfg.hvpsDutyPct = v;
-    return CTL_SET_OK;
-}
-static float GetClDuty(void) { return Control_Loop()->cfg.hvpsDutyPct; }
-
-static ctl_set_result_t SetClFreq(float v)
-{
-    supply_limits_t lim;
-    ctl_set_result_t b = CheckBusy();
-    (void)SupplyMode_GetLimits(SUPPLY_MODE_LIMITER, &lim);
-    if (b != CTL_SET_OK) { return b; }
-    if ((v < (float)lim.freqMinHz) || (v > (float)lim.freqMaxHz)) { return CTL_SET_RANGE; }
-    Control_Loop()->cfg.limiterFreqHz = v;
-    return CTL_SET_OK;
-}
-static float GetClFreq(void) { return Control_Loop()->cfg.limiterFreqHz; }
-
-static ctl_set_result_t SetClRes(float v)
-{
-    supply_limits_t lim;
-    ctl_set_result_t b = CheckBusy();
-    (void)SupplyMode_GetLimits(SUPPLY_MODE_HVPS, &lim);
-    if (b != CTL_SET_OK) { return b; }
-    if ((v < (float)lim.freqMinHz) || (v > (float)lim.freqMaxHz)) { return CTL_SET_RANGE; }
-    Control_Loop()->cfg.hvpsResonanceHz = v;
-    return CTL_SET_OK;
-}
-static float GetClRes(void) { return Control_Loop()->cfg.hvpsResonanceHz; }
-
-static ctl_set_result_t SetClVpeak(float v)
-{
-    if (CheckBusy() != CTL_SET_OK) { return CTL_SET_BUSY; }
-    if (v <= 0.0f) { return CTL_SET_RANGE; }
-    Control_Loop()->cfg.hvpsVpeak = v;
-    return CTL_SET_OK;
-}
-static float GetClVpeak(void) { return Control_Loop()->cfg.hvpsVpeak; }
-
-static ctl_set_result_t SetClVscale(float v)
-{
-    if (CheckBusy() != CTL_SET_OK) { return CTL_SET_BUSY; }
-    if (v <= 0.0f) { return CTL_SET_RANGE; }
-    Control_Loop()->cfg.limiterVscale = v;
-    return CTL_SET_OK;
-}
-static float GetClVscale(void) { return Control_Loop()->cfg.limiterVscale; }
-
-FLOAT_SETTING(cmd_config_cl_duty,  SetClDuty,  GetClDuty,  2U, "CONFig:CLOSEDloop:DUTY <percent>",
+FLOAT_SETTING(cmd_config_cl_duty,  Control_SetHvpsDuty, Control_GetHvpsDuty,  2U, "CONFig:CLOSEDloop:DUTY <percent>",
               "HVPS duty must be inside the HVPS mode's duty range")
-FLOAT_SETTING(cmd_config_cl_freq,  SetClFreq,  GetClFreq,  0U, "CONFig:CLOSEDloop:FREQuency <Hz>",
+FLOAT_SETTING(cmd_config_cl_freq,  Control_SetLimiterFreq, Control_GetLimiterFreq,  0U, "CONFig:CLOSEDloop:FREQuency <Hz>",
               "Limiter carrier must be inside the Limiter mode's frequency range")
-FLOAT_SETTING(cmd_config_cl_res,   SetClRes,   GetClRes,   0U, "CONFig:CLOSEDloop:RESonance <Hz>",
+FLOAT_SETTING(cmd_config_cl_res,   Control_SetHvpsResonance, Control_GetHvpsResonance,   0U, "CONFig:CLOSEDloop:RESonance <Hz>",
               "resonance must be inside the HVPS mode's frequency range")
-FLOAT_SETTING(cmd_config_cl_vpeak, SetClVpeak, GetClVpeak, 3U, "CONFig:CLOSEDloop:VPEAK <volts at resonance>",
+FLOAT_SETTING(cmd_config_cl_vpeak, Control_SetHvpsVpeak, Control_GetHvpsVpeak, 3U, "CONFig:CLOSEDloop:VPEAK <volts at resonance>",
               "Vpeak must be > 0")
-FLOAT_SETTING(cmd_config_cl_vscale, SetClVscale, GetClVscale, 3U, "CONFig:CLOSEDloop:VSCALE <volts at |2D-1| = 1>",
+FLOAT_SETTING(cmd_config_cl_vscale, Control_SetLimiterVscale, Control_GetLimiterVscale, 3U, "CONFig:CLOSEDloop:VSCALE <volts at |2D-1| = 1>",
               "Vscale must be > 0")
 
 void cmd_config_cl_branch(uart_instance_t *inst, char *args)

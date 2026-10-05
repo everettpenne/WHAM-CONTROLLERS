@@ -401,32 +401,107 @@ uint16_t Control_GetSampleTimeX10(void)
     return Adc_GetSampleTimeX10();
 }
 
-ctl_set_result_t Control_SetGains(float kp, float ki, float kd)
+ctl_set_result_t Control_SetGainsFor(uint8_t plant, float kp, float ki, float kd)
 {
-    uint8_t p = PlantIndex();
-
     if (g_run != 0U)
     {
         return CTL_SET_BUSY;
     }
-    if ((kp < 0.0f) || (ki < 0.0f) || (kd < 0.0f))
+    if ((plant >= CL_PLANT_COUNT) || (kp < 0.0f) || (ki < 0.0f) || (kd < 0.0f))
     {
         return CTL_SET_RANGE;
     }
-    g_cl.cfg.kp[p] = kp;
-    g_cl.cfg.ki[p] = ki;
-    g_cl.cfg.kd[p] = kd;
+    g_cl.cfg.kp[plant] = kp;
+    g_cl.cfg.ki[plant] = ki;
+    g_cl.cfg.kd[plant] = kd;
     return CTL_SET_OK;
+}
+
+void Control_GetGainsFor(uint8_t plant, float *kp, float *ki, float *kd)
+{
+    if (plant >= CL_PLANT_COUNT)
+    {
+        plant = 0U;
+    }
+    *kp = g_cl.cfg.kp[plant];
+    *ki = g_cl.cfg.ki[plant];
+    *kd = g_cl.cfg.kd[plant];
+}
+
+ctl_set_result_t Control_SetGains(float kp, float ki, float kd)
+{
+    return Control_SetGainsFor(PlantIndex(), kp, ki, kd);
 }
 
 void Control_GetGains(float *kp, float *ki, float *kd)
 {
-    uint8_t p = PlantIndex();
-
-    *kp = g_cl.cfg.kp[p];
-    *ki = g_cl.cfg.ki[p];
-    *kd = g_cl.cfg.kd[p];
+    Control_GetGainsFor(PlantIndex(), kp, ki, kd);
 }
+
+/* ---- the closed-loop plant parameters (moved here from cmd_control.c so the saved profiles set them
+   through the same validation as the serial commands) ---- */
+
+ctl_set_result_t Control_SetHvpsDuty(float pct)
+{
+    supply_limits_t lim;
+
+    (void)SupplyMode_GetLimits(SUPPLY_MODE_HVPS, &lim);
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    if ((pct < (float)lim.dutyMinPct) || (pct > (float)lim.dutyMaxPct)) { return CTL_SET_RANGE; }
+    g_cl.cfg.hvpsDutyPct = pct;
+    return CTL_SET_OK;
+}
+float Control_GetHvpsDuty(void) { return g_cl.cfg.hvpsDutyPct; }
+
+ctl_set_result_t Control_SetLimiterFreq(float hz)
+{
+    supply_limits_t lim;
+
+    (void)SupplyMode_GetLimits(SUPPLY_MODE_LIMITER, &lim);
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    if ((hz < (float)lim.freqMinHz) || (hz > (float)lim.freqMaxHz)) { return CTL_SET_RANGE; }
+    g_cl.cfg.limiterFreqHz = hz;
+    return CTL_SET_OK;
+}
+float Control_GetLimiterFreq(void) { return g_cl.cfg.limiterFreqHz; }
+
+ctl_set_result_t Control_SetHvpsResonance(float hz)
+{
+    supply_limits_t lim;
+
+    (void)SupplyMode_GetLimits(SUPPLY_MODE_HVPS, &lim);
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    if ((hz < (float)lim.freqMinHz) || (hz > (float)lim.freqMaxHz)) { return CTL_SET_RANGE; }
+    g_cl.cfg.hvpsResonanceHz = hz;
+    return CTL_SET_OK;
+}
+float Control_GetHvpsResonance(void) { return g_cl.cfg.hvpsResonanceHz; }
+
+ctl_set_result_t Control_SetHvpsVpeak(float volts)
+{
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    if (volts <= 0.0f) { return CTL_SET_RANGE; }
+    g_cl.cfg.hvpsVpeak = volts;
+    return CTL_SET_OK;
+}
+float Control_GetHvpsVpeak(void) { return g_cl.cfg.hvpsVpeak; }
+
+ctl_set_result_t Control_SetLimiterVscale(float volts)
+{
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    if (volts <= 0.0f) { return CTL_SET_RANGE; }
+    g_cl.cfg.limiterVscale = volts;
+    return CTL_SET_OK;
+}
+float Control_GetLimiterVscale(void) { return g_cl.cfg.limiterVscale; }
+
+ctl_set_result_t Control_SetHvpsAbove(uint8_t above)
+{
+    if (g_run != 0U) { return CTL_SET_BUSY; }
+    g_cl.cfg.hvpsAbove = (above != 0U) ? 1U : 0U;
+    return CTL_SET_OK;
+}
+uint8_t Control_GetHvpsAbove(void) { return g_cl.cfg.hvpsAbove; }
 
 ctl_set_result_t Control_SetFeedbackChannel(uint8_t channelIndex)
 {

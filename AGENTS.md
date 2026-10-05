@@ -496,6 +496,20 @@ range. `PID:LOOPMODE 1 1` makes `FIRE` play the target instead of the open-loop
 loop against a firmware plant model with nothing wired. Commands:
 `docs/command_reference.md`; history: `docs/changelog.txt` 2026-10-02.
 
+## Saved profiles (added 2026-10-05)
+
+`*SAV` / `*RCL` / `CONFig:PROFile:*` keep the operator-configurable settings AND the shot, target and HVPS-curve
+tables in the external W25Q128 (8 slots, explicit load only, IDLE-only writes, `ERR 18`). Ported from XREX and
+generalized; **read `docs/saved_profiles.md` before changing it** -- it records what is stored (field ids are a
+FROZEN contract: never renumber or reuse one), the recall order, the power-fail design (alternating copies, header
+written last, host-tested with a cut at every step), and the differences from XREX: 16 KiB copies, streamed
+tables (free RAM is only ~14 KB), a product magic (`HSPF`) and a separate flash region (from 64 KiB; XREX owns
+0-64 KiB) so the two products sharing this board never read or overwrite each other's slots, and a printf-free
+float formatter (newlib-nano prints nothing for `%g` unless the link adds `-u _printf_float`). Anything a profile
+sets goes through the same setter the serial command uses (`control_runtime.h`); a new operator setting needs a
+field id in `settings_codec.h`, a capture/apply line in `settings.c`, and a decision on whether it belongs in a
+profile (bench-simulation knobs and run state do not). `QSPI:SELFtest` is the bench check of the flash driver.
+
 ## Source layout (standing rule -- keep it this way)
 
 Adopted 2026-09-29 (ported from WHAM-XREX-PFMG474, where it was
@@ -516,7 +530,7 @@ src/
   config/           ctrlr_config.h -- compile-time configuration; any layer
   drivers/          hardware-independent interfaces, headers only:
                     uart.h, board_io.h, mcu.h, dac.h, adc.h, vref.h, hrtim.h, pfm_input.h,
-                    qspi_test.h, boot_jump.h
+                    qspi_test.h, nvstore.h, boot_jump.h
   bsp/stm32g4/      the only code that touches the MCU (HAL, registers,
                     interrupts): implements drivers/; *_hw.h = BSP-private
   middleware/scpi/  scpi_parser.c -- protocol logic, no hardware, no
@@ -528,6 +542,8 @@ src/
                     closed_loop (pure logic, host-tested), control_runtime
                     (the ADC-tick glue); sim/sim_plant (simulated supply)
     protection/     gate_driver (fault evaluation)
+    settings/       settings_codec (snapshot + record encoding), profile_store
+                    (flash slots), settings (capture/apply, streamed tables)
     commands/       command_table.c, commands.h, cmd_common.c/.h,
                     cmd_<subsystem>.c
 tests/              off-target unit tests, run on the PC (make -C tests)

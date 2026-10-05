@@ -16,7 +16,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
            -I$(ROOT)/src/app/protection -I$(ROOT)/build/generated -I$(OUT)
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_closed_loop
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_settings $(OUT)/test_closed_loop
 
 .PHONY: all run clean
 all: run
@@ -61,6 +61,25 @@ $(OUT)/test_target_profile: test_target_profile.c $(ROOT)/src/app/control/target
 
 $(OUT)/test_hvps_curve: test_hvps_curve.c $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/hvps_curve.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -O2 -o $@ test_hvps_curve.c $(ROOT)/src/app/control/hvps_curve.c -lm
+
+SETTINGS := $(ROOT)/src/app/settings
+
+$(OUT)/test_settings_codec: test_settings_codec.c $(SETTINGS)/settings_codec.c $(SETTINGS)/settings_codec.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c
+
+$(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(SETTINGS)/profile_store.c \
+                           $(SETTINGS)/profile_store.h $(SETTINGS)/settings_codec.c test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_profile_store.c fake_nvstore.c $(SETTINGS)/profile_store.c \
+	    $(SETTINGS)/settings_codec.c
+
+# the saved-profile glue against a fake control layer and the real tables, supply modes and flash store
+SET_SRC := $(SETTINGS)/settings.c $(SETTINGS)/settings_codec.c $(SETTINGS)/profile_store.c fake_nvstore.c fake_control.c \
+           $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
+           $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/shot_profile.c \
+           $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/supply_mode.c
+
+$(OUT)/test_settings: test_settings.c $(SET_SRC) $(SETTINGS)/settings.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(SETTINGS) -I$(ROOT)/src/app/sim -O1 -o $@ test_settings.c $(SET_SRC) -lm
 
 CL_SRC := $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
           $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c

@@ -12,6 +12,7 @@ RM := rm -rf
 -include src/middleware/scpi/subdir.mk
 -include src/bsp/stm32g4/subdir.mk
 -include src/app/sim/subdir.mk
+-include src/app/settings/subdir.mk
 -include src/app/protection/subdir.mk
 -include src/app/control/subdir.mk
 -include src/app/commands/subdir.mk
