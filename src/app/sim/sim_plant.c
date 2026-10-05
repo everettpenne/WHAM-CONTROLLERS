@@ -31,9 +31,7 @@ float SimPlant_Step(sim_plant_t *p, uint8_t limiter, uint16_t per, uint16_t cmp,
     }
     else
     {
-        float f = (float)HRTIM_TIMER_CLK_HZ / ((float)per + 1.0f);
-        float x = (f - p->resonance) / p->width;
-        target = p->gain * p->vpeak / (1.0f + x * x);
+        target = SimPlant_HvpsSteady(p, (float)HRTIM_TIMER_CLK_HZ / ((float)per + 1.0f));
     }
     return SimPlant_StepSteady(p, target, dt);
 }
@@ -42,6 +40,13 @@ float SimPlant_StepSteady(sim_plant_t *p, float steadyVolts, float dt)
 {
     p->v += (steadyVolts - p->v) * (dt / p->tau);
     return p->v;
+}
+
+float SimPlant_HvpsSteady(const sim_plant_t *p, float hz)
+{
+    float x = (hz - p->resonance) / p->width;
+
+    return p->gain * p->vpeak / (1.0f + x * x);
 }
 
 float SimPlant_LimiterSteady(const sim_plant_t *p, float duty)

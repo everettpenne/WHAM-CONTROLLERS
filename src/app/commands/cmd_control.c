@@ -157,7 +157,7 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
             SendErr(inst, ERR_INVALID_STATE, "VREF+ is not at ANALOG_VREF_MV (check ADC:VREF?)");
             break;
         case CTL_NO_METER:
-            SendErr(inst, ERR_INVALID_STATE, "SOURce LOOP needs the Limiter supply mode and PFM_Input_01 free (no PFMIN capture running)");
+            SendErr(inst, ERR_INVALID_STATE, "SOURce LOOP needs PFM_Input_01 free (no PFMIN capture running)");
             break;
         default:
             SendErr(inst, ERR_INVALID_STATE, "A closed-loop run is already in progress");

@@ -29,7 +29,7 @@ typedef enum
     CTL_BAD_CONFIG,     /* e.g. the HVPS resonance leaves no usable band */
     CTL_NO_FEEDBACK,    /* the ADC sampler is not running */
     CTL_REF_BAD,        /* VREF+ is not what ANALOG_VREF_MV says (the buffer is out of regulation) */
-    CTL_NO_METER,       /* the loopback source needs the Limiter supply mode and a free PFM_Input_01 duty meter */
+    CTL_NO_METER,       /* the loopback source needs a free PFM_Input_01 duty meter (no PFMIN capture running) */
     CTL_BUSY            /* a closed-loop run is in progress */
 } ctl_result_t;
 

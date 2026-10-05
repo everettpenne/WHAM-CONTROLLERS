@@ -1,6 +1,21 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-05  —  HVPS loopback: SOURce LOOP now works for the HVPS (measured carrier frequency -> resonance model -> DAC -> real ADC)
+-----------------------------------------------------------------------
+  The loopback source (entry of 2026-10-02) was Limiter-only (duty). For the HVPS the duty meter's frequency output feeds the
+  resonance model, V = gain x vpeak / (1 + ((f - resonance) / width)^2), then the plant lag, the DAC and the real ADC input
+  (SimPlant_HvpsSteady; the Limiter/HVPS choice follows the supply mode). Same wiring: Phase U -> PFM_Input_01, DAC PA5 -> amplifier
+  -> ADC PA1 (re-checked after the overnight gap: 0.552 x DAC, +18 mV).
+  Run: HVPS, SCALE 1 / OFFSet 0, controller and plant VPEAK 1.5 V at 19 kHz (the amplifier path only reaches 1.6 V at the ADC), width
+  3 kHz, tau 3 ms, gains 4000 Hz/V / 200000 (untuned, as in the simulated runs), target 0.5 -> 1.2 -> 0.5 -> 1.2 -> 0.5 V over 100 ms.
+  Both branches ended IDLE with no fault. ABOVE (output 19.7-24.6 kHz): 129 mV rms / 322 mV max after 5 ms; BELOW (13.9-18.1 kHz):
+  85 mV rms / 224 mV max. Both include a start-up transient (the model plant starts at 0 V, the target at 0.5 V; it takes about 20 ms to
+  catch up). From 25 ms on: ABOVE 98 mV rms / 198 mV max, BELOW 67 mV rms / 141 mV max; the feedback lags the demand by up to about
+  100-200 mV mid-ramp and overshoots the demand by up to 157 mV (ABOVE) / 124 mV (BELOW) at the second 1.2 V peak. The loop is stable;
+  the gains are simply not tuned for this plant (nonlinear: gain falls toward the peak and rises away from it).
+  Not tested: HVPS duty other than the 50 % default; PFMIN captures and this meter cannot run together (as before).
+
 2026-10-02  —  Loopback test with a stronger low-pass (SIM:PLANT:TAU 6 and 10 ms)
 -----------------------------------------------------------------------
   Same loopback run as the entry below (Phase U -> PFM_Input_01 -> model -> DAC PA5 -> amplifier -> ADC PA1, Limiter, +-0.5 V

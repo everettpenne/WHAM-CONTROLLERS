@@ -116,7 +116,7 @@ static void OnBlock(const float *means)
         else if (g_fbSim == 3U)
         {
             /* loopback: the plant is measured off the controller's own output. PFM_Input_01 (Phase U wired to it)
-               gives the duty the HRTIM really produced; the Limiter model turns it into a voltage, the same lag as
+               gives the duty (Limiter) or the carrier frequency (HVPS) the HRTIM really produced; the plant model turns it into a voltage, the same lag as
                the simulated plant is the digital low-pass, and that voltage goes out on the DAC and back in through
                the real ADC input. */
             float duty, hz;
@@ -134,7 +134,10 @@ static void OnBlock(const float *means)
                 SM_ReportControlFault(SM_FAULT_SRC_FEEDBACK);       /* PFM_Input_01 stopped toggling: nothing to measure */
                 return;
             }
-            SetDacFromPlant(SimPlant_StepSteady(&g_sim, SimPlant_LimiterSteady(&g_sim, duty), g_cl.dt));
+            float steady = (g_cl.plant == CL_PLANT_LIMITER) ? SimPlant_LimiterSteady(&g_sim, duty)
+                                                            : SimPlant_HvpsSteady(&g_sim, hz);   /* HVPS: the measured carrier frequency */
+
+            SetDacFromPlant(SimPlant_StepSteady(&g_sim, steady, g_cl.dt));
         }
         code = means[g_fbChannel];
     }
@@ -245,7 +248,7 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
     }
     if (g_fbSim == 3U)
     {
-        if ((SupplyMode_Get() != SUPPLY_MODE_LIMITER) || (DutyMeter_Start() == 0U))
+        if (DutyMeter_Start() == 0U)
         {
             return CTL_NO_METER;
         }
