@@ -20,6 +20,7 @@
 #include "ctrlr_config.h"
 #include "control_runtime.h"
 #include "target_profile.h"
+#include "hvps_curve.h"
 #include "shot_profile.h"
 #include "state_machine.h"
 #include "supply_mode.h"
@@ -148,7 +149,7 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
             SendErr(inst, ERR_TABLE_EMPTY, "No target profile -- upload one first (TARGet:BEGin/STEP/END)");
             break;
         case CTL_BAD_CONFIG:
-            SendErr(inst, ERR_INVALID_ARGS, "Closed-loop configuration unusable (the HVPS resonance leaves no band inside the mode's range)");
+            SendErr(inst, ERR_INVALID_ARGS, "Closed-loop configuration unusable (the HVPS resonance leaves no band inside the mode's range, the CURVe table is invalid, or an HVPS target is below 0 V)");
             break;
         case CTL_NO_FEEDBACK:
             SendErr(inst, ERR_INVALID_STATE, "The ADC sampler is not running");
@@ -394,6 +395,11 @@ void cmd_target_step(uart_instance_t *inst, char *args)
     if ((ShotProfile_ParseScaled(tokT, 0U, &tUs) == 0U) || (Target_ParseMilliVolts(tokV, &mv) == 0U))
     {
         SendErr(inst, ERR_TABLE_STEP_INVALID, "t_us must be a non-negative integer, volts a signed decimal (3 places)");
+        return;
+    }
+    if ((mv < 0) && (SupplyMode_Get() == SUPPLY_MODE_HVPS))
+    {
+        SendErr(inst, ERR_TABLE_STEP_INVALID, "HVPS targets are power: not below 0 V");
         return;
     }
     switch (Target_Append(tUs, mv, limit))
@@ -782,6 +788,147 @@ void cmd_config_fb_source_query(uart_instance_t *inst, char *args)
     }
 }
 
+/* ---- CONFig:CLOSEDloop:CURVe:* : the HVPS frequency -> volts lookup table (hvps_curve.h) ---- */
+
+static hvps_curve_t g_curveStage;
+static uint8_t      g_curveUploadActive = 0U;
+
+static uint8_t RefuseCurveWhileRunning(uart_instance_t *inst)
+{
+    if (Control_IsRunning() != 0U)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
+        return 1U;
+    }
+    return 0U;
+}
+
+void cmd_curve_begin(uart_instance_t *inst, char *args)
+{
+    (void)args;
+    if (RefuseCurveWhileRunning(inst) != 0U)
+    {
+        return;
+    }
+    HvpsCurve_Clear(&g_curveStage);
+    g_curveUploadActive = 1U;
+    ReplyOk(inst);
+}
+
+void cmd_curve_step(uart_instance_t *inst, char *args)
+{
+    char *tokF = NULL, *tokV = NULL, *extra = NULL;
+    float hz = 0.0f, volts = 0.0f;
+
+    if (g_curveUploadActive == 0U)
+    {
+        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send CONFig:CLOSEDloop:CURVe:BEGin first");
+        return;
+    }
+    if (args != NULL)
+    {
+        tokF = strtok(args, " \r\n");
+        tokV = (tokF != NULL) ? strtok(NULL, " \r\n") : NULL;
+        extra = (tokV != NULL) ? strtok(NULL, " \r\n") : NULL;
+    }
+    if ((tokV == NULL) || (extra != NULL) || (ParseUnsigned(tokF, 1U, &hz) == 0U) || (ParseUnsigned(tokV, 3U, &volts) == 0U))
+    {
+        SendErr(inst, ERR_TABLE_STEP_INVALID, "CURVe:STEP needs exactly two values: <Hz> <volts>, both non-negative (power is never negative)");
+        return;
+    }
+    switch (HvpsCurve_Append(&g_curveStage, hz, volts))
+    {
+        case HVPS_CURVE_OK:
+            ReplyOk(inst);
+            break;
+        case HVPS_CURVE_FULL:
+            SendErr(inst, ERR_TABLE_FULL, "Curve full (HVPS_CURVE_MAX_POINTS points)");
+            break;
+        default:
+            SendErr(inst, ERR_TABLE_STEP_INVALID, "Frequency must be above the previous point's");
+            break;
+    }
+}
+
+void cmd_curve_end(uart_instance_t *inst, char *args)
+{
+    char pk[24], pv[24], buf[80];
+    (void)args;
+
+    if (g_curveUploadActive == 0U)
+    {
+        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send CONFig:CLOSEDloop:CURVe:BEGin first");
+        return;
+    }
+    if (RefuseCurveWhileRunning(inst) != 0U)
+    {
+        return;
+    }
+    if (HvpsCurve_IsValid(&g_curveStage) == 0U)
+    {
+        SendErr(inst, ERR_TABLE_STEP_INVALID, "A curve needs at least two points and a single peak (rising then falling)");
+        return;
+    }
+    g_curveUploadActive = 0U;
+    Control_Loop()->cfg.curve = g_curveStage;
+    Control_Loop()->cfg.curveCustom = 1U;
+    Fixed(pk, sizeof(pk), HvpsCurve_PeakHz(&g_curveStage), 1U);
+    Fixed(pv, sizeof(pv), HvpsCurve_PeakVolts(&g_curveStage), 3U);
+    snprintf(buf, sizeof(buf), "OK %u %s %s\r\n", (unsigned)g_curveStage.n, pk, pv);
+    uart_send(inst, buf);
+}
+
+void cmd_curve_clear(uart_instance_t *inst, char *args)
+{
+    (void)args;
+    if (RefuseCurveWhileRunning(inst) != 0U)
+    {
+        return;
+    }
+    g_curveUploadActive = 0U;
+    Control_Loop()->cfg.curveCustom = 0U;       /* back to the linear default */
+    ReplyOk(inst);
+}
+
+void cmd_curve_query(uart_instance_t *inst, char *args)
+{
+    char pk[24], pv[24], buf[80];
+    (void)args;
+
+    if (Control_Loop()->cfg.curveCustom == 0U)
+    {
+        uart_send(inst, "OK LINEAR\r\n");
+        return;
+    }
+    Fixed(pk, sizeof(pk), HvpsCurve_PeakHz(&Control_Loop()->cfg.curve), 1U);
+    Fixed(pv, sizeof(pv), HvpsCurve_PeakVolts(&Control_Loop()->cfg.curve), 3U);
+    snprintf(buf, sizeof(buf), "OK TABLE %u %s %s\r\n", (unsigned)Control_Loop()->cfg.curve.n, pk, pv);
+    uart_send(inst, buf);
+}
+
+void cmd_curve_point_query(uart_instance_t *inst, char *args)
+{
+    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    uint32_t i = 0U;
+    char f[24], v[24], buf[64];
+    const hvps_curve_t *cv = &Control_Loop()->cfg.curve;
+
+    if ((tok == NULL) || (ShotProfile_ParseScaled(tok, 0U, &i) == 0U))
+    {
+        SendErr(inst, ERR_INVALID_ARGS, "CURVe:POINt? needs one argument: the point index (from 0)");
+        return;
+    }
+    if ((Control_Loop()->cfg.curveCustom == 0U) || (i >= cv->n))
+    {
+        SendErr(inst, ERR_INVALID_ARGS, "No such point (no table loaded, or index out of range)");
+        return;
+    }
+    Fixed(f, sizeof(f), cv->hz[i], 1U);
+    Fixed(v, sizeof(v), cv->volts[i], 3U);
+    snprintf(buf, sizeof(buf), "OK %s %s\r\n", f, v);
+    uart_send(inst, buf);
+}
+
 /* ---- SIM:PLANT:* : the simulated supply's parameters ---- */
 
 static ctl_set_result_t SimBusy(void) { return (Control_IsRunning() != 0U) ? CTL_SET_BUSY : CTL_SET_OK; }
@@ -797,6 +944,36 @@ static ctl_set_result_t SetSimVpeak(float v) { if (SimBusy() != CTL_SET_OK) { re
 static float            GetSimVpeak(void)    { return Control_SimPlant()->vpeak; }
 static ctl_set_result_t SetSimVscale(float v) { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v <= 0.0f) || (v > 1000.0f)) { return CTL_SET_RANGE; } Control_SimPlant()->vscale = v; return CTL_SET_OK; }
 static float            GetSimVscale(void)   { return Control_SimPlant()->vscale; }
+
+void cmd_sim_plant_shape(uart_instance_t *inst, char *args)
+{
+    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+
+    if (tok == NULL)
+    {
+        SendErr(inst, ERR_INVALID_ARGS, "SIM:PLANT:SHAPE LINEAR|LORENTZ");
+        return;
+    }
+    if (SimBusy() != CTL_SET_OK)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
+        return;
+    }
+    if (strcasecmp(tok, "LINEAR") == 0)        { Control_SimPlant()->shape = SIM_SHAPE_LINEAR; }
+    else if (strcasecmp(tok, "LORENTZ") == 0)  { Control_SimPlant()->shape = SIM_SHAPE_LORENTZ; }
+    else
+    {
+        SendErr(inst, ERR_INVALID_ARGS, "shape must be LINEAR or LORENTZ");
+        return;
+    }
+    ReplyOk(inst);
+}
+
+void cmd_sim_plant_shape_query(uart_instance_t *inst, char *args)
+{
+    (void)args;
+    uart_send(inst, (Control_SimPlant()->shape == SIM_SHAPE_LORENTZ) ? "OK LORENTZ\r\n" : "OK LINEAR\r\n");
+}
 
 FLOAT_SETTING(cmd_sim_plant_tau,    SetSimTau,    GetSimTau,    4U, "SIM:PLANT:TAU <seconds>", "tau must be 0.0001-10 s")
 FLOAT_SETTING(cmd_sim_plant_gain,   SetSimGain,   GetSimGain,   3U, "SIM:PLANT:GAIN <factor>", "gain must be 0-10")

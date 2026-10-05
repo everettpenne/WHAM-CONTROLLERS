@@ -34,6 +34,7 @@
 #include <stdint.h>
 #include "pid_core.h"
 #include "feedback.h"
+#include "hvps_curve.h"
 
 typedef enum
 {
@@ -61,7 +62,9 @@ typedef struct
     float hvpsDutyPct;                   /* fixed duty, within the mode's range */
     float hvpsResonanceHz;
     uint8_t hvpsAbove;                   /* 1 = operate above resonance, 0 = below */
-    float hvpsVpeak;                     /* process volts at resonance, for the feedforward */
+    float hvpsVpeak;                     /* process volts at resonance, for the default linear curve */
+    hvps_curve_t curve;                  /* the frequency -> volts table the feedforward inverts (hvps_curve.h) */
+    uint8_t curveCustom;                 /* 1: `curve` was loaded by the operator; 0: rebuilt as the linear default at each start */
 
     /* Limiter */
     float limiterFreqHz;                 /* the fixed carrier */

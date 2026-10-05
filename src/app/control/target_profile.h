@@ -41,6 +41,7 @@ void Target_Clear(void);
 target_append_result_t Target_Append(uint32_t tUs, int32_t milliVolts, int32_t maxAbsMilliVolts);
 
 uint16_t Target_Count(void);
+int32_t  Target_MinMilliVolts(void);               /* the lowest setpoint; 0 with none */
 uint32_t Target_DurationUs(void);                  /* time of the last setpoint; 0 with none */
 uint8_t  Target_Get(uint16_t index, target_setpoint_t *out);
 uint8_t  Target_IsComplete(void);                  /* at least two setpoints */

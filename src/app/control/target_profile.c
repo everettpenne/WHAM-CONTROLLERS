@@ -45,6 +45,20 @@ target_append_result_t Target_Append(uint32_t tUs, int32_t milliVolts, int32_t m
     return TARGET_APPEND_OK;
 }
 
+int32_t Target_MinMilliVolts(void)
+{
+    int32_t lowest = 0;
+
+    for (uint16_t i = 0U; i < g_count; i++)
+    {
+        if ((i == 0U) || (g_sp[i].milliVolts < lowest))
+        {
+            lowest = g_sp[i].milliVolts;
+        }
+    }
+    return lowest;
+}
+
 uint16_t Target_Count(void)
 {
     return g_count;

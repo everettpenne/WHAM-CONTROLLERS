@@ -262,10 +262,19 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
     }
     g_lastPer = per;
     g_lastCmp = cmp;
-    SimPlant_Reset(&g_sim, 0.0f);
+    {
+        supply_limits_t hv;
+
+        if (SupplyMode_GetLimits(SUPPLY_MODE_HVPS, &hv) != 0U)
+        {
+            g_sim.fMinHz = (float)hv.freqMinHz;       /* the linear HVPS plant reaches zero at the band's edges */
+            g_sim.fMaxHz = (float)hv.freqMaxHz;
+        }
+    }
+    SimPlant_Reset(&g_sim, g_cl.sp);        /* the supply is already at the run's starting voltage: no start-up transient in the model */
     if ((g_fbSim == 2U) || (g_fbSim == 3U))
     {
-        SetDacFromPlant(0.0f);      /* the plant's starting voltage is on the input before the first tick */
+        SetDacFromPlant(g_cl.sp);   /* the plant's starting voltage is on the input before the first tick */
     }
     PFM_LiveSet(per, cmp);
     PFM_SelectSource(PFM_SOURCE_LIVE);

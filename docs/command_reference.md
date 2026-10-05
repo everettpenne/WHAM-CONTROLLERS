@@ -594,8 +594,27 @@ run on; gains stay positive either way). `CONFig:PIDRate`, `CONFig:SLEWRate <per
 `CONFig:ADC:AVERage`, `CONFig:ADC:SAMPle` set the loop rate, the output slew limit and the
 sampling.
 
+**HVPS output is power.** The HVPS feedback voltage stands in for power: never negative (a
+negative HVPS target is refused at `TARGet:STEP` and at start), highest at the resonant frequency
+(about 19 kHz) and falling away on both sides. To raise the output the drive frequency moves
+toward resonance; a run typically starts around 20 kHz. The controller turns a target voltage into a
+frequency with a lookup table of (frequency, volts) points, linearly interpolated, on the branch
+chosen by `BRANCH`. Until a measured table is loaded it is linear: zero at the edge of the mode's
+band (30 kHz above, 10 kHz below), `VPEAK` at `RESonance`, a straight line between.
+
+```
+> CONFig:CLOSEDloop:CURVe:BEGin
+> CONFig:CLOSEDloop:CURVe:STEP 19000 1.5     Hz volts (Hz to 1 decimal, volts to 3), frequency strictly increasing, volts >= 0
+> CONFig:CLOSEDloop:CURVe:STEP 24000 0.8     up to 32 points; one peak (rising then falling)
+> CONFig:CLOSEDloop:CURVe:END
+< OK 21 19000.0 1.500                         points, peak frequency, peak volts (the table's peak replaces RESonance)
+> CONFig:CLOSEDloop:CURVe?                    OK LINEAR | OK TABLE <n> <peakHz> <peakV>
+> CONFig:CLOSEDloop:CURVe:POINt? 3            OK <Hz> <volts>
+> CONFig:CLOSEDloop:CURVe:CLEar               back to the linear default
+```
+
 **Simulated plant** (`CONFig:FEEDback:SOURce SIM`): the firmware answers its own commands
-through a first-order lag, so the loop runs with nothing wired. `SIM:PLANT:TAU`, `GAIN`
+through a first-order lag, so the loop runs with nothing wired. The plant starts at the run's first target voltage. `SIM:PLANT:SHAPE LINEAR|LORENTZ` (HVPS; default LINEAR, zero at the band's edges, matching the controller's default; LORENTZ is a nonlinear resonance, to test a loaded CURVe table against). `SIM:PLANT:TAU`, `GAIN`
 (a mid-shot disturbance knob), `RESonance`, `WIDTH`, `VPEAK`, `VSCALE`. Set the simulated
 plant differently from the controller's model to test it against a supply it does not know.
 

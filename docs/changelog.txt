@@ -1,6 +1,34 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-05  —  HVPS output is power: frequency -> volts lookup table (CONFig:CLOSEDloop:CURVe:*), linear default, no negative targets
+-----------------------------------------------------------------------
+  Everett's description of the HVPS plant: the feedback voltage stands in for POWER, which is never negative, peaks at the resonant
+  frequency (about 19 kHz) and falls on both sides; raising the output means moving the drive frequency toward resonance (typically a
+  start around 20 kHz); the relationship may be assumed linear for now, but a lookup table will be needed because the real one is
+  nonlinear and cannot be measured yet.
+  Found: the controller's feedforward was ALREADY linear (V = 0 at the band's far edge, Vpeak at resonance); the Lorentzian curve was
+  only in the simulated plant, so the earlier HVPS loopback (129/85 mV rms above/below) was a linear controller against a nonlinear
+  plant. Changes:
+        hvps_curve.h/.c   a table of (Hz, volts) points (up to 32, frequency strictly increasing, volts >= 0, one peak), linear
+                          interpolation, inversion on either branch (HvpsCurve_FreqFor), and the linear default builder.
+                          Host test test_hvps_curve (125 checks); closed-loop tests added for a loaded table and for refusal.
+        CONFig:CLOSEDloop:CURVe:BEGin/STEP/END/CLEar and CURVe? / CURVe:POINt? <i>   (mirrors TARGet:*): a loaded table replaces
+                          the linear default for the feedforward and its peak defines where the band starts (RESonance is then
+                          ignored); an invalid table is refused at start.
+        negative HVPS targets   refused at TARGet:STEP (ERR 4) and again at start (Cl_Start); the Limiter's bipolar target is unchanged.
+        SIM:PLANT:SHAPE LINEAR|LORENTZ   default LINEAR (zero at the HVPS band's edges, set from the mode's limits at each start);
+                          LORENTZ is the old nonlinear shape, to test a loaded table against.
+        simulated plant starts at the first target voltage instead of 0 V (no 20 ms start-up transient in HVPS runs; the DAC loopback
+                          sets that level before the first tick).
+  HVPS loopback, ABOVE resonance, target 1.0 -> 1.4 -> 0.6 -> 1.4 -> 1.0 V over 100 ms, gains 4000 Hz/V / 200000 unchanged, tau 3 ms,
+  Phase U -> PFM_Input_01 -> model -> DAC PA5 -> amplifier -> ADC PA1; all ended IDLE, no fault (error after 5 ms):
+        linear plant, linear table       51 mV rms / 78 mV max   (output 19.4-26.0 kHz)   [BELOW: 48 / 77 mV, 13.3-18.7 kHz]
+        nonlinear plant, linear table   110 mV rms / 254 mV max  (reaches the 19 kHz floor; overshoots and undershoots)
+        nonlinear plant, matching table  37 mV rms / 69 mV max   (19.4-23.0 kHz)
+  The matching table (a Lorentzian sampled every kHz, uploaded over CURVe:*) cut the error to a third of the linear-table figure with
+  the same gains: the lookup table is what a nonlinear plant needs; gains were not touched.
+
 2026-10-05  —  HVPS loopback: SOURce LOOP now works for the HVPS (measured carrier frequency -> resonance model -> DAC -> real ADC)
 -----------------------------------------------------------------------
   The loopback source (entry of 2026-10-02) was Limiter-only (duty). For the HVPS the duty meter's frequency output feeds the

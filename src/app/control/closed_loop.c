@@ -36,6 +36,8 @@ void Cl_Init(closed_loop_t *cl, uint32_t rateHz, float vrefV)
     c->hvpsResonanceHz = 19000.0f;
     c->hvpsAbove = 1U;
     c->hvpsVpeak = 1.0f;
+    HvpsCurve_Clear(&c->curve);
+    c->curveCustom = 0U;
     c->limiterFreqHz = 100000.0f;
     c->limiterVscale = 1.0f;
 
@@ -75,9 +77,7 @@ static float Feedforward(const closed_loop_t *cl, float volts)
     }
     else
     {
-        float ratio = Clamp(volts / c->hvpsVpeak, 0.0f, 1.0f);      /* 0 = far from resonance, 1 = at it */
-        u = (c->hvpsAbove != 0U) ? cl->uMax - (cl->uMax - cl->uMin) * ratio
-                                 : cl->uMin + (cl->uMax - cl->uMin) * ratio;
+        u = HvpsCurve_FreqFor(&c->curve, volts, c->hvpsAbove);      /* the frequency that gives this power */
     }
     return Clamp(u, cl->uMin, cl->uMax);
 }
@@ -115,7 +115,7 @@ uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_
 {
     supply_limits_t lim;
     supply_mode_t mode = SupplyMode_Get();
-    const cl_config_t *c = &cl->cfg;
+    cl_config_t *c = &cl->cfg;
     float start;
 
     if (SupplyMode_GetLimits(mode, &lim) == 0U)
@@ -136,9 +136,28 @@ uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_
     }
     else
     {
-        float res = c->hvpsResonanceHz;
         float fmin = (float)lim.freqMinHz;
         float fmax = (float)lim.freqMaxHz;
+        float res;
+
+        /* HVPS output is power, never negative: a target below 0 V has no meaning */
+        if (((useProfile != 0U) && (Target_MinMilliVolts() < 0)) || ((useProfile == 0U) && (holdVolts < 0.0f)))
+        {
+            return 0U;
+        }
+        if (c->curveCustom != 0U)
+        {
+            if (HvpsCurve_IsValid(&c->curve) == 0U)
+            {
+                return 0U;
+            }
+            res = HvpsCurve_PeakHz(&c->curve);             /* the operator's table defines where the peak is */
+        }
+        else
+        {
+            res = c->hvpsResonanceHz;
+            HvpsCurve_SetLinear(&c->curve, fmin, res, fmax, c->hvpsVpeak);
+        }
 
         if (c->hvpsAbove != 0U)
         {

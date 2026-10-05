@@ -372,6 +372,44 @@ static void TestStartRefusals(void)
         CHECK(Abs((float)HRTIM_TIMER_CLK_HZ / ((float)per + 1.0f) - 24500.0f) < 20.0f);
         CHECK(Abs((float)cmp / (float)per - 0.5f) < 0.001f);         /* the fixed 50 % duty */
     }
+
+    /* HVPS output is power: a negative target (or hold) has no meaning, the Limiter's bipolar one does */
+    {
+        const uint32_t tn[2] = { 0U, 10000U };
+        const int32_t  vn[2] = { 500, -200 };
+
+        Profile(tn, vn, 2);
+        CHECK(Cl_Start(&cl, 1U, 0.0f, &per, &cmp) == 0U);
+        CHECK(Cl_Start(&cl, 0U, -0.1f, &per, &cmp) == 0U);
+        SupplyMode_Set(SUPPLY_MODE_LIMITER);
+        CHECK(Cl_Start(&cl, 1U, 0.0f, &per, &cmp) == 1U);
+        SupplyMode_Set(SUPPLY_MODE_HVPS);
+    }
+
+    /* a lookup table loaded by the operator replaces the linear default, and its peak defines the band */
+    {
+        hvps_curve_t *t = &cl.cfg.curve;
+
+        HvpsCurve_Clear(t);
+        for (int f = 10000; f <= 30000; f += 1000)
+        {
+            float x = ((float)f - 21000.0f) / 3000.0f;
+            (void)HvpsCurve_Append(t, (float)f, 1.5f / (1.0f + x * x));       /* peaks at 21 kHz, not the 19 kHz setting */
+        }
+        cl.cfg.curveCustom = 1U;
+        cl.cfg.hvpsResonanceHz = 19000.0f;                                    /* ignored: the table says 21 kHz */
+        cl.cfg.hvpsAbove = 1U;
+        CHECK(Cl_Start(&cl, 0U, 0.75f, &per, &cmp) == 1U);                    /* half the peak power */
+        CHECK(Abs(cl.uMin - 21000.0f) < 1e-3f);
+        CHECK(Abs((float)HRTIM_TIMER_CLK_HZ / ((float)per + 1.0f) - HvpsCurve_FreqFor(t, 0.75f, 1U)) < 20.0f);
+        CHECK(Abs(HvpsCurve_Eval(t, (float)HRTIM_TIMER_CLK_HZ / ((float)per + 1.0f)) - 0.75f) < 0.01f);   /* the step gives the power asked for */
+
+        HvpsCurve_Clear(t);                                                   /* an invalid table is refused, not used */
+        (void)HvpsCurve_Append(t, 10000.0f, 1.0f);
+        CHECK(Cl_Start(&cl, 0U, 0.5f, &per, &cmp) == 0U);
+        cl.cfg.curveCustom = 0U;
+        CHECK(Cl_Start(&cl, 0U, 0.5f, &per, &cmp) == 1U);                     /* the default is back */
+    }
 }
 
 int main(void)

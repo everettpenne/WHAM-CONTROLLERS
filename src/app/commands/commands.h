@@ -242,6 +242,14 @@ void cmd_config_cl_vscale(uart_instance_t *inst, char *args);            /* CONF
 void cmd_config_cl_vscale_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:VSCALE? */
 void cmd_config_cl_branch(uart_instance_t *inst, char *args);            /* CONFig:CLOSEDloop:BRANCH */
 void cmd_config_cl_branch_query(uart_instance_t *inst, char *args);      /* CONFig:CLOSEDloop:BRANCH? */
+void cmd_curve_begin(uart_instance_t *inst, char *args);                 /* CONFig:CLOSEDloop:CURVe:BEGin */
+void cmd_curve_step(uart_instance_t *inst, char *args);                  /* CONFig:CLOSEDloop:CURVe:STEP <Hz> <volts> */
+void cmd_curve_end(uart_instance_t *inst, char *args);                   /* CONFig:CLOSEDloop:CURVe:END */
+void cmd_curve_clear(uart_instance_t *inst, char *args);                 /* CONFig:CLOSEDloop:CURVe:CLEar (back to the linear default) */
+void cmd_curve_query(uart_instance_t *inst, char *args);                 /* CONFig:CLOSEDloop:CURVe? */
+void cmd_curve_point_query(uart_instance_t *inst, char *args);           /* CONFig:CLOSEDloop:CURVe:POINt? <i> */
+void cmd_sim_plant_shape(uart_instance_t *inst, char *args);             /* SIM:PLANT:SHAPE LINEAR|LORENTZ */
+void cmd_sim_plant_shape_query(uart_instance_t *inst, char *args);       /* SIM:PLANT:SHAPE? */
 void cmd_sim_plant_tau(uart_instance_t *inst, char *args);            /* SIM:PLANT:TAU */
 void cmd_sim_plant_tau_query(uart_instance_t *inst, char *args);      /* SIM:PLANT:TAU? */
 void cmd_sim_plant_gain(uart_instance_t *inst, char *args);            /* SIM:PLANT:GAIN */

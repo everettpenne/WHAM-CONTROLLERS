@@ -12,6 +12,9 @@ void SimPlant_Init(sim_plant_t *p)
     p->width = 3000.0f;
     p->vpeak = 2.0f;
     p->vscale = 1.0f;
+    p->shape = SIM_SHAPE_LINEAR;
+    p->fMinHz = 10000.0f;
+    p->fMaxHz = 30000.0f;
     p->v = 0.0f;
 }
 
@@ -44,9 +47,19 @@ float SimPlant_StepSteady(sim_plant_t *p, float steadyVolts, float dt)
 
 float SimPlant_HvpsSteady(const sim_plant_t *p, float hz)
 {
-    float x = (hz - p->resonance) / p->width;
+    if (p->shape == SIM_SHAPE_LORENTZ)
+    {
+        float x = (hz - p->resonance) / p->width;
 
-    return p->gain * p->vpeak / (1.0f + x * x);
+        return p->gain * p->vpeak / (1.0f + x * x);
+    }
+    {
+        float edge = (hz >= p->resonance) ? (p->fMaxHz - p->resonance) : (p->resonance - p->fMinHz);
+        float d = (hz >= p->resonance) ? (hz - p->resonance) : (p->resonance - hz);
+        float k = (edge > 0.0f) ? (1.0f - d / edge) : 0.0f;
+
+        return p->gain * p->vpeak * ((k > 0.0f) ? k : 0.0f);
+    }
 }
 
 float SimPlant_LimiterSteady(const sim_plant_t *p, float duty)
