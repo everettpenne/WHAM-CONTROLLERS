@@ -41,13 +41,13 @@ void cmd_ext_enable(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "EXTernal:ENAble needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "EXTernal:ENAble needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     SM_SetExternalEnableRequired((val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_ext_enable_query(uart_instance_t *inst, char *args)
@@ -97,13 +97,13 @@ void cmd_ext_trigger(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "EXTernal:TRIGger needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "EXTernal:TRIGger needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     (void)SM_SetExternalTriggerRequired((val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_ext_trigger_query(uart_instance_t *inst, char *args)
@@ -163,13 +163,13 @@ void cmd_diag_gpout12(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut12 needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut12 needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     BoardIo_Write(BOARD_SIG_GPOUT_12, (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_diag_gpout12_query(uart_instance_t *inst, char *args)
@@ -205,13 +205,13 @@ void cmd_diag_gpout11(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut11 needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut11 needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     BoardIo_Write(BOARD_SIG_GPOUT_11, (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_diag_gpout11_query(uart_instance_t *inst, char *args)
@@ -253,13 +253,13 @@ void cmd_diag_gpout09(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut09 needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut09 needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     BoardIo_Write(BOARD_SIG_GPOUT_09, (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_diag_gpout09_query(uart_instance_t *inst, char *args)
@@ -280,13 +280,13 @@ void cmd_diag_gpout10(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut10 needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "DIAGnostic:GPOut10 needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     BoardIo_Write(BOARD_SIG_GPOUT_10, (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_diag_gpout10_query(uart_instance_t *inst, char *args)
@@ -361,14 +361,14 @@ void cmd_xrex_channel_status(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:STATus? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:STATus? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
@@ -415,26 +415,26 @@ void cmd_xrex_ena_out(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:ENAOut needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:ENAOut needs two arguments: channel, 0|1");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:ENAOut needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:ENAOut needs two arguments: channel, 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     XrexIo_SetEnableOutput((uint8_t)(chArg - 1L), (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_xrex_ena_out_query(uart_instance_t *inst, char *args)
@@ -446,13 +446,13 @@ void cmd_xrex_ena_out_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:ENAOut? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:ENAOut? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
@@ -469,26 +469,26 @@ void cmd_xrex_contact_out(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:CONTactOut needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:CONTactOut needs two arguments: channel, 0|1");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:CONTactOut needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:CONTactOut needs two arguments: channel, 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     XrexIo_SetContactorOutput((uint8_t)(chArg - 1L), (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_xrex_contact_out_query(uart_instance_t *inst, char *args)
@@ -500,13 +500,13 @@ void cmd_xrex_contact_out_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:CONTactOut? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "XREX:CHANnel:CONTactOut? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
@@ -534,13 +534,13 @@ void cmd_gpout_enable(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "GPOut:ENAble needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "GPOut:ENAble needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     BoardIo_Write(BOARD_SIG_GPOUT_ENABLE, (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_gpout_enable_query(uart_instance_t *inst, char *args)
@@ -569,13 +569,13 @@ void cmd_pwmalt_enable(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PWMAlt:ENAble needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PWMAlt:ENAble needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     BoardIo_Write(BOARD_SIG_PWMALT_ENABLE, (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_pwmalt_enable_query(uart_instance_t *inst, char *args)

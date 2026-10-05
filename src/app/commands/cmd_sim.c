@@ -47,26 +47,26 @@ void cmd_sim_fault_watertemp(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:WATERTEMP needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:WATERTEMP needs two arguments: channel, 0|1");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:WATERTEMP needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:WATERTEMP needs two arguments: channel, 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     SimTransrex_SetFaultWaterTemp((uint8_t)(chArg - 1L), (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sim_fault_watertemp_query(uart_instance_t *inst, char *args)
@@ -78,13 +78,13 @@ void cmd_sim_fault_watertemp_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:WATERTEMP? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:WATERTEMP? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
@@ -102,26 +102,26 @@ void cmd_sim_fault_enerpro(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:ENERPRO needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:ENERPRO needs two arguments: channel, 0|1");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:ENERPRO needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:ENERPRO needs two arguments: channel, 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     SimTransrex_SetFaultEnerpro((uint8_t)(chArg - 1L), (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sim_fault_enerpro_query(uart_instance_t *inst, char *args)
@@ -133,13 +133,13 @@ void cmd_sim_fault_enerpro_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:ENERPRO? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:ENERPRO? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
@@ -157,26 +157,26 @@ void cmd_sim_fault_ocp(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:OCP needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:OCP needs two arguments: channel, 0|1");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:OCP needs two arguments: channel, 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:OCP needs two arguments: channel, 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     SimTransrex_SetFaultOcp((uint8_t)(chArg - 1L), (val != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sim_fault_ocp_query(uart_instance_t *inst, char *args)
@@ -188,13 +188,13 @@ void cmd_sim_fault_ocp_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:OCP? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:FAULT:OCP? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
@@ -211,17 +211,17 @@ void cmd_sim_model_tau(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:MODEL:TAU needs one argument: milliseconds");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:MODEL:TAU needs one argument: milliseconds");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
 
     if ((val <= 0L) || (SimTransrex_SetTauMs((uint32_t)val) == 0U))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid tau -- must be a positive number of milliseconds");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid tau -- must be a positive number of milliseconds");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sim_model_tau_query(uart_instance_t *inst, char *args)
@@ -245,17 +245,17 @@ void cmd_sim_diag_idletone(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:DIAGnostic:IDLETONE needs one argument: 0 or 1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:DIAGnostic:IDLETONE needs one argument: 0 or 1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
     if ((val != 0L) && (val != 1L))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid value -- must be 0 or 1");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid value -- must be 0 or 1");
         return;
     }
     SimTransrex_SetIdleToneEnabled((uint8_t)val);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sim_diag_idletone_query(uart_instance_t *inst, char *args)
@@ -279,13 +279,13 @@ void cmd_sim_channel_status(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:CHANnel:STATus? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:CHANnel:STATus? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
@@ -327,40 +327,40 @@ void cmd_sim_log(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:LOG needs three arguments: channel maxSamples minIntervalMs");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:LOG needs three arguments: channel maxSamples minIntervalMs");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:LOG needs three arguments: channel maxSamples minIntervalMs");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:LOG needs three arguments: channel maxSamples minIntervalMs");
         return;
     }
-    maxSamplesArg = atol(tok);
+    SCPI_NEED_LONG(inst, tok, maxSamplesArg);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:LOG needs three arguments: channel maxSamples minIntervalMs");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:LOG needs three arguments: channel maxSamples minIntervalMs");
         return;
     }
-    minIntervalArg = atol(tok);
+    SCPI_NEED_LONG(inst, tok, minIntervalArg);
 
     if ((maxSamplesArg < 1L) || (maxSamplesArg > (long)SIM_LOG_MAX_SAMPLES) || (minIntervalArg < 0L))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "maxSamples must be 1-SIM_LOG_MAX_SAMPLES, minIntervalMs >= 0");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "maxSamples must be 1-SIM_LOG_MAX_SAMPLES, minIntervalMs >= 0");
         return;
     }
 
     (void)SimTransrex_ArmLog((uint8_t)(chArg - 1L), (uint16_t)maxSamplesArg, (uint16_t)minIntervalArg);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sim_logdata(uart_instance_t *inst, char *args)
@@ -374,13 +374,13 @@ void cmd_sim_logdata(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SIM:LOGDATA? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SIM:LOGDATA? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);

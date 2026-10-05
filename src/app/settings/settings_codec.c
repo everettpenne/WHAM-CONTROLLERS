@@ -2,6 +2,7 @@
  * settings_codec.c -- see settings_codec.h.
  */
 #include "settings_codec.h"
+#include "scpi_util.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -202,138 +203,6 @@ uint8_t SettingsCodec_Decode(const uint8_t *buf, uint16_t len, settings_snapshot
     return 1U;
 }
 
-/* 10^k as a float (exact up to 1e10; only used as a scale and a threshold beyond that). */
-static float Pow10(int k)
-{
-    float r = 1.0f;
-
-    while (k-- > 0)
-    {
-        r *= 10.0f;
-    }
-    return r;
-}
-
-/* A float as text like printf's "%g": 6 significant digits from a single scaling of the value (so the sixth
-   digit can differ from printf's in about 2 % of arbitrary values -- a float has only ~7), trailing zeros
-   dropped, fixed notation for exponents -4..5 and "d.ddde+XX" outside. */
-void SettingsCodec_FormatFloat(float v, char *out, size_t n)
-{
-    char tmp[32];
-    char digits[7];
-    size_t len = 0U;
-    int e = 0;
-    int nd = 6;
-    uint32_t d;
-    float a;
-    float scaled;
-
-    if (n == 0U)
-    {
-        return;
-    }
-    if (v != v)
-    {
-        snprintf(out, n, "nan");
-        return;
-    }
-    a = (v < 0.0f) ? -v : v;
-    if (a > 3.0e38f)
-    {
-        snprintf(out, n, "%s", (v < 0.0f) ? "-inf" : "inf");
-        return;
-    }
-    if (a == 0.0f)
-    {
-        snprintf(out, n, "0");
-        return;
-    }
-
-    /* the decimal exponent: 10^e <= a < 10^(e+1) */
-    if (a >= 1.0f)
-    {
-        while (e < 38 && a >= Pow10(e + 1)) { e++; }
-    }
-    else
-    {
-        while (e > -44 && (a * Pow10(-e)) < 1.0f) { e--; }  /* a < 10^e  <=>  a * 10^-e < 1 */
-    }
-    scaled = (e >= 0) ? a / Pow10(e) : a * Pow10(-e);
-    d = (uint32_t)(scaled * 100000.0f + 0.5f);
-    if (d >= 1000000UL)                                    /* rounded up to the next power of ten */
-    {
-        d = 100000UL;
-        e++;
-    }
-
-    for (int i = 5; i >= 0; i--)                           /* six digits, trailing zeros dropped */
-    {
-        digits[i] = (char)('0' + (d % 10U));
-        d /= 10U;
-    }
-    digits[6] = '\0';
-    while (nd > 1 && digits[nd - 1] == '0')
-    {
-        nd--;
-    }
-
-    if (v < 0.0f)
-    {
-        tmp[len++] = '-';
-    }
-    if (e >= -4 && e < 6)
-    {
-        if (e >= 0)
-        {
-            for (int i = 0; i <= e; i++)
-            {
-                tmp[len++] = (i < nd) ? digits[i] : '0';
-            }
-            if (nd > e + 1)
-            {
-                tmp[len++] = '.';
-                for (int i = e + 1; i < nd; i++)
-                {
-                    tmp[len++] = digits[i];
-                }
-            }
-        }
-        else
-        {
-            tmp[len++] = '0';
-            tmp[len++] = '.';
-            for (int i = 0; i < (-e - 1); i++)
-            {
-                tmp[len++] = '0';
-            }
-            for (int i = 0; i < nd; i++)
-            {
-                tmp[len++] = digits[i];
-            }
-        }
-    }
-    else
-    {
-        int ae = (e < 0) ? -e : e;
-
-        tmp[len++] = digits[0];
-        if (nd > 1)
-        {
-            tmp[len++] = '.';
-            for (int i = 1; i < nd; i++)
-            {
-                tmp[len++] = digits[i];
-            }
-        }
-        tmp[len++] = 'e';
-        tmp[len++] = (e < 0) ? '-' : '+';
-        tmp[len++] = (char)('0' + (ae / 10) % 10);
-        tmp[len++] = (char)('0' + ae % 10);
-    }
-    tmp[len] = '\0';
-    snprintf(out, n, "%s", tmp);
-}
-
 void SettingsCodec_FormatValue(const settings_snapshot_t *s, uint8_t fieldIdx, uint8_t ch,
                                char *out, size_t n)
 {
@@ -356,7 +225,7 @@ void SettingsCodec_FormatValue(const settings_snapshot_t *s, uint8_t fieldIdx, u
     {
         float v;
         memcpy(&v, p, sizeof(v));
-        SettingsCodec_FormatFloat(v, out, n);
+        Scpi_FormatFloat(v, out, n);
         break;
     }
     default:

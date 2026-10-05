@@ -43,7 +43,7 @@ void cmd_table_begin(uart_instance_t *inst, char *args)
     PFM_TableReset();
     g_tableUploadActive = 1U;
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* per + one compare value per channel -- see ctrlr_config.h's
@@ -119,7 +119,7 @@ static void SendTableStepCountErr(uart_instance_t *inst)
     snprintf(msg, sizeof(msg),
              "TABLE:STEP needs exactly %u values: per cmp0 .. cmp(N-1)",
              (unsigned int)TABLE_STEP_TOKEN_COUNT);
-    SendErr(inst, ERR_TABLE_STEP_INVALID, msg);
+    Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, msg);
 }
 
 void cmd_table_step(uart_instance_t *inst, char *args)
@@ -131,7 +131,7 @@ void cmd_table_step(uart_instance_t *inst, char *args)
 
     if (g_tableUploadActive == 0U)
     {
-        SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TABLE:BEGIN first");
+        Scpi_SendErr(inst, ERR_TABLE_NOT_UPLOADING, "Not currently uploading -- send TABLE:BEGIN first");
         return;
     }
 
@@ -153,10 +153,10 @@ void cmd_table_step(uart_instance_t *inst, char *args)
             break;
         }
 
-        v = atol(tok);
+        SCPI_NEED_LONG_ERR(inst, tok, v, ERR_TABLE_STEP_INVALID);
         if (v < 0L || v > 65535L)
         {
-            SendErr(inst, ERR_TABLE_STEP_INVALID, "Value out of uint16 range (0-65535)");
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "Value out of uint16 range (0-65535)");
             return;
         }
 
@@ -176,7 +176,7 @@ void cmd_table_step(uart_instance_t *inst, char *args)
         snprintf(msg, sizeof(msg),
                  "per below %u implies carrier > %lu Hz (max allowed)",
                  (unsigned int)TableStepMinPer(), (unsigned long)g_pfmMaxCarrierFreqHz);
-        SendErr(inst, ERR_CARRIER_TOO_HIGH, msg);
+        Scpi_SendErr(inst, ERR_CARRIER_TOO_HIGH, msg);
         return;
     }
 
@@ -187,11 +187,11 @@ void cmd_table_step(uart_instance_t *inst, char *args)
 
     if (PFM_AppendStep((uint16_t)vals[0], cmp) == 0U)
     {
-        SendErr(inst, ERR_TABLE_FULL, "Table full");
+        Scpi_SendErr(inst, ERR_TABLE_FULL, "Table full");
         return;
     }
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* CONFig:MaxCarrierHz <hz> / ? -- added 2026-09-22, direct request:
@@ -209,17 +209,17 @@ void cmd_config_max_carrier_hz(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:MaxCarrierHz needs one argument: hz");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:MaxCarrierHz needs one argument: hz");
         return;
     }
-    hz = atol(tok);
+    SCPI_NEED_LONG(inst, tok, hz);
     if ((hz <= 0L) || (PFM_SetMaxCarrierFreqHz((uint32_t)hz) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- too small/large for the "
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- too small/large for the "
                            "16-bit PER register at this board's HRTIM clock");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_max_carrier_hz_query(uart_instance_t *inst, char *args)
@@ -286,7 +286,7 @@ void cmd_fire(uart_instance_t *inst, char *args)
 
     if ((AnyFaultLatched() != 0U) && (SM_GetFaultBypassEnabled() == 0U))
     {
-        SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
+        Scpi_SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
         return;
     }
 
@@ -308,13 +308,13 @@ void cmd_fire(uart_instance_t *inst, char *args)
 
     if (PFM_GetEntryCount() == 0U)
     {
-        SendErr(inst, ERR_TABLE_EMPTY, "Table is empty -- upload one first (TABLE:BEGIN/STEP/END)");
+        Scpi_SendErr(inst, ERR_TABLE_EMPTY, "Table is empty -- upload one first (TABLE:BEGIN/STEP/END)");
         return;
     }
 
     PFM_Restart();
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* --------------------------------------------------------------------------

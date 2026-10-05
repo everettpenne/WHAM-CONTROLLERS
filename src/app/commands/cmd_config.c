@@ -52,17 +52,17 @@ void cmd_config_pid_rate(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:PIDRate needs one argument: hz");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:PIDRate needs one argument: hz");
         return;
     }
-    hz = atol(tok);
+    SCPI_NEED_LONG(inst, tok, hz);
     if ((hz <= 0L) || (PID_SetLoopRateHz((uint32_t)hz) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- out of range, hardware register "
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- out of range, hardware register "
                            "check failed, or a shot is currently running");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_pid_rate_query(uart_instance_t *inst, char *args)
@@ -86,17 +86,17 @@ void cmd_config_turnon_hz(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:TURNONHz needs one argument: hz");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:TURNONHz needs one argument: hz");
         return;
     }
-    hz = atol(tok);
+    SCPI_NEED_LONG(inst, tok, hz);
     if ((hz <= 0L) || (PID_SetTurnonFreqHz((uint32_t)hz) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- must be >= PID_OUTPUT_MIN_HZ and "
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- must be >= PID_OUTPUT_MIN_HZ and "
                            "strictly below the current CONFig:MAXFREQHz");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_turnon_hz_query(uart_instance_t *inst, char *args)
@@ -120,17 +120,17 @@ void cmd_config_max_freq_hz(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXFREQHz needs one argument: hz");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXFREQHz needs one argument: hz");
         return;
     }
-    hz = atol(tok);
+    SCPI_NEED_LONG(inst, tok, hz);
     if ((hz <= 0L) || (PID_SetMaxFreqHz((uint32_t)hz) == 0U))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- must be <= PID_OUTPUT_MAX_HZ and "
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "hz rejected -- must be <= PID_OUTPUT_MAX_HZ and "
                            "strictly above the current CONFig:TURNONHz");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_max_freq_hz_query(uart_instance_t *inst, char *args)
@@ -159,37 +159,36 @@ void cmd_config_max_current(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXCURRent needs two arguments: channel amps");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXCURRent needs two arguments: channel amps");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXCURRent needs two arguments: channel amps");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXCURRent needs two arguments: channel amps");
         return;
     }
-    amps = atof(tok);
+    SCPI_NEED_FLOAT(inst, tok, amps);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
 
     if (PID_SetMaxCurrentA(ch, (float)amps) == 0U)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "amps rejected -- must be > 0");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "amps rejected -- must be > 0");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_max_current_query(uart_instance_t *inst, char *args)
 {
-    char   buf[32];
     char  *tok;
     long   chArg;
     uint8_t ch;
@@ -198,20 +197,19 @@ void cmd_config_max_current_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXCURRent? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:MAXCURRent? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
 
     (void)PID_GetMaxCurrentA(ch, &amps);
-    snprintf(buf, sizeof(buf), "OK %g\r\n", (double)amps);
-    uart_send(inst, buf);
+    Scpi_ReplyFloat(inst, amps);
 }
 
 /* CONFig:SLEWRate <hzPerTick> / ? -- added 2026-09-22, direct request:
@@ -227,25 +225,23 @@ void cmd_config_slew_rate(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:SLEWRate needs one argument: hzPerTick");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:SLEWRate needs one argument: hzPerTick");
         return;
     }
-    hzPerTick = atof(tok);
+    SCPI_NEED_FLOAT(inst, tok, hzPerTick);
     if (PID_SetSlewRateHzPerTick((float)hzPerTick) == 0U)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "hzPerTick rejected -- must be > 0");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "hzPerTick rejected -- must be > 0");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_slew_rate_query(uart_instance_t *inst, char *args)
 {
-    char buf[32];
     (void)args;
 
-    snprintf(buf, sizeof(buf), "OK %g\r\n", (double)PID_GetSlewRateHzPerTick());
-    uart_send(inst, buf);
+    Scpi_ReplyFloat(inst, PID_GetSlewRateHzPerTick());
 }
 
 /* CONFig:FaultRampTime <s> / ? -- added 2026-09-22, direct request:
@@ -260,25 +256,23 @@ void cmd_config_fault_ramp_time(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CONFig:FaultRampTime needs one argument: seconds");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:FaultRampTime needs one argument: seconds");
         return;
     }
-    s = atof(tok);
+    SCPI_NEED_FLOAT(inst, tok, s);
     if (PID_SetFaultRampDownTimeS((float)s) == 0U)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "seconds rejected -- must be > 0");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "seconds rejected -- must be > 0");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_config_fault_ramp_time_query(uart_instance_t *inst, char *args)
 {
-    char buf[32];
     (void)args;
 
-    snprintf(buf, sizeof(buf), "OK %g\r\n", (double)PID_GetFaultRampDownTimeS());
-    uart_send(inst, buf);
+    Scpi_ReplyFloat(inst, PID_GetFaultRampDownTimeS());
 }
 
 /* CONFig:FaultPolarity:WATER/:TEMP/:ENERPRO/:OCP <0|1> / ? -- added
@@ -300,14 +294,14 @@ static void ConfigFaultPolaritySet(uart_instance_t *inst, char *args, const char
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "needs one argument: 0 (normally high) or 1 (normally low)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "needs one argument: 0 (normally high) or 1 (normally low)");
         (void)name;
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
     if ((val != 0L) && (val != 1L))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "must be 0 (normally high) or 1 (normally low)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "must be 0 (normally high) or 1 (normally low)");
         return;
     }
     (void)setter((uint32_t)val);   /* can't actually fail -- val is already
@@ -315,7 +309,7 @@ static void ConfigFaultPolaritySet(uart_instance_t *inst, char *args, const char
                                        the same two values the setter itself
                                        accepts (see XrexIo_SetFaultPolarity*()'s
                                        own doc comment) */
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 static void ConfigFaultPolarityQuery(uart_instance_t *inst, char *args, uint32_t (*getter)(void))

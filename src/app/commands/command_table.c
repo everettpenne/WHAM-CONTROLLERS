@@ -323,6 +323,6 @@ void Commands_Dispatch(uart_instance_t *inst, char *line)
 {
     if (scpi_dispatch(command_table, NUM_COMMANDS, inst, line) == SCPI_UNKNOWN)
     {
-        SendErr(inst, ERR_UNKNOWN_COMMAND, "Unknown command");
+        Scpi_SendErr(inst, ERR_UNKNOWN_COMMAND, "Unknown command");
     }
 }

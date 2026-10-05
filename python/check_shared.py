@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """check_shared.py -- are the files WHAM-XREX-PFMG474 and WHAM-HBRIDGE-PFMG474 SHARE still identical?
 
-The two controllers run on the same board and keep saved profiles in the same external flash chip, so the
-flash driver, the profile store and the float formatter are one piece of code that lives in both repos.
+The two controllers speak the same SCPI-style protocol and keep saved profiles in the same external flash chip
+on the same board, so the protocol layer (parser, error codes, argument and reply helpers), the flash driver and
+the profile store are one piece of code that lives in both repos.
 Nothing links them, so this script is the guard: it compares each shared file (or shared block of a file)
 with the sibling repo's copy and reports any difference. The identical script is in both repos.
 
@@ -15,8 +16,9 @@ carried over; run this before finishing such a change. Fixing a difference means
 the other repo and running its host tests (`make -C tests`).
 
 What differs per product is configuration and meaning, not these files: ctrlr_config.h (PROFILE_STORE_BASE,
-PROFILE_COPY_SECTORS, PROFILE_SLOT_COUNT, PROFILE_MAGIC_BYTES), settings_codec.h (the field table) and
-settings.c. See docs/saved_profiles_shared.md.
+PROFILE_COPY_SECTORS, PROFILE_SLOT_COUNT, PROFILE_MAGIC_BYTES), settings_codec.h (the field table),
+settings.c, command_table.c and the cmd_*.c handlers, tests/known_short_collisions.inc. See
+docs/saved_profiles_shared.md and docs/scpi_conventions.md.
 """
 import argparse
 import hashlib
@@ -26,6 +28,18 @@ from pathlib import Path
 
 # whole files that must be byte-identical
 WHOLE = [
+    "src/middleware/scpi/scpi_parser.c",
+    "src/middleware/scpi/scpi_parser.h",
+    "src/middleware/scpi/scpi_err.h",
+    "src/middleware/scpi/scpi_util.c",
+    "src/middleware/scpi/scpi_util.h",
+    "tests/test_scpi_parser.c",
+    "tests/test_scpi_util.c",
+    "tests/test_command_table.c",
+    "tests/fake_uart.c",
+    "tests/fake_uart.h",
+    "docs/scpi_conventions.md",
+    "docs/saved_profiles_shared.md",
     "src/drivers/nvstore.h",
     "src/bsp/stm32g4/nvstore.c",
     "src/bsp/stm32g4/qspi_test.c",
@@ -38,11 +52,9 @@ WHOLE = [
     "tests/fake_nvstore.h",
 ]
 
-# blocks of a file that must be identical, as (file, start marker, end marker)
-BLOCKS = [
-    ("src/app/settings/settings_codec.c", "/* 10^k as a float", "void SettingsCodec_FormatValue("),
-    ("src/app/settings/settings_codec.h", "/* A float as text like printf's", "/* Field value as text"),
-]
+# blocks of a file that must be identical, as (file, start marker, end marker); none today (the float formatter that
+# was one now lives whole in scpi_util.c)
+BLOCKS = []
 
 
 def digest(text: str) -> str:

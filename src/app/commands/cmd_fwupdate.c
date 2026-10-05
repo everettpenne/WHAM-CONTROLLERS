@@ -64,7 +64,7 @@ static void BootInactiveBank(uart_instance_t *inst)
 
     if (FlashBank_SelectInactiveForBoot() != FLASH_BANK_OK)
     {
-        SendErr(inst, ERR_FWUPDATE, "option byte (BFB2) programming failed -- boot bank unchanged");
+        Scpi_SendErr(inst, ERR_FWUPDATE, "option byte (BFB2) programming failed -- boot bank unchanged");
         return;
     }
 
@@ -75,7 +75,7 @@ static void BootInactiveBank(uart_instance_t *inst)
     BOOT_DIAG_STAGE(BD_STAGE_OB_LAUNCH);
     FlashBank_ReloadOptionBytes();   /* system reset; does not return */
 
-    SendErr(inst, ERR_FWUPDATE, "option byte reload did not reset");
+    Scpi_SendErr(inst, ERR_FWUPDATE, "option byte reload did not reset");
 }
 
 void cmd_fwup_begin(uart_instance_t *inst, char *args)
@@ -91,22 +91,22 @@ void cmd_fwup_begin(uart_instance_t *inst, char *args)
 
     if (!ParseU32(tokSize, 0, &size) || !ParseU32(tokCrc, 16, &crc))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "usage: FWUPdate:BEGin <size> <crc32hex>");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "usage: FWUPdate:BEGin <size> <crc32hex>");
         return;
     }
     if ((size == 0U) || ((size & 7U) != 0U) || (size > FlashBank_Size()))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "size must be a nonzero multiple of 8, at most one bank (262144)");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "size must be a nonzero multiple of 8, at most one bank (262144)");
         return;
     }
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "firmware update needs STATE IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "firmware update needs STATE IDLE");
         return;
     }
     if (FlashBank_DualBank() == 0U)
     {
-        SendErr(inst, ERR_FWUPDATE, "flash is not in dual-bank mode (OPTR.DBANK=0)");
+        Scpi_SendErr(inst, ERR_FWUPDATE, "flash is not in dual-bank mode (OPTR.DBANK=0)");
         return;
     }
 
@@ -118,11 +118,11 @@ void cmd_fwup_begin(uart_instance_t *inst, char *args)
         case FLASH_BANK_NOT_BLANK:
             snprintf(buf, sizeof(buf), "inactive bank not blank after erase at +0x%05lX",
                      (unsigned long)detail);
-            SendErr(inst, ERR_FWUPDATE, buf);
+            Scpi_SendErr(inst, ERR_FWUPDATE, buf);
             return;
         default:
             snprintf(buf, sizeof(buf), "erase failed at page %lu", (unsigned long)detail);
-            SendErr(inst, ERR_FWUPDATE, buf);
+            Scpi_SendErr(inst, ERR_FWUPDATE, buf);
             return;
     }
 
@@ -147,25 +147,25 @@ void cmd_fwup_data(uart_instance_t *inst, char *args)
 
     if (s_state != FWUP_RECEIVING)
     {
-        SendErr(inst, ERR_INVALID_STATE, "no transfer in progress -- send FWUPdate:BEGin first");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "no transfer in progress -- send FWUPdate:BEGin first");
         return;
     }
     if (!ParseU32(tokOff, 16, &off) || (tokHex == NULL))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "usage: FWUPdate:DATA <offsethex> <hexbytes>");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "usage: FWUPdate:DATA <offsethex> <hexbytes>");
         return;
     }
     if (off != s_next)
     {
         snprintf(buf, sizeof(buf), "expected offset %lX", (unsigned long)s_next);
-        SendErr(inst, ERR_INVALID_ARGS, buf);
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, buf);
         return;
     }
     n = (uint32_t)strlen(tokHex) / 2U;
     if (((strlen(tokHex) & 1U) != 0U) || (n == 0U) || (n > FWUP_MAX_CHUNK) ||
         ((n & 7U) != 0U) || ((s_next + n) > s_size))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "data must be 8..48 bytes, a multiple of 8, within size");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "data must be 8..48 bytes, a multiple of 8, within size");
         return;
     }
     for (uint32_t i = 0U; i < n; i++)
@@ -174,7 +174,7 @@ void cmd_fwup_data(uart_instance_t *inst, char *args)
         int lo = HexNibble(tokHex[(2U * i) + 1U]);
         if ((hi < 0) || (lo < 0))
         {
-            SendErr(inst, ERR_INVALID_ARGS, "bad hex digit");
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, "bad hex digit");
             return;
         }
         data[i] = (uint8_t)((hi << 4) | lo);
@@ -185,11 +185,11 @@ void cmd_fwup_data(uart_instance_t *inst, char *args)
         s_state = FWUP_IDLE;
         snprintf(buf, sizeof(buf), "program failed at +0x%05lX -- transfer aborted",
                  (unsigned long)failOff);
-        SendErr(inst, ERR_FWUPDATE, buf);
+        Scpi_SendErr(inst, ERR_FWUPDATE, buf);
         return;
     }
     s_next += n;
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_fwup_end(uart_instance_t *inst, char *args)
@@ -201,7 +201,7 @@ void cmd_fwup_end(uart_instance_t *inst, char *args)
 
     if ((s_state != FWUP_RECEIVING) || (s_next != s_size))
     {
-        SendErr(inst, ERR_INVALID_STATE, "transfer not complete");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "transfer not complete");
         return;
     }
     crc = FlashBank_InactiveCrc32(s_size);
@@ -210,14 +210,14 @@ void cmd_fwup_end(uart_instance_t *inst, char *args)
         s_state = FWUP_IDLE;
         snprintf(buf, sizeof(buf), "CRC mismatch: got %08lX expected %08lX",
                  (unsigned long)crc, (unsigned long)s_crc);
-        SendErr(inst, ERR_FWUPDATE, buf);
+        Scpi_SendErr(inst, ERR_FWUPDATE, buf);
         return;
     }
     problem = FlashBank_InactiveImageProblem(s_size);
     if (problem != NULL)
     {
         s_state = FWUP_IDLE;
-        SendErr(inst, ERR_FWUPDATE, problem);
+        Scpi_SendErr(inst, ERR_FWUPDATE, problem);
         return;
     }
     s_state = FWUP_VERIFIED;
@@ -230,12 +230,12 @@ void cmd_fwup_swap(uart_instance_t *inst, char *args)
     (void)args;
     if (s_state != FWUP_VERIFIED)
     {
-        SendErr(inst, ERR_INVALID_STATE, "no verified image -- complete FWUPdate:END first");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "no verified image -- complete FWUPdate:END first");
         return;
     }
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "firmware update needs STATE IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "firmware update needs STATE IDLE");
         return;
     }
     BootInactiveBank(inst);
@@ -248,18 +248,18 @@ void cmd_fwup_rollback(uart_instance_t *inst, char *args)
 
     if (s_state == FWUP_RECEIVING)
     {
-        SendErr(inst, ERR_INVALID_STATE, "transfer in progress -- the other bank is partly written");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "transfer in progress -- the other bank is partly written");
         return;
     }
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "firmware update needs STATE IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "firmware update needs STATE IDLE");
         return;
     }
     problem = FlashBank_InactiveImageProblem(FlashBank_Size());
     if (problem != NULL)
     {
-        SendErr(inst, ERR_FWUPDATE, problem);
+        Scpi_SendErr(inst, ERR_FWUPDATE, problem);
         return;
     }
     BootInactiveBank(inst);
@@ -269,7 +269,7 @@ void cmd_fwup_abort(uart_instance_t *inst, char *args)
 {
     (void)args;
     s_state = FWUP_IDLE;
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_fwup_status(uart_instance_t *inst, char *args)

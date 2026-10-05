@@ -39,22 +39,22 @@ void cmd_pid_loopmode(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE needs two arguments: channel(0=all) 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE needs two arguments: channel(0=all) 0|1");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE needs two arguments: channel(0=all) 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE needs two arguments: channel(0=all) 0|1");
         return;
     }
-    modeArg = atol(tok);
+    SCPI_NEED_LONG(inst, tok, modeArg);
 
     if ((chArg < 0L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     mode = (modeArg != 0L) ? 1U : 0U;
@@ -71,7 +71,7 @@ void cmd_pid_loopmode(uart_instance_t *inst, char *args)
         ch = (uint8_t)(chArg - 1L);
         (void)PID_SetLoopMode(ch, mode);
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* Added 2026-09-10 -- see cmd_pid_gains_query()'s own comment on why
@@ -86,14 +86,14 @@ void cmd_pid_loopmode_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PID:LOOPMODE? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
@@ -117,28 +117,28 @@ void cmd_source_enable(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SOURce:ENAble needs two arguments: channel 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SOURce:ENAble needs two arguments: channel 0|1");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SOURce:ENAble needs two arguments: channel 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SOURce:ENAble needs two arguments: channel 0|1");
         return;
     }
-    enableArg = atol(tok);
+    SCPI_NEED_LONG(inst, tok, enableArg);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
 
     (void)PID_SetChannelEnable(ch, (enableArg != 0L) ? 1U : 0U);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_source_enable_query(uart_instance_t *inst, char *args)
@@ -151,14 +151,14 @@ void cmd_source_enable_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SOURce:ENAble? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SOURce:ENAble? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
@@ -176,32 +176,32 @@ void cmd_chan_nickname(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CHANnel:NICKname needs two arguments: channel name");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CHANnel:NICKname needs two arguments: channel name");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CHANnel:NICKname needs two arguments: channel name");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CHANnel:NICKname needs two arguments: channel name");
         return;
     }
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
 
     if (PID_SetChannelNickname(ch, tok) == 0U)
     {
-        SendErr(inst, ERR_INVALID_NICKNAME, "Invalid nickname -- 1-PID_CHANNEL_NICKNAME_MAX_LEN chars, "
+        Scpi_SendErr(inst, ERR_INVALID_NICKNAME, "Invalid nickname -- 1-PID_CHANNEL_NICKNAME_MAX_LEN chars, "
                           "no spaces, and not the reserved value '-'");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_chan_nickname_query(uart_instance_t *inst, char *args)
@@ -215,14 +215,14 @@ void cmd_chan_nickname_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "CHANnel:NICKname? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CHANnel:NICKname? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
@@ -258,33 +258,33 @@ void cmd_shot_timing(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing needs three arguments: "
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing needs three arguments: "
                            "rampUpTimeS flatTopTimeS rampDownTimeS");
         return;
     }
-    rampUpTimeS = atof(tok);
+    SCPI_NEED_FLOAT(inst, tok, rampUpTimeS);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing needs three arguments: "
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing needs three arguments: "
                            "rampUpTimeS flatTopTimeS rampDownTimeS");
         return;
     }
-    flatTopTimeS = atof(tok);
+    SCPI_NEED_FLOAT(inst, tok, flatTopTimeS);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing needs three arguments: "
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing needs three arguments: "
                            "rampUpTimeS flatTopTimeS rampDownTimeS");
         return;
     }
-    rampDownTimeS = atof(tok);
+    SCPI_NEED_FLOAT(inst, tok, rampDownTimeS);
 
     if ((rampUpTimeS <= 0.0) || (flatTopTimeS <= 0.0) || (rampDownTimeS <= 0.0))
     {
-        SendErr(inst, ERR_INVALID_ARGS, "rampUpTimeS/flatTopTimeS/rampDownTimeS must be > 0");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "rampUpTimeS/flatTopTimeS/rampDownTimeS must be > 0");
         return;
     }
 
@@ -294,10 +294,10 @@ void cmd_shot_timing(uart_instance_t *inst, char *args)
     if (PID_SetProfileTiming((uint32_t)(rampUpTimeS * 1000.0), (uint32_t)(flatTopTimeS * 1000.0),
                               (uint32_t)(rampDownTimeS * 1000.0)) == 0U)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "rampUpTimeS/flatTopTimeS/rampDownTimeS too small");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "rampUpTimeS/flatTopTimeS/rampDownTimeS too small");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* Added 2026-09-10 -- see cmd_pid_gains_query()'s own comment on why
@@ -310,7 +310,6 @@ void cmd_shot_timing(uart_instance_t *inst, char *args)
    independently-configurable ramp-up/ramp-down. */
 void cmd_shot_timing_query(uart_instance_t *inst, char *args)
 {
-    char buf[64];
     uint32_t rampUpTimeMs;
     uint32_t flatTopTimeMs;
     uint32_t rampDownTimeMs;
@@ -318,17 +317,15 @@ void cmd_shot_timing_query(uart_instance_t *inst, char *args)
 
     if (PID_GetProfileTiming(&rampUpTimeMs, &flatTopTimeMs, &rampDownTimeMs) == 0U)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "Profile timing not set -- send SHOT:TIMing first");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "Profile timing not set -- send SHOT:TIMing first");
         return;
     }
 
     /* ms -> seconds, the operator-facing unit (matches the setter's
        own convention) -- %g rather than integer division so a
        sub-second value (e.g. 500 ms -> "0.5") round-trips cleanly. */
-    snprintf(buf, sizeof(buf), "OK %g %g %g\r\n",
-             (double)rampUpTimeMs / 1000.0, (double)flatTopTimeMs / 1000.0,
-             (double)rampDownTimeMs / 1000.0);
-    uart_send(inst, buf);
+    Scpi_ReplyFloat3(inst, (float)rampUpTimeMs / 1000.0f, (float)flatTopTimeMs / 1000.0f,
+                     (float)rampDownTimeMs / 1000.0f);
 }
 
 void cmd_shot_current(uart_instance_t *inst, char *args)
@@ -341,29 +338,29 @@ void cmd_shot_current(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:CURRent needs two arguments: channel demandCurrentA");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:CURRent needs two arguments: channel demandCurrentA");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     tok = strtok(NULL, " \r\n");
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:CURRent needs two arguments: channel demandCurrentA");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:CURRent needs two arguments: channel demandCurrentA");
         return;
     }
-    currentA = atof(tok);
+    SCPI_NEED_FLOAT(inst, tok, currentA);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
 
     if (currentA < 0.0)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "demandCurrentA must be >= 0");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "demandCurrentA must be >= 0");
         return;
     }
 
@@ -371,7 +368,7 @@ void cmd_shot_current(uart_instance_t *inst, char *args)
        PFM_MAX_CURRENT_A_PER_CHANNEL entry] itself -- matches
        SOURce:SETpoint's own clamp-don't-reject convention. */
     (void)PID_SetProfileCurrent(ch, (float)currentA);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* Added 2026-09-10 -- see cmd_pid_gains_query()'s own comment on why
@@ -381,7 +378,6 @@ void cmd_shot_current(uart_instance_t *inst, char *args)
    "never configured" state worth a separate ERR here). */
 void cmd_shot_current_query(uart_instance_t *inst, char *args)
 {
-    char buf[32];
     char *tok;
     long  chArg;
     uint8_t ch;
@@ -390,22 +386,21 @@ void cmd_shot_current_query(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:CURRent? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:CURRent? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
     ch = (uint8_t)(chArg - 1L);
 
     (void)PID_GetProfileCurrent(ch, &demandCurrentA);
 
-    snprintf(buf, sizeof(buf), "OK %g\r\n", (double)demandCurrentA);
-    uart_send(inst, buf);
+    Scpi_ReplyFloat(inst, demandCurrentA);
 }
 
 /* Now gated on the state machine (state_machine.h, added 2026-09-13) --
@@ -435,8 +430,8 @@ void cmd_shot_start(uart_instance_t *inst, char *args)
 
     if (SM_Fire() == 0U)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing must be set before SHOT:STARt");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SHOT:TIMing must be set before SHOT:STARt");
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }

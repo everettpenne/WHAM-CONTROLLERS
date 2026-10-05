@@ -1,6 +1,34 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-10-05  —  SCPI protocol layer shared with HBRIDGE: strict arguments, shared reply helpers and error codes (branch scpi-shared)
+-----------------------------------------------------------------------
+  Request: compare the two SCPI command libraries and bring them into harmony (steps A and B of that comparison).
+  The parser, its tests and the fake UART were already byte-identical; the differences were in the command layer. Done:
+  A  scpi_err.h -- the error-code enum is ONE shared header (codes 10/11/14-16 differ only in meaning, now written for both products;
+        ERR_CARRIER_TOO_HIGH stays as XREX's name for code 10); docs/scpi_conventions.md -- the single description of framing, replies,
+        error codes (with a "used by" column), mnemonic matching, strict arguments, how to write a handler, and where the two command sets
+        overlap but differ (53 shared mnemonics, 8 with different meaning/units: SOURce:SETpoint Hz vs V, PID:LOOPMODE default, LOG:DATA? streamed vs
+        paged, SHOT:* ...); each command_reference.md now points there instead of carrying its own copy; tests/test_command_table.c is one shared
+        file (each product's known short-form collisions live in tests/known_short_collisions.inc: XREX 6 entries, HBRIDGE none);
+        python/check_shared.py now also compares the parser, scpi_util, scpi_err, the tests and the two shared docs (the formatter blocks it
+        compared before are gone: the function moved whole).
+  B  src/middleware/scpi/scpi_util.c/.h (+ test_scpi_util.c, 20,201 checks) -- reply builders (Scpi_SendErr, ReplyOk, ReplyFixed, ReplyFloat/Float3,
+        ReplySet), STRICT argument parsing (Scpi_ParseLong/Float/Bool/Scaled/Unsigned; the whole token must be the number: "12x", "abc", "1.5" for an
+        integer, "nan", "0x10" are refused), handler shorthands (SCPI_NEED_LONG/FLOAT with an optional per-command error code, explicit Scpi_GetLong/
+        GetFloat for value-returning helpers), the SCPI_FLOAT_SETTING generator, and number text with no printf float support (Scpi_FormatFixed,
+        Scpi_FormatFloat = the %g formatter that had lived in settings_codec). SendErr is now Scpi_SendErr everywhere.
+  XREX: all 79 atol/atoi/atof argument sites are strict (SCPI_NEED_LONG/FLOAT) and keep each command's documented error code (ERR 11 for a channel
+        argument, ERR 8/9 in PFMIN, ERR 4 inside TABle:STEP, else ERR 12); the 53 raw uart_send("OK") became Scpi_ReplyOk; the six "%g" replies
+        (PID:GAINS?, CONFig:MAXCURRent?/SLEWRate?/FaultRampTime?, SHOT:CURRent?/TIMing?) use Scpi_ReplyFloat/Float3 -- XREX's command layer no longer
+        uses printf floats. The -u _printf_float LINK FLAG IS STILL THERE and was deliberately not touched: nothing under src/ prints a float with printf
+        any more, so it can probably be dropped (~6 KB), but that needs a hardware check first.
+  BEHAVIOUR CHANGE (valid input is unchanged): a malformed number used to be silently read as 0 or a prefix ("GPOut:ENAble xyz" switched the output OFF;
+        "PID:GAINS 1 abc 0 0" set ki to 0); it now answers "ERR 12 not a number: abc" (or the command's own code) and changes nothing.
+  NOT YET RUN ON HARDWARE: the XREX simulator board currently runs HBRIDGE firmware (restoring XREX needs the ST-Link). Verified: host tests (scpi_util 20,201,
+        command table 249, settings codec 461, profile store 5,413), both firmware targets build with zero warnings, and the same shared module and
+        the same call patterns are bench-verified on the HBRIDGE simulator.
+
 2026-10-05  —  Profile store and float formatter now shared with WHAM-HBRIDGE-PFMG474 (branch shared-profile-store)
 -----------------------------------------------------------------------
   HBRIDGE ported XREX's saved-profile layers (docs/saved_profiles.md in that repo) and improved them; this carries the improvements back so

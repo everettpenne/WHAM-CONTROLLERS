@@ -565,10 +565,24 @@ IDLE/ARMED/FIRING lifecycle; see `state_machine.h`), so `STATE?` stays
   history (DSLogic captures, exact failure signatures, dead ends) in
   `docs/changelog.txt`'s 2026-09-09 entries.
 
+## SCPI protocol layer shared with WHAM-HBRIDGE-PFMG474 (added 2026-10-05)
+
+The parser, the error-code enum (`scpi_err.h`), the reply and strict-argument helpers (`scpi_util.h`: `Scpi_SendErr`,
+`Scpi_ReplyOk`, `Scpi_ReplyFixed`, `Scpi_ParseLong/Float/Scaled`, `SCPI_NEED_LONG/FLOAT`, `SCPI_FLOAT_SETTING`,
+`Scpi_FormatFixed/Float`) and their tests are byte-identical in both controller repos, together with
+`tests/test_command_table.c`; `python/check_shared.py` compares them. What is described once, in
+`docs/scpi_conventions.md`: the reply grammar, the error codes (never renumbered or reused), mnemonic matching, the
+strict argument rules and where the two command sets differ. Handlers use `Scpi_*` and never `atol`/`atof`/
+`uart_send("OK")`: a numeric argument must be the WHOLE token (`12x`, `abc`, `1.5` for an integer are refused with
+`ERR 12 not a number: ...`, or the command's own code such as `ERR 8`/`ERR 9`/`ERR 4`/`ERR 11`); add a handler
+with a row in `command_table.c`, a declaration in `commands.h`, and documentation in `command_reference.md`.
+The product vocabularies stay separate (the same name can mean different units: see the table in
+`docs/scpi_conventions.md`).
+
 ## Code shared with WHAM-HBRIDGE-PFMG474 (added 2026-10-05)
 
 `nvstore`, `qspi_test`, `profile_store`, the profile-store host tests (`tests/test_profile_store.c`,
-`fake_nvstore`) and `SettingsCodec_FormatFloat` are **byte-identical** in both controller repos: the two products
+`fake_nvstore`) and `Scpi_FormatFloat` are **byte-identical** in both controller repos: the two products
 run on the same board and keep profiles in the same flash chip, in separate regions under separate magics (XREX
 slots 0-64 KiB, magic `WSPF`; HBRIDGE from 64 KiB, `HSPF`). Do not change a shared file in only one repo: carry
 the change to the sibling and run both repos' `make -C tests`, then run `python3 python/check_shared.py` (the same
@@ -576,7 +590,7 @@ script is in both; it compares the shared files with the sibling checkout). What
 `PROFILE_*` constants in `ctrlr_config.h`, `settings_codec.h`'s field table, `settings.c` -- is listed in
 `docs/saved_profiles_shared.md`, which also holds the flash map. The store's format did not change when it was
 generalized (a streaming writer that writes the header last, copies of any number of sectors): earlier XREX saves
-read unchanged. `SettingsCodec_FormatFloat` means the `CONFig:PROFile:*` previews no longer depend on the
+read unchanged. `Scpi_FormatFloat` means the `CONFig:PROFile:*` previews and (since 2026-10-05) every XREX float reply no longer depend on the
 `-u _printf_float` link flag; the flag itself STAYS, other replies (`PID:GAINS?` ...) still use `%f`.
 
 ## Source layout (standing rule -- keep it this way)

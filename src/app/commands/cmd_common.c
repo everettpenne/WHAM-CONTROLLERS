@@ -8,13 +8,6 @@
 #include "state_machine.h"
 #include <stdio.h>
 
-void SendErr(uart_instance_t *inst, int code, const char *msg)
-{
-    char buf[128];
-    snprintf(buf, sizeof(buf), "ERR %d %s\r\n", code, msg);
-    uart_send(inst, buf);
-}
-
 /* True if EITHER fault source is latched: PC10/HRTIM1_FLT6 (native
    hardware, hrtim.h) or the GateDriverStatus EXTI interrupt
    (gate_driver.h, PE0..PE11). One combined answer for FAULT?/FIRE's
@@ -48,12 +41,12 @@ uint8_t RequireArmedAndEnabled(uart_instance_t *inst)
 {
     if (SM_GetState() != SM_STATE_ARMED)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Must ARM first -- see the ARM command");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Must ARM first -- see the ARM command");
         return 0U;
     }
     if (SM_ExternalEnableOk() == 0U)
     {
-        SendErr(inst, ERR_EXT_ENABLE_LOW, "External enable interlock not satisfied -- PF13 reads LOW");
+        Scpi_SendErr(inst, ERR_EXT_ENABLE_LOW, "External enable interlock not satisfied -- PF13 reads LOW");
         return 0U;
     }
     return 1U;

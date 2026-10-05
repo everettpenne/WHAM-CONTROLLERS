@@ -2,41 +2,12 @@
 
 USART2, **115200 8N1** (raised from 9600 on 2026-09-04 — see `docs/changelog.txt`; WHAM-XREX-PFMG474-only, the sibling PFM-STM32G474 project still uses 9600). Commands are terminated by `\r`, `\n`, or `\r\n`.
 
-## Response conventions
+## Protocol conventions
 
-Ported from the sibling PFM-STM32G474 project, per project decision:
-
-| Form | Meaning |
-|---|---|
-| `OK\r\n` | Accepted, no data |
-| `OK <value>\r\n` | Accepted, with a return value |
-| `ERR <n> <msg>\r\n` | Rejected; error codes are stable across firmware versions |
-
-### Error codes
-
-| Code | Meaning |
-|---|---|
-| 1 | Unknown command |
-| 2 | Not currently uploading a table — send `TABLE:BEGIN` first |
-| 3 | Table full (`PFM_TABLE_SIZE` entries already appended) |
-| 4 | Invalid `TABLE:STEP` arguments (wrong count — must be `1 + HRTIM_NUM_CHANNELS`, see `CONFig:CHANnels?` — or a value outside uint16 range 0-65535) |
-| 5 | Table is empty — `FIRE` has nothing to play back |
-| 6 | Fault latched — either PC10/HRTIM1_FLT6 (native HRTIM hardware fault input) or the GateDriverStatus_01..12 EXTI interrupt (`PE0`-`PE11`) — `FAULT:CLEAR` required before `FIRE` will work again |
-| 7 | QUADSPI command failed or timed out (see `QSPI:ID?`) |
-| 8 | Invalid `PFM_Input` channel (1-6) (also reused by `PFMIN:DEBUG:RAW?`/`PFMIN:DEBUG:REG?`) |
-| 9 | `M` out of range for `PFMIN:CAPTURE` (1-`PFM_INPUT_MAX_PERIODS`) |
-| 10 | `TABLE:STEP` `per` value implies a carrier frequency above `PFM_MAX_CARRIER_FREQ_HZ` |
-| 11 | Invalid channel (also reused by `OCP:TEST:FAULT`, `XREX:CHANnel:STATus?`, same channel-range check) |
-| 12 | Invalid command arguments -- see the specific command's own usage (also reused by `OCP:TEST:FAULT`, `PFMIN:DEBUG:RAW?`/`PFMIN:DEBUG:REG?`, `XREX:CHANnel:STATus?`) |
-| 13 | Invalid state-machine transition for the current state (`ARM`/`DISARM`/`SHOT:STARt`, see that section) |
-| 14 | Invalid `CHANnel:NICKname` -- name must be 1-`PID_CHANNEL_NICKNAME_MAX_LEN` chars, no spaces, and not the reserved value `-` |
-| 15 | `ARM`/`SOURce:RUN`/`SHOT:STARt` refused -- `EXTernal:ENAble` is on and the external-enable pin (`PF13` as of 2026-09-17, was `PF15`) does not currently read `HIGH` (see `EXTernal:ENAble`). `ARM` reporting this distinctly is new 2026-09-22 -- previously collapsed into `ARM`'s own generic `ERR 13` |
-| 16 | **RETIRED 2026-09-17** -- previously `EXTernal:TRIGger 1` refused unless `EXTernal:ENAble` was already on, back when enable and trigger shared one pin (`PF15`). No longer generated: enable moved to `PF13`, trigger stayed on `PF15`, and the two are no longer coupled (see `EXTernal:TRIGger`). Kept here, not reassigned, per this table's own "never renumbered or reused" convention |
-| 17 | Firmware update (`FWUPdate:*`) failed -- flash erase/program error, CRC mismatch, image sanity check (stack pointer, reset vector, or this build's product name missing), not in dual-bank mode, or option-byte programming failed. The running image is never touched by any of these |
-| 18 | Saved-profile failure (`*SAV`, `*RCL`, `CONFig:PROFile:*`): the slot is empty or corrupt, or the external flash failed |
-
-Codes are never renumbered or reused once assigned, matching the
-sibling project's convention.
+Replies (`OK` / `OK <values>` / `ERR <n> <msg>`), the error codes, mnemonic matching (short and long forms, `?`
+queries) and the strict argument rules are common to both controllers and are described once, in
+[`docs/scpi_conventions.md`](scpi_conventions.md). Codes are never renumbered or reused. Each command's own
+section below says which errors it can return and how many decimals its numbers have.
 
 ### Unsolicited `!BOOT` banner (every boot)
 
@@ -72,29 +43,10 @@ Three lines:
 The first line can arrive with a garbage byte in front of it: the reset
 itself glitches the TX line. `python/fw_update.py` allows for this.
 
-## Mnemonic syntax (SCPI-style)
+## Mnemonic syntax
 
-Commands are matched by `scpi_parser.c`'s `scpi_match()` against a flat
-table of patterns — see that file's header comment for the full
-specification. Summary:
-
-- **Hierarchical**: pattern levels are separated by `:`, e.g.
-  `SOURce:VOLTage:LIMit`. A leading `:` on the input is tolerated but
-  never required (there's no "current path" concept — every command is
-  matched from the root).
-- **Short/long form, per level**: in a pattern token, the leading
-  UPPERCASE run is the mandatory short form; any lowercase letters
-  after it are an optional long-form suffix that must be matched *in
-  full* if used at all — no partial-long-form matches. Example:
-  `VERSion` accepts `VERS`, `VERSION`, `version` — not `VERSI`.
-- **Case-insensitive** throughout.
-- **Query suffix `?` must match exactly**: a pattern ending in `?` only
-  matches input also ending in `?`, and vice versa.
-- **Common (IEEE 488.2) commands** like `*IDN?` are just zero-colon
-  patterns — no special-casing needed.
-
-Compound commands (`;`-separated, multiple mnemonics on one line) are
-**not** supported yet.
+See [`docs/scpi_conventions.md`](scpi_conventions.md) ("Mnemonic matching"); the parser itself is
+`src/middleware/scpi/scpi_parser.c`.
 
 ## Commands
 

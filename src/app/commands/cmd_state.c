@@ -55,7 +55,7 @@ void cmd_fault_clear(uart_instance_t *inst, char *args)
        before this change). */
     (void)SM_ClearFault();
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* --------------------------------------------------------------------------
@@ -92,8 +92,8 @@ void cmd_fault_clear(uart_instance_t *inst, char *args)
 void cmd_arm(uart_instance_t *inst, char *args)
 {
     /* 96 bytes: comfortably fits the longest message below (82 chars)
-       plus SendErr()'s own "ERR %d %s\r\n" framing, well under
-       SendErr()'s own 128-byte buffer (cmd_common.c) --
+       plus Scpi_SendErr()'s own "ERR %d %s\r\n" framing, well under
+       Scpi_SendErr()'s own 128-byte buffer (cmd_common.c) --
        *** REAL BUG, FOUND AND FIXED 2026-09-22, confirmed on real
        hardware ***: the first cut used buf[64], which silently
        truncated this exact message mid-word ("...see XREX:CHA") since
@@ -111,13 +111,13 @@ void cmd_arm(uart_instance_t *inst, char *args)
 
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- not currently IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- not currently IDLE");
         return;
     }
 
     if (SM_ExternalEnableOk() == 0U)
     {
-        SendErr(inst, ERR_EXT_ENABLE_LOW, "External enable interlock not satisfied -- PF13 reads LOW");
+        Scpi_SendErr(inst, ERR_EXT_ENABLE_LOW, "External enable interlock not satisfied -- PF13 reads LOW");
         return;
     }
 
@@ -127,16 +127,16 @@ void cmd_arm(uart_instance_t *inst, char *args)
         snprintf(buf, sizeof(buf),
                  "Channel %u's ENA_OUT/CONTACT_OUT not both set -- see "
                  "XREX:CHANnel:ENAOut/CONTactOut", (unsigned)(badChannel + 1U));
-        SendErr(inst, ERR_INVALID_STATE, buf);
+        Scpi_SendErr(inst, ERR_INVALID_STATE, buf);
         return;
     }
 
     if (SM_Arm() == 0U)
     {
-        SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- arm conditions not met");   /* narrow race only, see comment above */
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- arm conditions not met");   /* narrow race only, see comment above */
         return;
     }
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* ARMED -> IDLE, without firing -- stand down. No-op (still replies
@@ -148,7 +148,7 @@ void cmd_disarm(uart_instance_t *inst, char *args)
     (void)args;
 
     SM_Disarm();
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* DEBUG:FAULT:BYPASS <0|1> / ? -- added 2026-09-21, direct request: a
@@ -171,17 +171,17 @@ void cmd_debug_fault_bypass(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "DEBUG:FAULT:BYPASS needs one argument: 0 or 1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "DEBUG:FAULT:BYPASS needs one argument: 0 or 1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
     if ((val != 0L) && (val != 1L))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid value -- must be 0 or 1");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid value -- must be 0 or 1");
         return;
     }
     SM_SetFaultBypassEnabled((uint8_t)val);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_debug_fault_bypass_query(uart_instance_t *inst, char *args)
@@ -298,19 +298,19 @@ void cmd_ocp_test_fault(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "OCP:TEST:FAULT needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "OCP:TEST:FAULT needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_INVALID_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)HRTIM_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid channel");
         return;
     }
 
     SM_ReportOcpFault((uint8_t)(chArg - 1L));
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 /* --------------------------------------------------------------------------
@@ -339,5 +339,5 @@ void cmd_general_test_fault(uart_instance_t *inst, char *args)
 {
     (void)args;   /* no arguments -- General Fault is system-wide */
     SM_ReportGeneralFault();
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }

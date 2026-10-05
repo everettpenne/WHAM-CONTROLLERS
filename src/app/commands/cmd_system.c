@@ -113,18 +113,18 @@ void cmd_sys_event(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "SYS:EVENT needs one argument: 0|1");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SYS:EVENT needs one argument: 0|1");
         return;
     }
-    val = atol(tok);
+    SCPI_NEED_LONG(inst, tok, val);
     if ((val != 0L) && (val != 1L))
     {
-        SendErr(inst, ERR_INVALID_CHANNEL, "Invalid value -- must be 0 or 1");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid value -- must be 0 or 1");
         return;
     }
 
     Telemetry_SetEventEnabled((uint8_t)val);
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_sys_event_query(uart_instance_t *inst, char *args)
@@ -251,7 +251,7 @@ void cmd_diag_rstcause_clear(uart_instance_t *inst, char *args)
 {
     (void)args;
     Mcu_ClearResetFlags();   /* resets every flag above to 0 */
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 #if (QSPI_TEST_FEATURE_ENABLED != 0)
@@ -280,7 +280,7 @@ void cmd_qspi_id(uart_instance_t *inst, char *args)
 
     if (QspiTest_ReadId(id) == 0U)
     {
-        SendErr(inst, ERR_QSPI_FAILED, "QUADSPI command failed or timed out");
+        Scpi_SendErr(inst, ERR_QSPI_FAILED, "QUADSPI command failed or timed out");
         return;
     }
 
@@ -324,7 +324,7 @@ static void SelftestFail(uart_instance_t *inst, const char *step, nvstore_status
     char msg[64];
 
     snprintf(msg, sizeof(msg), "selftest %s: %s", step, NvStore_StatusText(st));
-    SendErr(inst, ERR_QSPI_FAILED, msg);
+    Scpi_SendErr(inst, ERR_QSPI_FAILED, msg);
 }
 
 void cmd_qspi_selftest(uart_instance_t *inst, char *args)
@@ -342,7 +342,7 @@ void cmd_qspi_selftest(uart_instance_t *inst, char *args)
 
     if (SM_GetState() != SM_STATE_IDLE)
     {
-        SendErr(inst, ERR_INVALID_STATE, "QSPI:SELFtest only in IDLE");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "QSPI:SELFtest only in IDLE");
         return;
     }
 
@@ -396,7 +396,7 @@ void cmd_qspi_selftest(uart_instance_t *inst, char *args)
             {
                 snprintf(buf, sizeof(buf), "selftest compare: offset %u is %02X, expected %02X",
                          (unsigned int)pos, (unsigned int)chunk[i], (unsigned int)want);
-                SendErr(inst, ERR_QSPI_FAILED, buf);
+                Scpi_SendErr(inst, ERR_QSPI_FAILED, buf);
                 return;
             }
         }

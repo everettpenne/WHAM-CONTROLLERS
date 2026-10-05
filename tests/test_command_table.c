@@ -30,22 +30,19 @@ static void short_form(const char *p, char *out)
     *out = '\0';
 }
 
-/* Known, pre-existing short-form collisions (found by this test,
-   2026-09-26; NOT fixed, since changing the patterns changes the wire
-   protocol): the digits of "GPOut09".."GPOut12" come after the lowercase
-   part, so all four share the short form DIAG:GPO, which reaches GPOut12
-   (first in the table). Their long forms are still checked. Remove an
-   entry here once its pattern is fixed; never add one to hide a new
-   collision. */
+/* Short-form collisions that exist in THIS product's table and are deliberately not fixed (changing a pattern
+   changes the wire protocol): listed in tests/known_short_collisions.inc, one product's list per repo (empty
+   in a product with none). Their long forms are still checked. Remove an entry once its pattern is fixed;
+   never add one to hide a new collision. This test file itself is shared, byte-identical, between the two
+   products (python/check_shared.py). */
 static const char *const known_short_collisions[] = {
-    "DIAGnostic:GPOut11", "DIAGnostic:GPOut11?",
-    "DIAGnostic:GPOut09", "DIAGnostic:GPOut09?",
-    "DIAGnostic:GPOut10", "DIAGnostic:GPOut10?",
+#include "known_short_collisions.inc"
+    NULL
 };
 
 static int known_collision(const char *pattern)
 {
-    for (size_t k = 0; k < sizeof(known_short_collisions) / sizeof(known_short_collisions[0]); k++)
+    for (size_t k = 0; known_short_collisions[k] != NULL; k++)
     {
         if (strcmp(pattern, known_short_collisions[k]) == 0) { return 1; }
     }
@@ -64,7 +61,7 @@ static int first_match(const char *mnemonic)
 int main(void)
 {
     char s[128], l[128];
-    CHECK(N > 100);   /* the extraction found the table */
+    CHECK(N > 10);   /* the extraction found the table */
 
     for (int i = 0; i < N; i++)
     {

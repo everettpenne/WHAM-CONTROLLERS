@@ -29,20 +29,20 @@ void cmd_pfmin_capture(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_PFMIN_BAD_COUNT, "PFMIN:CAPTURE needs one argument: M (1-PFM_INPUT_MAX_PERIODS)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_COUNT, "PFMIN:CAPTURE needs one argument: M (1-PFM_INPUT_MAX_PERIODS)");
         return;
     }
 
-    m = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, m, ERR_PFMIN_BAD_COUNT);
     if ((m < 1L) || (m > (long)PFM_INPUT_MAX_PERIODS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_COUNT, "M out of range (1-PFM_INPUT_MAX_PERIODS)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_COUNT, "M out of range (1-PFM_INPUT_MAX_PERIODS)");
         return;
     }
 
     PfmInput_Arm((uint16_t)m);
 
-    uart_send(inst, "OK\r\n");
+    Scpi_ReplyOk(inst);
 }
 
 void cmd_pfmin_status(uart_instance_t *inst, char *args)
@@ -107,14 +107,14 @@ void cmd_pfmin_debug_raw(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PFMIN:DEBUG:RAW? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PFMIN:DEBUG:RAW? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_PFMIN_BAD_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
         return;
     }
 
@@ -152,14 +152,14 @@ void cmd_pfmin_debug_reg(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_INVALID_ARGS, "PFMIN:DEBUG:REG? needs one argument: channel");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "PFMIN:DEBUG:REG? needs one argument: channel");
         return;
     }
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_PFMIN_BAD_CHANNEL);
 
     if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
         return;
     }
 
@@ -201,14 +201,14 @@ void cmd_pfmin_data(uart_instance_t *inst, char *args)
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (tok == NULL)
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:DATA? needs one argument: channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "PFMIN:DATA? needs one argument: channel (1-6)");
         return;
     }
 
-    chArg = atol(tok);
+    SCPI_NEED_LONG_ERR(inst, tok, chArg, ERR_PFMIN_BAD_CHANNEL);
     if ((chArg < 1L) || (chArg > (long)PFM_INPUT_NUM_CHANNELS))
     {
-        SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
+        Scpi_SendErr(inst, ERR_PFMIN_BAD_CHANNEL, "Invalid PFM_Input channel (1-6)");
         return;
     }
     ch = (uint8_t)(chArg - 1L);   /* 1-6 on the wire -> 0-5 internally */
