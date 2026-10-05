@@ -493,4 +493,25 @@
  * -------------------------------------------------------------------------- */
 #define PFM_MAX_CARRIER_FREQ_HZ  (100000UL)
 
+/* --------------------------------------------------------------------------
+ * Saved profiles (profile_store.h, settings_codec.h) -- the same store code as
+ * WHAM-HBRIDGE-PFMG474; these four lines are what differ per product.
+ *
+ * Eight slots in the external W25Q128, each two alternating "copies" of
+ * PROFILE_COPY_SECTORS 4 KiB sectors. XREX keeps the layout it has always had:
+ * 1 sector per copy (a payload of up to 4,048 bytes; today's is under 400), from
+ * address 0, so profiles saved by earlier firmware stay readable -- 8 x 2 x 4 KiB
+ * = the first 64 KiB of the chip. HBRIDGE uses 16 KiB copies from 64 KiB, so a
+ * board that has run both products keeps both products' profiles.
+ *
+ * PROFILE_MAGIC_BYTES tags the PRODUCT: the two controllers share this board and
+ * flash chip, and a profile written by one must never be decoded by the other
+ * (field ids overlap). XREX "WSPF", HBRIDGE "HSPF". Registry of regions and
+ * magics: docs/saved_profiles_shared.md.
+ * -------------------------------------------------------------------------- */
+#define PROFILE_STORE_BASE      (0UL)
+#define PROFILE_SLOT_COUNT      (8U)
+#define PROFILE_COPY_SECTORS    (1U)
+#define PROFILE_MAGIC_BYTES     { 'W', 'S', 'P', 'F' }
+
 #endif /* INC_CTRLR_CONFIG_H_ */

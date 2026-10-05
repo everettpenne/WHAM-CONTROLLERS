@@ -1,7 +1,10 @@
 /*
  * test_profile_store.c -- slot storage (src/app/settings/profile_store.c)
  * against the RAM fake flash, including a power cut at every possible
- * point of a save and of a clear.
+ * point of a save and of a clear. SHARED: byte-identical in WHAM-XREX-PFMG474
+ * and WHAM-HBRIDGE-PFMG474, so it adapts to the product's copy size
+ * (PROFILE_COPY_SECTORS): the large-payload cases use as much of a copy as
+ * it has, and the sector-edge reads only apply when a copy spans sectors.
  */
 #include "profile_store.h"
 #include "fake_nvstore.h"
@@ -105,7 +108,7 @@ static void TestCorruption(void)
 
     /* one copy only, damaged: corrupt, not empty */
     CHECK(ProfileStore_Write(0U, "a", "v", a, sizeof(a)) == PROFILE_OK);
-    FakeNv_Poke(0U * 2U * NVSTORE_SECTOR_BYTES + 48U + 5U, 0x01U);   /* copy 0 payload */
+    FakeNv_Poke(PROFILE_STORE_BASE + 0U * 2U * PROFILE_COPY_BYTES + 48U + 5U, 0x01U);   /* copy 0 payload */
     CHECK(ProfileStore_Info(0U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_CORRUPT);
     CHECK(ProfileStore_Read(0U, a, sizeof(a), &(uint16_t){0}, NULL) == PROFILE_ERR_CORRUPT);
     /* ...and it can be overwritten or cleared */
@@ -114,7 +117,7 @@ static void TestCorruption(void)
 
     /* two copies, the newest damaged: the older one is used */
     CHECK(ProfileStore_Write(0U, "c", "v", a, sizeof(a)) == PROFILE_OK);   /* seq 2, in copy 1; b (seq 1) stays in copy 0 */
-    newestPayloadAddr = (0U * 2U + 1U) * NVSTORE_SECTOR_BYTES + 48U + 10U;
+    newestPayloadAddr = PROFILE_STORE_BASE + (0U * 2U + 1U) * PROFILE_COPY_BYTES + 48U + 10U;
     FakeNv_Poke(newestPayloadAddr, 0x80U);
     CHECK(ProfileStore_Info(0U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_VALID && info.seq == 1U);
     CHECK(ReadIs(0U, b, sizeof(b)));
@@ -122,7 +125,7 @@ static void TestCorruption(void)
     /* a header from another version is not trusted */
     FakeNv_Reset();
     CHECK(ProfileStore_Write(0U, "a", "v", a, sizeof(a)) == PROFILE_OK);
-    FakeNv_Poke(4U, 0x02U);   /* format version */
+    FakeNv_Poke(PROFILE_STORE_BASE + 4U, 0x02U);   /* format version */
     CHECK(ProfileStore_Info(0U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_CORRUPT);
     CHECK(ProfileStore_Clear(0U) == PROFILE_OK);
     CHECK(ProfileStore_Info(0U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_EMPTY);
@@ -228,8 +231,148 @@ static void ClearCutSweep(uint8_t priorWrites)
     }
 }
 
+/* ---- what is new in this version: multi-sector copies, streaming write and read, the product magic ---- */
+
+/* the largest payload these cases use: 10,000 bytes, or what fits a copy with room to spare */
+#define BIG_N   ((PROFILE_PAYLOAD_MAX > 10000UL) ? 10000U : (uint16_t)(PROFILE_PAYLOAD_MAX - 40UL))
+
+static void BigPayload(uint8_t *p, uint16_t n, uint8_t seed)
+{
+    for (uint16_t i = 0U; i < n; i++)
+    {
+        p[i] = (uint8_t)(seed + (i * 7U) + (i >> 8));
+    }
+}
+
+static void TestStreaming(void)
+{
+    static uint8_t big[BIG_N];
+    static uint8_t back[BIG_N];
+    profile_writer_t w;
+    profile_reader_t r;
+    profile_info_t info;
+    uint16_t pos = 0U;
+
+    FakeNv_Reset();
+    BigPayload(big, sizeof(big), 5U);
+
+    /* written in uneven pieces that cross sector and page boundaries */
+    CHECK(ProfileWriter_Begin(&w, 4U, "big", "v0.9", sizeof(big)) == PROFILE_OK);
+    while (pos < sizeof(big))
+    {
+        uint16_t n = (uint16_t)(((pos % 7U) * 211U) + 1U);
+
+        if (n > (uint16_t)(sizeof(big) - pos)) { n = (uint16_t)(sizeof(big) - pos); }
+        CHECK(ProfileWriter_Write(&w, &big[pos], n) == PROFILE_OK);
+        pos = (uint16_t)(pos + n);
+    }
+    /* nothing is visible until the header goes in last */
+    CHECK(ProfileStore_Info(4U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_EMPTY);
+    CHECK(ProfileWriter_End(&w) == PROFILE_OK);
+    CHECK(ProfileStore_Info(4U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_VALID && info.payloadLen == sizeof(big));
+    CHECK_STR(info.label, "big");
+
+    /* read back whole and in pieces */
+    CHECK(ProfileReader_Open(4U, &r, &info) == PROFILE_OK && r.len == sizeof(big));
+    CHECK(ProfileReader_Read(&r, 0U, back, sizeof(big)) == PROFILE_OK && memcmp(back, big, sizeof(big)) == 0);
+    memset(back, 0, sizeof(back));
+    if (BIG_N > 4110U)                                                                                      /* a copy of several sectors */
+    {
+        CHECK(ProfileReader_Read(&r, 4090U, back, 20U) == PROFILE_OK && memcmp(back, &big[4090], 20U) == 0);   /* across a sector edge */
+    }
+    CHECK(ProfileReader_Read(&r, (uint16_t)(BIG_N - 10U), back, 10U) == PROFILE_OK &&
+          memcmp(back, &big[BIG_N - 10U], 10U) == 0);
+    CHECK(ProfileReader_Read(&r, (uint16_t)(BIG_N - 10U), back, 11U) == PROFILE_ERR_TOO_BIG);               /* past the end */
+    CHECK(ProfileReader_Open(PROFILE_SLOT_COUNT, &r, NULL) == PROFILE_ERR_SLOT);
+    CHECK(ProfileReader_Open(5U, &r, NULL) == PROFILE_ERR_EMPTY);
+
+    /* the buffered API sees the same data */
+    CHECK(ReadIs(4U, big, sizeof(big)));
+
+    /* a save is told its length up front: too few or too many bytes is refused, and nothing becomes visible */
+    CHECK(ProfileWriter_Begin(&w, 6U, "x", "v", 100U) == PROFILE_OK);
+    CHECK(ProfileWriter_Write(&w, big, 99U) == PROFILE_OK);
+    CHECK(ProfileWriter_End(&w) == PROFILE_ERR_USAGE);
+    CHECK(ProfileWriter_Write(&w, big, 2U) == PROFILE_ERR_USAGE);
+    CHECK(ProfileStore_Info(6U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_EMPTY);
+    CHECK(ProfileWriter_Begin(&w, 6U, "x", "v", (uint16_t)(PROFILE_PAYLOAD_MAX + 1U)) == PROFILE_ERR_TOO_BIG);
+
+    /* a payload using every sector of the copy */
+    {
+        static uint8_t full[PROFILE_PAYLOAD_MAX];
+
+        BigPayload(full, PROFILE_PAYLOAD_MAX, 77U);
+        CHECK(ProfileStore_Write(7U, "full", "v", full, PROFILE_PAYLOAD_MAX) == PROFILE_OK);
+        CHECK(ReadIs(7U, full, PROFILE_PAYLOAD_MAX));
+    }
+
+    /* clear a big slot, then a small save into it: the stale bytes beyond the new payload are unreachable */
+    CHECK(ProfileStore_Clear(4U) == PROFILE_OK);
+    CHECK(ProfileStore_Info(4U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_EMPTY);
+    CHECK(ProfileStore_Write(4U, "small", "v", big, 100U) == PROFILE_OK);
+    CHECK(ReadIs(4U, big, 100U));
+    CHECK(ProfileStore_Write(4U, "small2", "v", &big[1], 100U) == PROFILE_OK);
+    CHECK(ReadIs(4U, &big[1], 100U));
+}
+
+/* the magic tags the product: another product's data (same header layout, different magic) is never read */
+static void TestProductMagic(void)
+{
+    uint8_t a[64];
+    profile_info_t info;
+
+    FakeNv_Reset();
+    Payload(a, sizeof(a), 1U);
+    CHECK(ProfileStore_Write(0U, "mine", "v", a, sizeof(a)) == PROFILE_OK);
+    FakeNv_Poke(PROFILE_STORE_BASE + 0U, 0x20U);                                          /* another product's magic (case bit flipped) */
+    CHECK(ProfileStore_Info(0U, &info) == PROFILE_OK && info.state == PROFILE_SLOT_CORRUPT);
+    CHECK(ProfileStore_Read(0U, a, sizeof(a), &(uint16_t){0}, NULL) == PROFILE_ERR_CORRUPT);
+}
+
+/* Power cut during a LARGE multi-sector save, at a spread of points (every unit would be 10,000 runs of a
+   10 KB write; a stride plus the boundaries covers every phase: erase of each sector, payload, header). */
+static void BigSaveCutSweep(void)
+{
+    static uint8_t oldP[BIG_N / 3U], newP[(BIG_N / 10U) * 9U];
+    uint32_t total;
+    uint32_t cut;
+
+    BigPayload(oldP, sizeof(oldP), 11U);
+    BigPayload(newP, sizeof(newP), 222U);
+
+    FakeNv_Reset();
+    CHECK(ProfileStore_Write(1U, "old", "v", oldP, sizeof(oldP)) == PROFILE_OK);
+    FakeNv_CutPowerAfter(0xFFFFFFFFUL);
+    CHECK(ProfileStore_Write(1U, "new", "v", newP, sizeof(newP)) == PROFILE_OK);
+    total = FakeNv_UnitsUsed();
+    CHECK(total > sizeof(newP));
+
+    for (cut = 0U; cut <= total; cut += (cut < 8U || cut + 8U > total) ? 1U : 41U)
+    {
+        int isOld, isNew;
+        profile_status_t rc;
+
+        FakeNv_Reset();
+        (void)ProfileStore_Write(1U, "old", "v", oldP, sizeof(oldP));
+        FakeNv_CutPowerAfter(cut);
+        rc = ProfileStore_Write(1U, "new", "v", newP, sizeof(newP));
+        FakeNv_RestorePower();
+
+        isOld = ReadIs(1U, oldP, sizeof(oldP));
+        isNew = ReadIs(1U, newP, sizeof(newP));
+        CHECK(isOld != isNew);                 /* exactly one of them, never neither, never a mixture */
+        if (rc == PROFILE_OK)
+        {
+            CHECK(isNew);
+        }
+    }
+}
+
 int main(void)
 {
+    TestStreaming();
+    TestProductMagic();
+    BigSaveCutSweep();
     TestBasic();
     TestLimits();
     TestCorruption();

@@ -39,7 +39,7 @@ $(OUT)/test_command_table: test_command_table.c $(OUT)/command_patterns.inc fake
 	$(CC) $(CFLAGS) -o $@ test_command_table.c fake_uart.c $(SCPI)
 
 $(OUT)/test_settings_codec: test_settings_codec.c $(SETTINGS)/settings_codec.c $(SETTINGS)/settings_codec.h test_util.h | $(OUT)
-	$(CC) $(CFLAGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c
+	$(CC) $(CFLAGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c -lm
 
 $(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(SETTINGS)/profile_store.c \
                            $(SETTINGS)/profile_store.h $(SETTINGS)/settings_codec.c test_util.h | $(OUT)

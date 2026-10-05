@@ -4,6 +4,9 @@
  */
 #include "settings_codec.h"
 #include "test_util.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static uint8_t FieldIndexById(uint8_t id)
@@ -195,8 +198,48 @@ static void TestFieldIdsUnique(void)
     }
 }
 
+/* the preview text of a float matches printf's %g (which the target's newlib-nano cannot print) */
+static void TestFormatFloat(void)
+{
+    static const float typical[] = { 0.167f, 6.667f, 4000.0f, 200000.0f, 0.001f, 12.5f, 620.69f, 1.45f, 250.0f, 47.5f,
+        90000.0f, 19250.0f, 1.5f, 900.0f, 1e-5f, 1e7f, 123456.7f, 0.000123f, 0.0f, -1.5f, -0.001f, 1000000.0f, 999999.0f,
+        999999.5f, 0.0001f, 0.00009f, 100.0f, 2.9f, 1e10f, 1.5e-8f, 3.14159265f, 10.0f, 0.5f, 123456789.0f, 5e-5f, 62069.0f };
+    char mine[40], ref[40];
+
+    for (size_t i = 0U; i < sizeof(typical) / sizeof(typical[0]); i++)
+    {
+        SettingsCodec_FormatFloat(typical[i], mine, sizeof(mine));
+        snprintf(ref, sizeof(ref), "%g", (double)typical[i]);
+        CHECK_STR(mine, ref);
+    }
+    SettingsCodec_FormatFloat(NAN, mine, sizeof(mine));
+    CHECK_STR(mine, "nan");
+    SettingsCodec_FormatFloat(INFINITY, mine, sizeof(mine));
+    CHECK_STR(mine, "inf");
+    SettingsCodec_FormatFloat(-INFINITY, mine, sizeof(mine));
+    CHECK_STR(mine, "-inf");
+    SettingsCodec_FormatFloat(1.0f, mine, 2U);                         /* a short buffer is cut, never overrun */
+    CHECK(mine[0] == '1' && mine[1] == '\0');
+    SettingsCodec_FormatFloat(123.456f, mine, 3U);
+    CHECK_STR(mine, "12");
+
+    /* arbitrary values: 6 significant digits means up to 5e-6 relative error, no more */
+    srand(1);
+    for (int i = 0; i < 20000; i++)
+    {
+        float v = (float)(((double)rand() / RAND_MAX) * pow(10.0, (rand() % 24) - 10));
+        double back;
+
+        if ((rand() & 1) != 0) { v = -v; }
+        SettingsCodec_FormatFloat(v, mine, sizeof(mine));
+        back = strtod(mine, NULL);
+        CHECK(fabs(back - (double)v) <= fabs((double)v) * 6.0e-6);
+    }
+}
+
 int main(void)
 {
+    TestFormatFloat();
     TestRoundTrip();
     TestAbsentFieldsStayAbsent();
     TestUnknownAndMalformed();

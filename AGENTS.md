@@ -565,6 +565,20 @@ IDLE/ARMED/FIRING lifecycle; see `state_machine.h`), so `STATE?` stays
   history (DSLogic captures, exact failure signatures, dead ends) in
   `docs/changelog.txt`'s 2026-09-09 entries.
 
+## Code shared with WHAM-HBRIDGE-PFMG474 (added 2026-10-05)
+
+`nvstore`, `qspi_test`, `profile_store`, the profile-store host tests (`tests/test_profile_store.c`,
+`fake_nvstore`) and `SettingsCodec_FormatFloat` are **byte-identical** in both controller repos: the two products
+run on the same board and keep profiles in the same flash chip, in separate regions under separate magics (XREX
+slots 0-64 KiB, magic `WSPF`; HBRIDGE from 64 KiB, `HSPF`). Do not change a shared file in only one repo: carry
+the change to the sibling and run both repos' `make -C tests`, then run `python3 python/check_shared.py` (the same
+script is in both; it compares the shared files with the sibling checkout). What is per product -- the four
+`PROFILE_*` constants in `ctrlr_config.h`, `settings_codec.h`'s field table, `settings.c` -- is listed in
+`docs/saved_profiles_shared.md`, which also holds the flash map. The store's format did not change when it was
+generalized (a streaming writer that writes the header last, copies of any number of sectors): earlier XREX saves
+read unchanged. `SettingsCodec_FormatFloat` means the `CONFig:PROFile:*` previews no longer depend on the
+`-u _printf_float` link flag; the flag itself STAYS, other replies (`PID:GAINS?` ...) still use `%f`.
+
 ## Source layout (standing rule -- keep it this way)
 
 Established 2026-09-26 at the user's direction as a **long-term

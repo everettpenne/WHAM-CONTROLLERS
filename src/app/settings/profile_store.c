@@ -5,10 +5,10 @@
 #include "settings_codec.h"
 #include <string.h>
 
-#define HDR_BYTES       (48U)
+#define HDR_BYTES       (PROFILE_HEADER_BYTES)
 #define HDR_CRC_OFFSET  (44U)
 #define FORMAT_VERSION  (1U)
-static const uint8_t kMagic[4] = { 'W', 'S', 'P', 'F' };
+static const uint8_t kMagic[4] = PROFILE_MAGIC_BYTES;
 
 static nvstore_status_t g_lastStorage = NVSTORE_OK;
 
@@ -28,6 +28,7 @@ const char *ProfileStore_StatusText(profile_status_t status)
     case PROFILE_ERR_CORRUPT: return "slot is corrupt";
     case PROFILE_ERR_TOO_BIG: return "payload too large";
     case PROFILE_ERR_STORAGE: return "flash error";
+    case PROFILE_ERR_USAGE:   return "wrong byte count";
     default:                  return "unknown";
     }
 }
@@ -39,7 +40,7 @@ nvstore_status_t ProfileStore_StorageStatus(void)
 
 static uint32_t CopyAddr(uint8_t slot, uint8_t copy)
 {
-    return PROFILE_STORE_BASE + ((uint32_t)slot * 2U + copy) * NVSTORE_SECTOR_BYTES;
+    return PROFILE_STORE_BASE + ((uint32_t)slot * 2U + copy) * PROFILE_COPY_BYTES;
 }
 
 static uint32_t Rd32(const uint8_t *p)
@@ -61,10 +62,9 @@ static profile_status_t Storage(nvstore_status_t st)
     return (st == NVSTORE_OK) ? PROFILE_OK : PROFILE_ERR_STORAGE;
 }
 
-/* Classifies one copy. When payload != NULL the payload is copied there as
-   it is CRC-checked (the caller has sized it for the copy's length; the
-   contents are only meaningful if the copy comes back VALID). */
-static profile_status_t ReadCopy(uint8_t slot, uint8_t copy, copy_t *out, uint8_t *payload)
+/* Classifies one copy: reads the header and checks the CRC over header + payload (64 bytes at a time, no
+   payload buffer). */
+static profile_status_t ReadCopy(uint8_t slot, uint8_t copy, copy_t *out)
 {
     uint8_t  hdr[HDR_BYTES];
     uint8_t  chunk[64];
@@ -105,10 +105,6 @@ static profile_status_t ReadCopy(uint8_t slot, uint8_t copy, copy_t *out, uint8_
             return rc;
         }
         crc = SettingsCodec_Crc32(crc, chunk, n);
-        if (payload != NULL)
-        {
-            memcpy(&payload[off], chunk, n);
-        }
     }
     if (crc != Rd32(&hdr[HDR_CRC_OFFSET]))
     {
@@ -132,7 +128,7 @@ static profile_status_t Survey(uint8_t slot, copy_t c[2], int8_t *newest, profil
     *newest = -1;
     for (uint8_t i = 0U; i < 2U; i++)
     {
-        rc = ReadCopy(slot, i, &c[i], NULL);
+        rc = ReadCopy(slot, i, &c[i]);
         if (rc != PROFILE_OK)
         {
             return rc;
@@ -183,11 +179,11 @@ profile_status_t ProfileStore_Info(uint8_t slot, profile_info_t *info)
     return PROFILE_OK;
 }
 
-profile_status_t ProfileStore_Read(uint8_t slot, uint8_t *buf, uint16_t cap, uint16_t *len,
-                                   profile_info_t *info)
+/* ---- streaming read ---- */
+
+profile_status_t ProfileReader_Open(uint8_t slot, profile_reader_t *r, profile_info_t *info)
 {
     copy_t c[2];
-    copy_t again;
     int8_t newest;
     profile_slot_state_t state;
     profile_status_t rc;
@@ -208,45 +204,62 @@ profile_status_t ProfileStore_Read(uint8_t slot, uint8_t *buf, uint16_t cap, uin
     {
         return PROFILE_ERR_CORRUPT;
     }
-    if (c[newest].info.payloadLen > cap)
-    {
-        return PROFILE_ERR_TOO_BIG;
-    }
-    if ((rc = ReadCopy(slot, (uint8_t)newest, &again, buf)) != PROFILE_OK)
-    {
-        return rc;
-    }
-    if (again.state != PROFILE_SLOT_VALID)
-    {
-        return PROFILE_ERR_CORRUPT;
-    }
-    *len = again.info.payloadLen;
+    r->addr = CopyAddr(slot, (uint8_t)newest) + HDR_BYTES;
+    r->len = c[newest].info.payloadLen;
     if (info != NULL)
     {
-        *info = again.info;
+        *info = c[newest].info;
     }
     return PROFILE_OK;
 }
 
-profile_status_t ProfileStore_Write(uint8_t slot, const char *label, const char *fw,
-                                    const uint8_t *payload, uint16_t len)
+profile_status_t ProfileReader_Read(const profile_reader_t *r, uint16_t offset, void *buf, uint16_t n)
+{
+    if (((uint32_t)offset + n) > r->len)
+    {
+        return PROFILE_ERR_TOO_BIG;
+    }
+    return Storage(NvStore_Read(r->addr + offset, buf, n));
+}
+
+profile_status_t ProfileStore_Read(uint8_t slot, uint8_t *buf, uint16_t cap, uint16_t *len,
+                                   profile_info_t *info)
+{
+    profile_reader_t r;
+    profile_status_t rc = ProfileReader_Open(slot, &r, info);
+
+    if (rc != PROFILE_OK)
+    {
+        return rc;
+    }
+    if (r.len > cap)
+    {
+        return PROFILE_ERR_TOO_BIG;
+    }
+    if (r.len != 0U && (rc = ProfileReader_Read(&r, 0U, buf, r.len)) != PROFILE_OK)
+    {
+        return rc;
+    }
+    *len = r.len;
+    return PROFILE_OK;
+}
+
+/* ---- streaming write ---- */
+
+profile_status_t ProfileWriter_Begin(profile_writer_t *w, uint8_t slot, const char *label, const char *fw,
+                                     uint16_t total)
 {
     copy_t c[2];
-    copy_t check;
     int8_t newest;
     profile_slot_state_t state;
     profile_status_t rc;
-    uint8_t hdr[HDR_BYTES];
-    uint8_t target;
-    uint32_t seq;
-    uint32_t crc;
-    uint32_t addr;
+    uint32_t sectors;
 
     if (slot >= PROFILE_SLOT_COUNT)
     {
         return PROFILE_ERR_SLOT;
     }
-    if (len > PROFILE_PAYLOAD_MAX)
+    if (total > PROFILE_PAYLOAD_MAX)
     {
         return PROFILE_ERR_TOO_BIG;
     }
@@ -254,43 +267,101 @@ profile_status_t ProfileStore_Write(uint8_t slot, const char *label, const char 
     {
         return rc;
     }
-    target = (newest == 0) ? 1U : 0U;
-    seq = (newest >= 0) ? (c[newest].info.seq + 1U) : 1U;
-    addr = CopyAddr(slot, target);
+    memset(w, 0, sizeof(*w));
+    w->slot = slot;
+    w->copy = (newest == 0) ? 1U : 0U;
+    w->seq = (newest >= 0) ? (c[newest].info.seq + 1U) : 1U;
+    w->addr = CopyAddr(slot, w->copy);
+    w->total = total;
 
-    memset(hdr, 0, sizeof(hdr));
-    memcpy(hdr, kMagic, 4);
-    hdr[4] = (uint8_t)FORMAT_VERSION;
-    hdr[5] = (uint8_t)(FORMAT_VERSION >> 8);
-    hdr[6] = (uint8_t)len;
-    hdr[7] = (uint8_t)(len >> 8);
-    Wr32(&hdr[8], seq);
+    memcpy(w->hdr, kMagic, 4);
+    w->hdr[4] = (uint8_t)FORMAT_VERSION;
+    w->hdr[5] = (uint8_t)(FORMAT_VERSION >> 8);
+    w->hdr[6] = (uint8_t)total;
+    w->hdr[7] = (uint8_t)(total >> 8);
+    Wr32(&w->hdr[8], w->seq);
     if (label != NULL)
     {
-        strncpy((char *)&hdr[12], label, PROFILE_LABEL_MAX);
+        strncpy((char *)&w->hdr[12], label, PROFILE_LABEL_MAX);
     }
     if (fw != NULL)
     {
-        strncpy((char *)&hdr[28], fw, PROFILE_FW_MAX);
+        strncpy((char *)&w->hdr[28], fw, PROFILE_FW_MAX);
     }
-    crc = SettingsCodec_Crc32(0U, hdr, HDR_CRC_OFFSET);
-    crc = SettingsCodec_Crc32(crc, payload, len);
-    Wr32(&hdr[HDR_CRC_OFFSET], crc);
+    w->crc = SettingsCodec_Crc32(0U, w->hdr, HDR_CRC_OFFSET);
 
-    if ((rc = Storage(NvStore_EraseSector(addr))) != PROFILE_OK ||
-        (rc = Storage(NvStore_Program(addr, hdr, HDR_BYTES))) != PROFILE_OK ||
-        (len != 0U && (rc = Storage(NvStore_Program(addr + HDR_BYTES, payload, len))) != PROFILE_OK))
+    /* erase exactly the sectors this save will use (the first holds the header, which stays blank until the end) */
+    sectors = (HDR_BYTES + (uint32_t)total + NVSTORE_SECTOR_BYTES - 1U) / NVSTORE_SECTOR_BYTES;
+    for (uint32_t s = 0U; s < sectors; s++)
+    {
+        if ((rc = Storage(NvStore_EraseSector(w->addr + s * NVSTORE_SECTOR_BYTES))) != PROFILE_OK)
+        {
+            return rc;
+        }
+    }
+    return PROFILE_OK;
+}
+
+profile_status_t ProfileWriter_Write(profile_writer_t *w, const void *data, uint16_t n)
+{
+    profile_status_t rc;
+
+    if (((uint32_t)w->pos + n) > w->total)
+    {
+        return PROFILE_ERR_USAGE;
+    }
+    if (n == 0U)
+    {
+        return PROFILE_OK;
+    }
+    if ((rc = Storage(NvStore_Program(w->addr + HDR_BYTES + w->pos, data, n))) != PROFILE_OK)
     {
         return rc;
     }
+    w->crc = SettingsCodec_Crc32(w->crc, (const uint8_t *)data, n);
+    w->pos = (uint16_t)(w->pos + n);
+    return PROFILE_OK;
+}
 
+profile_status_t ProfileWriter_End(profile_writer_t *w)
+{
+    copy_t check;
+    profile_status_t rc;
+
+    if (w->pos != w->total)
+    {
+        return PROFILE_ERR_USAGE;
+    }
+    Wr32(&w->hdr[HDR_CRC_OFFSET], w->crc);
+    /* the header goes in LAST: until it is there (and its CRC is right) this copy is not a profile at all */
+    if ((rc = Storage(NvStore_Program(w->addr, w->hdr, HDR_BYTES))) != PROFILE_OK)
+    {
+        return rc;
+    }
     /* Only a copy that reads back valid counts as saved. */
-    if ((rc = ReadCopy(slot, target, &check, NULL)) != PROFILE_OK)
+    if ((rc = ReadCopy(w->slot, w->copy, &check)) != PROFILE_OK)
     {
         return rc;
     }
-    return (check.state == PROFILE_SLOT_VALID && check.info.seq == seq) ? PROFILE_OK
-                                                                        : PROFILE_ERR_CORRUPT;
+    return (check.state == PROFILE_SLOT_VALID && check.info.seq == w->seq) ? PROFILE_OK
+                                                                           : PROFILE_ERR_CORRUPT;
+}
+
+profile_status_t ProfileStore_Write(uint8_t slot, const char *label, const char *fw,
+                                    const uint8_t *payload, uint16_t len)
+{
+    profile_writer_t w;
+    profile_status_t rc = ProfileWriter_Begin(&w, slot, label, fw, len);
+
+    if (rc != PROFILE_OK)
+    {
+        return rc;
+    }
+    if ((rc = ProfileWriter_Write(&w, payload, len)) != PROFILE_OK)
+    {
+        return rc;
+    }
+    return ProfileWriter_End(&w);
 }
 
 profile_status_t ProfileStore_Clear(uint8_t slot)
@@ -310,7 +381,8 @@ profile_status_t ProfileStore_Clear(uint8_t slot)
         return rc;
     }
     /* Older copy first: a power cut between the two erases must leave the
-       newest data (the slot as it was), never resurrect stale data. */
+       newest data (the slot as it was), never resurrect stale data. Erasing a
+       copy's FIRST sector (the header) is enough: the rest is unreachable. */
     first = (newest == 0) ? 1U : 0U;
     if ((rc = Storage(NvStore_EraseSector(CopyAddr(slot, first)))) != PROFILE_OK)
     {

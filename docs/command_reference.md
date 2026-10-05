@@ -1522,7 +1522,9 @@ the operator-configurable settings, so they survive a power cycle. **Loading is 
 explicit — nothing is applied at boot.** `*SAV`, `*RCL` and `CONFig:PROFile:CLEar` work only in
 `IDLE` (`ERR 13` otherwise; they erase/write flash or change live settings); the read-only
 commands work in any state. Storage details: `src/app/settings/profile_store.h` (each slot is
-two alternating 4 KiB sectors, so a power cut during a save leaves the previous data intact).
+two alternating 4 KiB sectors, so a power cut during a save leaves the previous data intact). The store, the
+flash driver and the float text are shared code with WHAM-HBRIDGE-PFMG474, which keeps its own profiles in the
+same chip, in a separate region and under a different magic -- see `docs/saved_profiles_shared.md`.
 
 **Saved:** `CONFig:PIDRate`, `TURNONHz`, `MAXFREQHz`, `SLEWRate`, `FaultRampTime`, the four
 `FaultPolarity:*`, `GPOut:ENAble`, `PWMAlt:ENAble`, the `SHOT:TIMing` durations (only if a

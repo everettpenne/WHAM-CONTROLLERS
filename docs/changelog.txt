@@ -1,6 +1,27 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-10-05  —  Profile store and float formatter now shared with WHAM-HBRIDGE-PFMG474 (branch shared-profile-store)
+-----------------------------------------------------------------------
+  HBRIDGE ported XREX's saved-profile layers (docs/saved_profiles.md in that repo) and improved them; this carries the improvements back so
+  the code is ONE piece in both repos (the boards are the same PCB with the same flash chip):
+        profile_store.h/.c   a STREAMING writer (ProfileWriter_Begin/Write/End) and reader (ProfileReader_Open/Read) alongside the buffered
+                             ProfileStore_Write/Read (kept as wrappers); a save now writes the header LAST, so a half-written copy reads as empty
+                             rather than as a half-valid header (power-fail behaviour is strictly better); the copy size, slot count, region base
+                             and magic come from ctrlr_config.h (new "Saved profiles" block, XREX values: 8 slots, 1 sector, base 0, "WSPF" --
+                             the layout it has always had); a build error if the slots would reach the QSPI:SELFtest scratch sector; Clear erases
+                             only a copy's first sector.
+        SettingsCodec_FormatFloat   a printf-free %g (6 significant digits; matches printf on all typical values, sixth digit can differ on ~2 % of
+                             arbitrary ones); CONFig:PROFile? and DIFF? text use it. The -u _printf_float link flag STAYS: PID:GAINS? and the
+                             other %f replies still need it.
+        tests/test_profile_store.c   the shared test (size-independent: large-payload cases use what a copy holds); 5,413 checks. test_settings_codec
+                             20,502 (formatter vs printf added).
+        python/check_shared.py + docs/saved_profiles_shared.md   the drift check and the flash map / magic registry (XREX 0-64 KiB, HBRIDGE from 64 KiB).
+  COMPATIBILITY, checked on the host: the OLD store (main) and the new one, run through the same set of saves (overwrites, a cleared slot, a
+  1000-byte payload, a slot saved three times), produce BYTE-IDENTICAL 64 KiB flash images and each reads the other's. Profiles saved by earlier
+  firmware (including the simulator board's slots of 2026-09-29) therefore read unchanged. Both firmware targets (controller, simulator) build with
+  zero warnings. NOT yet run on hardware: the simulator board currently runs HBRIDGE firmware (restoring the XREX image needs the ST-Link).
+
 2026-09-29  —  Saved settings profiles, step 1: external-flash storage driver (nvstore)
 -----------------------------------------------------------------------
   Goal (planned this session): *SAV / *RCL of the operator-configurable settings
