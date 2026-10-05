@@ -139,6 +139,7 @@ void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW
  * that module is disabled. */
 #if (QSPI_TEST_FEATURE_ENABLED != 0)
 void cmd_qspi_id(uart_instance_t *inst, char *args); /* QSPI:ID? -- OK <MFR> <TYPE> <CAP>, hex bytes */
+void cmd_qspi_selftest(uart_instance_t *inst, char *args); /* QSPI:SELFtest -- erase/program/read-back of the scratch sector, IDLE only */
 #endif
 
 /* PFM_Input period/duty capture (PA15/PD4/PB2/PC12/PB4/PD12, TIM2/TIM3/

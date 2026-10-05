@@ -18,6 +18,7 @@
  */
 
 #include "qspi_test.h"
+#include "qspi_test_hw.h"
 #include "main.h"
 
 #if (QSPI_TEST_FEATURE_ENABLED != 0)
@@ -38,7 +39,7 @@
 
 /* Kept short (not HAL_QSPI_TIMEOUT_DEFAULT_VALUE's 5 s) -- this is a
  * tiny, one-shot diagnostic transaction issued synchronously from a
- * serial command handler (commands.c); a genuinely wedged QUADSPI bus
+ * serial command handler (cmd_system.c); a genuinely wedged QUADSPI bus
  * should fail fast, not hang the whole command link for 5 seconds. */
 #define QSPI_TEST_TIMEOUT_MS    (100U)
 
@@ -65,6 +66,7 @@
 #define QSPI_FLASH_SIZE_W25Q128 (23U)
 
 static QSPI_HandleTypeDef hqspi;
+static uint8_t g_qspiInitDone = 0U;
 
 void QspiTest_Init(void)
 {
@@ -106,6 +108,12 @@ void QspiTest_Init(void)
     {
         Error_Handler();
     }
+    g_qspiInitDone = 1U;
+}
+
+QSPI_HandleTypeDef *QspiTest_Handle(void)
+{
+    return (g_qspiInitDone != 0U) ? &hqspi : NULL;
 }
 
 uint8_t QspiTest_ReadId(uint8_t id[3])
@@ -190,7 +198,7 @@ void HAL_QSPI_MspDeInit(QSPI_HandleTypeDef *hqspiHandle)
 
 void QspiTest_Init(void)
 {
-    /* Feature disabled -- deliberately does nothing. main.c's call
+    /* Feature disabled -- deliberately does nothing. app.c's call
        site never needs its own #if because of this. */
 }
 
@@ -200,6 +208,12 @@ uint8_t QspiTest_ReadId(uint8_t id[3])
        untouched. */
     (void)id;
     return 0U;
+}
+
+QSPI_HandleTypeDef *QspiTest_Handle(void)
+{
+    /* Feature disabled -- QUADSPI is never initialised. */
+    return NULL;
 }
 
 #endif /* QSPI_TEST_FEATURE_ENABLED */
