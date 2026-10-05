@@ -16,7 +16,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
            -I$(ROOT)/src/app/protection -I$(ROOT)/build/generated -I$(OUT)
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_settings $(OUT)/test_closed_loop
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_settings $(OUT)/test_closed_loop
 
 .PHONY: all run clean
 all: run
@@ -58,6 +58,9 @@ $(OUT)/test_feedback: test_feedback.c $(ROOT)/src/app/control/feedback.c $(ROOT)
 $(OUT)/test_target_profile: test_target_profile.c $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/target_profile.h \
                             $(ROOT)/src/app/control/shot_profile.c test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -O2 -o $@ test_target_profile.c $(ROOT)/src/app/control/target_profile.c $(ROOT)/src/app/control/shot_profile.c $(ROOT)/src/app/control/supply_mode.c
+
+$(OUT)/test_phase_mask: test_phase_mask.c $(ROOT)/src/app/control/phase_mask.c $(ROOT)/src/app/control/phase_mask.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -O2 -o $@ test_phase_mask.c $(ROOT)/src/app/control/phase_mask.c
 
 $(OUT)/test_hvps_curve: test_hvps_curve.c $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/hvps_curve.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -O2 -o $@ test_hvps_curve.c $(ROOT)/src/app/control/hvps_curve.c -lm

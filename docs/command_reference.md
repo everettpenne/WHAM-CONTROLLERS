@@ -751,6 +751,44 @@ instead, traced to a QUADSPI sample-timing setting
 bugfix comment for the full diagnosis (an exact 1-bit shift of the
 correct value, not random noise) and fix.
 
+### `PHASe:ENAble`, `PHASe:SELect` -- which phases drive their outputs
+
+The H-bridge has three phases, U, V and W (each a main output and its complement with dead time). By default all
+three run. These commands choose any combination -- U and W, only W, only V, ...
+
+```
+> PHASe:ENAble UW 1         switch phases U and W on; the others are left as they are
+< OK
+> PHASe:ENAble V 0          switch V off
+> PHASe:ENAble ALL 0        switch every phase off
+> PHASe:SELect W            exactly W on, U and V off
+> PHASe:SELect NONE         every phase off (same as ENAble ALL 0)
+> PHASe:ENAble?
+< OK U=1 V=0 W=1
+> PHASe:ENAble? V           one phase: OK <0|1>
+< OK 0
+> PHASe:SELect?             the enabled phases as letters
+< OK UW                     (OK NONE if there are none)
+```
+
+- `<phases>` is letters in any order and case (`U`, `UW`, `wu`), channel numbers (`1`, `13`, `1,3`), or `ALL`
+  (`NONE` as well for `SELect`). Letters and numbers are not mixed. `ERR 12` for anything else.
+- **IDLE only** (`ERR 13` otherwise): the choice is read when a shot starts (`FIRE`, `SOURce:RUN`), so it cannot
+  change a shot already running. Queries work in any state.
+- `ARM` refuses (`ERR 13`) while no phase is enabled, so a shot never runs with nothing to drive.
+- A disabled phase's outputs are never connected to the pins when a shot starts, so its gate drivers see no
+  switching at all; its timer keeps running in step with the others, so the enabled phases keep their own places in
+  the cycle (U at 0, V at 1/3, W at 2/3 of a period) whichever of the others are on. All three are enabled at every
+  boot and the choice lasts until reset. It is **not part of a saved profile**: a recall must never change which legs
+  of the bridge are driven.
+- `SOURce LOOP` (the loopback test) measures Phase U on PFM_Input_01, so it refuses to start with U disabled.
+  A PFM_Input capture of a disabled phase simply sees no edges.
+- The twelve gate-driver status inputs (`GDS?`) are **not** masked for disabled phases: the pin map does not say
+  which input belongs to which phase, so every one still raises a fault.
+
+**Verified on the simulator** (PFM_Input 1/2/3 = U/V/W): for UVW, UW, W, V, U, VW and ALL, exactly the enabled
+phases' inputs saw edges (300 of a 300-period capture, the others 0) and no combination faulted.
+
 ### `QSPI:SELFtest`
 
 Bench proof of the external-flash driver (`nvstore.h`) against the real W25Q128JVS, ported from XREX

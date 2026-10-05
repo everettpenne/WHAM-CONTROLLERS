@@ -208,6 +208,12 @@ void PFM_ForceStop(void);
 void PFM_SetPhaseEnabled(uint8_t channel, uint8_t enabled);
 uint8_t PFM_GetPhaseEnabled(uint8_t channel);
 
+/* The same state as a bit mask (bit k = channel k = phase U, V, W...): all phases at once. The mask is
+   read when a shot starts (PFM_Restart()), so a change applies from the NEXT start -- cmd_phase.c only
+   allows it while IDLE. */
+uint8_t PFM_GetPhaseMask(void);
+void    PFM_SetPhaseMask(uint8_t mask);
+
 const PFM_Step_t *PFM_GetCurrentStep(void);
 const PFM_Step_t *PFM_GetStepByIndex(uint16_t index);
 

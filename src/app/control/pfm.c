@@ -606,6 +606,25 @@ uint8_t PFM_GetPhaseEnabled(uint8_t channel)
     return g_channelEnabled[channel];
 }
 
+uint8_t PFM_GetPhaseMask(void)
+{
+    uint8_t mask = 0U;
+
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        mask = (uint8_t)(mask | ((g_channelEnabled[ch] != 0U) ? (1U << ch) : 0U));
+    }
+    return mask;
+}
+
+void PFM_SetPhaseMask(uint8_t mask)
+{
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        g_channelEnabled[ch] = (uint8_t)((mask >> ch) & 1U);
+    }
+}
+
 void PFM_ForceStop(void)
 {
     /* See pfm.h's doc comment -- the exact stop-and-mark-STOPPED pair

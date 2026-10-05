@@ -49,7 +49,8 @@ does not have are left alone on recall, so an older and a newer firmware can rea
 | Target table | count (66), points (67) | 8 bytes per point (t_us, millivolts), 30 per record |
 | HVPS curve | count (68), points (69) | 8 bytes per point (Hz, volts as floats), 30 per record; count 0 = the linear default |
 
-**Not saved**, on purpose: ARM/FIRE/SOURce run state and `SOURce:SETpoint`, the DAC outputs, and every
+**Not saved**, on purpose: ARM/FIRE/SOURce run state and `SOURce:SETpoint`, which phases are enabled (`PHASe:ENAble`:
+a recall must never change which legs of the bridge are driven), the DAC outputs, and every
 bench-simulation knob (`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`). A profile that put the loop onto a
 simulated feedback by itself would be a hazard on a real supply.
 

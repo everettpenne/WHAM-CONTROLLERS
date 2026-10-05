@@ -28,7 +28,8 @@
  *     (about 10 KB) so they are streamed to and from flash by settings.c, never
  *     held in a snapshot.
  *
- * Deliberately NOT saved: the output/run state (ARM, FIRE, SOURce:RUN/SETpoint),
+ * Deliberately NOT saved: the output/run state (ARM, FIRE, SOURce:RUN/SETpoint), which phases
+ * are enabled (PHASe:ENAble -- a recall must never change which legs of the bridge are driven),
  * the DAC outputs, and every bench-simulation knob (CONFig:FEEDback:SOURce and
  * DACRatio, SIM:PLANT:*) -- a profile that turned the loop onto a simulated
  * feedback by itself would be a hazard on a real supply.

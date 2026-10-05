@@ -40,6 +40,7 @@ extern "C" {
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, GENERAL:TEST:FAULT
  *   cmd_io.c       GDS?
  *   cmd_pfmin.c    PFMIN:*
+ *   cmd_phase.c    PHASe:ENAble/SELect (which of U, V, W drive their gate drivers)
  * Shared reply/precondition helpers live in cmd_common.c/.h.
  *
  * To add a command: declare its handler here, implement it in the
@@ -145,6 +146,10 @@ void cmd_profile_catalog(uart_instance_t *inst, char *args);        /* CONFig:PR
 void cmd_profile_query(uart_instance_t *inst, char *args);          /* CONFig:PROFile? <slot> -- preview, nothing applied */
 void cmd_profile_diff(uart_instance_t *inst, char *args);           /* CONFig:PROFile:DIFF? <slot> */
 void cmd_profile_clear(uart_instance_t *inst, char *args);          /* CONFig:PROFile:CLEar <slot>, IDLE only */
+void cmd_phase_enable(uart_instance_t *inst, char *args);           /* PHASe:ENAble <phases> <0|1>, IDLE only */
+void cmd_phase_enable_query(uart_instance_t *inst, char *args);     /* PHASe:ENAble? [<phase>] -- OK U=1 V=0 W=1 */
+void cmd_phase_select(uart_instance_t *inst, char *args);           /* PHASe:SELect <phases> -- exactly these on, IDLE only */
+void cmd_phase_select_query(uart_instance_t *inst, char *args);     /* PHASe:SELect? -- OK UW */
 void cmd_qspi_selftest(uart_instance_t *inst, char *args); /* QSPI:SELFtest -- erase/program/read-back of the scratch sector, IDLE only */
 #endif
 

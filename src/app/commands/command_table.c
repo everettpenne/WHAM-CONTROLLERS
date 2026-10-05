@@ -151,6 +151,10 @@ static const scpi_command_t command_table[] = {
 
     /* Reports the compile-time HRTIM channel count -- see commands.c's
        own header comment on cmd_config_channels(). */
+    { "PHASe:ENAble",        cmd_phase_enable },
+    { "PHASe:ENAble?",       cmd_phase_enable_query },
+    { "PHASe:SELect",        cmd_phase_select },
+    { "PHASe:SELect?",       cmd_phase_select_query },
     { "*SAV",                cmd_sav },
     { "*RCL",                cmd_rcl },
     { "CONFig:PROFile:CATalog?", cmd_profile_catalog },

@@ -496,6 +496,15 @@ range. `PID:LOOPMODE 1 1` makes `FIRE` play the target instead of the open-loop
 loop against a firmware plant model with nothing wired. Commands:
 `docs/command_reference.md`; history: `docs/changelog.txt` 2026-10-02.
 
+## Phase enable (added 2026-10-05)
+
+`PHASe:ENAble <phases> <0|1>` / `PHASe:SELect <phases>` (cmd_phase.c) choose which of U, V, W drive their outputs.
+The mechanism is old (carried over from the sibling project): `pfm.c` keeps a durable per-channel enable array and
+passes it to `HRTIM1_PWM_Start()`, which leaves a disabled channel's pins unconnected while its timer keeps running in
+step with the Master. The commands only change that array, in IDLE (it is read at shot start), parse the list with the
+pure, host-tested `phase_mask.c`, and `ARM` refuses with none enabled. Enables are NOT saved in profiles. The GDS fault
+inputs are not masked per phase (the pin map does not tie them to phases) -- ask before changing that.
+
 ## Saved profiles (added 2026-10-05)
 
 `*SAV` / `*RCL` / `CONFig:PROFile:*` keep the operator-configurable settings AND the shot, target and HVPS-curve

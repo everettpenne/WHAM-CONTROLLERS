@@ -248,7 +248,7 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
     }
     if (g_fbSim == 3U)
     {
-        if (DutyMeter_Start() == 0U)
+        if ((PFM_GetPhaseEnabled(0U) == 0U) || (DutyMeter_Start() == 0U))     /* the meter reads Phase U's output */
         {
             return CTL_NO_METER;
         }

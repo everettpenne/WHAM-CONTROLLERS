@@ -7,6 +7,7 @@
 #include "cmd_common.h"
 #include "ctrlr_config.h"
 #include "state_machine.h"
+#include "pfm.h"
 #include <stdio.h>
 
 /* --------------------------------------------------------------------------
@@ -69,6 +70,11 @@ void cmd_arm(uart_instance_t *inst, char *args)
     if (SM_GetState() != SM_STATE_IDLE)
     {
         SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- not currently IDLE");
+        return;
+    }
+    if (PFM_GetPhaseMask() == 0U)
+    {
+        SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- no phase is enabled (PHASe:ENAble U|V|W|ALL 1)");
         return;
     }
     if (SM_Arm() == 0U)
