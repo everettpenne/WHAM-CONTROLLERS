@@ -27,9 +27,12 @@
  *     it and the CRC); a caller that generates the payload runs its generator
  *     twice, once to count and once to write.
  *
- * Shared with XREX: the format and this code are the same in both products;
- * only PROFILE_MAGIC_BYTES, PROFILE_COPY_SECTORS and what the payload means
- * differ. Blocking, main-loop only, like nvstore.h; callers write only in IDLE.
+ * SHARED CODE: this file, profile_store.c, nvstore.h/.c and tests/test_profile_store.c are
+ * byte-identical in WHAM-XREX-PFMG474 and WHAM-HBRIDGE-PFMG474. What differs per product is
+ * configuration (ctrlr_config.h: PROFILE_STORE_BASE, PROFILE_COPY_SECTORS, PROFILE_SLOT_COUNT,
+ * PROFILE_MAGIC_BYTES) and what the payload means (settings_codec.h). Change them together.
+ *
+ * Blocking, main-loop only, like nvstore.h; callers write only in IDLE.
  */
 #ifndef PROFILE_STORE_H
 #define PROFILE_STORE_H

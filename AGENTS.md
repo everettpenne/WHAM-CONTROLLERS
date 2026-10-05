@@ -510,6 +510,13 @@ sets goes through the same setter the serial command uses (`control_runtime.h`);
 field id in `settings_codec.h`, a capture/apply line in `settings.c`, and a decision on whether it belongs in a
 profile (bench-simulation knobs and run state do not). `QSPI:SELFtest` is the bench check of the flash driver.
 
+## Code shared with WHAM-XREX-PFMG474 (2026-10-05)
+
+`nvstore`, `qspi_test`, `profile_store`, `tests/test_profile_store.c`, `fake_nvstore` and
+`SettingsCodec_FormatFloat` are byte-identical in both controller repos (same board, same flash chip, separate
+regions and magics: `docs/saved_profiles_shared.md`). Change them in both and run `python3 python/check_shared.py`
+(the same script is in both repos).
+
 ## Source layout (standing rule -- keep it this way)
 
 Adopted 2026-09-29 (ported from WHAM-XREX-PFMG474, where it was

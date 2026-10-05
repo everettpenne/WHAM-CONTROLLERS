@@ -102,17 +102,19 @@ Measured on the simulator board (real W25Q128): `*SAV` of a 500-point shot + tar
 | What a profile holds | 32 scalars: per-channel PID gains, loop mode, max/demand current, nickname, system frequencies, fault polarities, timing | 18 scalars + gains per plant + three tables (shot, target, HVPS curve) | The record framing is identical; only the field table and `settings.c` differ. Keep ids product-specific and frozen. |
 | Meaning of the channel byte | Transrex channel 0..3 | plant 0 HVPS / 1 Limiter | Document per product (done). If XREX ever gains a plant concept it can reuse the field. |
 | Payload size | 1 KiB, one 4 KiB sector per copy | up to 16,336 bytes, four sectors per copy | **Done**: `PROFILE_COPY_SECTORS`, `PROFILE_STORE_BASE`, `PROFILE_MAGIC_BYTES` in `ctrlr_config.h`; defaults reproduce XREX's layout, so XREX's existing slots stay readable. |
-| Writing | buffer in RAM, erase, header, then payload | streaming writer, payload then header last | Upstream into XREX: strictly safer (no half-valid header window) and the buffered `ProfileStore_Write` is kept as a wrapper. |
+| Writing | was: buffer in RAM, erase, header, then payload | streaming writer, payload then header last | **Done (2026-10-05)**: carried into XREX (`shared-profile-store` branch); the buffered `ProfileStore_Write` is kept as a wrapper. |
 | Reading | whole payload into a 512-byte buffer | streaming reader, CRC pass then apply pass | Same: XREX can keep its buffer or move to the stream API. |
 | Tables | none (demand is two scalars per channel) | three tables as chunked records | If XREX adds a time-series demand it can use the same chunk records. |
 | Shared flash chip | slots from 0 | slots from 64 KiB, different magic | **Done**: separate regions plus separate magic, so a board that ran both keeps both products' profiles. A short region/magic registry belongs in both repos' docs. |
-| Float text in `PROFile?` | `snprintf("%g")` -- needs `-u _printf_float` at link (hand-added, lost on a CubeIDE regeneration) | own formatter (`SettingsCodec_FormatFloat`), no printf floats | Adopt in XREX; drops ~6 KB and a trap. |
+| Float text in `PROFile?` | was `snprintf("%g")` -- needs `-u _printf_float` at link | own formatter (`SettingsCodec_FormatFloat`), no printf floats | **Done (2026-10-05)**: in XREX too. XREX keeps the link flag, other replies still use `%f`. |
 | Setters | in `pid.c` | moved from `cmd_control.c` into `control_runtime.c` so commands and profiles share them | Same principle in both: one setter per value, used by the command and by recall. |
 | Recall side effects | none beyond the setters | selects the PROFILE shot source; drops table/shot/target and upload flags first | Specific to HBRIDGE's shot model. |
 | Same in both | 8 slots, 1-based, `*SAV/*RCL/CONFig:PROFile:*`, `ERR 18`, IDLE-only writes, explicit load, label rules, tagged records, CRC-32, alternating copies, `nvstore` driver, `QSPI:SELFtest` | | |
 
-Suggested next steps for real harmony: (1) copy `nvstore`, `profile_store` and the generic half of
-`settings_codec` (framing, CRC, helpers, formatter) into XREX unchanged, and add a small script that compares the
-shared files across the two repos so they cannot drift; (2) split `settings_codec` into a generic record layer and
+**Update 2026-10-05:** `nvstore`, `profile_store`, the profile-store tests and the float formatter are now one
+shared piece of code in both repos, with `python/check_shared.py` guarding against drift and
+`docs/saved_profiles_shared.md` holding the flash map and magic registry. Remaining suggestions: (1) move the
+record framing and helpers (`EmitRecord`, `NextRecord`, CRC, little-endian helpers) of `settings_codec` into the
+shared set too, which means XREX adopting them; (2) split `settings_codec` into a generic record layer and
 a product field table, which is how it is already organized internally; (3) decide together whether either
 product should offer a boot-time slot (neither does today).
