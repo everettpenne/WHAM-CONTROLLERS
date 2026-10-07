@@ -211,6 +211,7 @@ static const scpi_command_t command_table[] = {
     /* Raw GateDriverStatus_01..12 (PE0..PE11) diagnostic readback --
        see cmd_io.c's own header comment on cmd_gds_query(). */
     { "GDS?",                cmd_gds_query    },
+    { "DIAGnostic:LEDs?",    cmd_diag_leds_query },
 
     /* Per-Transrex-channel fault-pin readback (Water/Temp/Enerpro/OCP)
        -- see cmd_io.c's own header comment on

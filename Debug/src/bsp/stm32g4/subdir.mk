@@ -10,6 +10,7 @@ C_SRCS += \
 ../src/bsp/stm32g4/boot_jump.c \
 ../src/bsp/stm32g4/flash_bank.c \
 ../src/bsp/stm32g4/hrtim.c \
+../src/bsp/stm32g4/led_indicators.c \
 ../src/bsp/stm32g4/mcu.c \
 ../src/bsp/stm32g4/nvstore.c \
 ../src/bsp/stm32g4/pfm_input.c \
@@ -22,6 +23,7 @@ OBJS += \
 ./src/bsp/stm32g4/boot_jump.o \
 ./src/bsp/stm32g4/flash_bank.o \
 ./src/bsp/stm32g4/hrtim.o \
+./src/bsp/stm32g4/led_indicators.o \
 ./src/bsp/stm32g4/mcu.o \
 ./src/bsp/stm32g4/nvstore.o \
 ./src/bsp/stm32g4/pfm_input.o \
@@ -34,6 +36,7 @@ C_DEPS += \
 ./src/bsp/stm32g4/boot_jump.d \
 ./src/bsp/stm32g4/flash_bank.d \
 ./src/bsp/stm32g4/hrtim.d \
+./src/bsp/stm32g4/led_indicators.d \
 ./src/bsp/stm32g4/mcu.d \
 ./src/bsp/stm32g4/nvstore.d \
 ./src/bsp/stm32g4/pfm_input.d \
@@ -48,7 +51,7 @@ src/bsp/stm32g4/%.o src/bsp/stm32g4/%.su src/bsp/stm32g4/%.cyclo: ../src/bsp/stm
 clean: clean-src-2f-bsp-2f-stm32g4
 
 clean-src-2f-bsp-2f-stm32g4:
-	-$(RM) ./src/bsp/stm32g4/board_io.cyclo ./src/bsp/stm32g4/board_io.d ./src/bsp/stm32g4/board_io.o ./src/bsp/stm32g4/board_io.su ./src/bsp/stm32g4/boot_diag.cyclo ./src/bsp/stm32g4/boot_diag.d ./src/bsp/stm32g4/boot_diag.o ./src/bsp/stm32g4/boot_diag.su ./src/bsp/stm32g4/boot_jump.cyclo ./src/bsp/stm32g4/boot_jump.d ./src/bsp/stm32g4/boot_jump.o ./src/bsp/stm32g4/boot_jump.su ./src/bsp/stm32g4/flash_bank.cyclo ./src/bsp/stm32g4/flash_bank.d ./src/bsp/stm32g4/flash_bank.o ./src/bsp/stm32g4/flash_bank.su ./src/bsp/stm32g4/hrtim.cyclo ./src/bsp/stm32g4/hrtim.d ./src/bsp/stm32g4/hrtim.o ./src/bsp/stm32g4/hrtim.su ./src/bsp/stm32g4/mcu.cyclo ./src/bsp/stm32g4/mcu.d ./src/bsp/stm32g4/mcu.o ./src/bsp/stm32g4/mcu.su ./src/bsp/stm32g4/nvstore.cyclo ./src/bsp/stm32g4/nvstore.d ./src/bsp/stm32g4/nvstore.o ./src/bsp/stm32g4/nvstore.su ./src/bsp/stm32g4/pfm_input.cyclo ./src/bsp/stm32g4/pfm_input.d ./src/bsp/stm32g4/pfm_input.o ./src/bsp/stm32g4/pfm_input.su ./src/bsp/stm32g4/qspi_test.cyclo ./src/bsp/stm32g4/qspi_test.d ./src/bsp/stm32g4/qspi_test.o ./src/bsp/stm32g4/qspi_test.su ./src/bsp/stm32g4/uart.cyclo ./src/bsp/stm32g4/uart.d ./src/bsp/stm32g4/uart.o ./src/bsp/stm32g4/uart.su
+	-$(RM) ./src/bsp/stm32g4/board_io.cyclo ./src/bsp/stm32g4/board_io.d ./src/bsp/stm32g4/board_io.o ./src/bsp/stm32g4/board_io.su ./src/bsp/stm32g4/boot_diag.cyclo ./src/bsp/stm32g4/boot_diag.d ./src/bsp/stm32g4/boot_diag.o ./src/bsp/stm32g4/boot_diag.su ./src/bsp/stm32g4/boot_jump.cyclo ./src/bsp/stm32g4/boot_jump.d ./src/bsp/stm32g4/boot_jump.o ./src/bsp/stm32g4/boot_jump.su ./src/bsp/stm32g4/flash_bank.cyclo ./src/bsp/stm32g4/flash_bank.d ./src/bsp/stm32g4/flash_bank.o ./src/bsp/stm32g4/flash_bank.su ./src/bsp/stm32g4/hrtim.cyclo ./src/bsp/stm32g4/hrtim.d ./src/bsp/stm32g4/hrtim.o ./src/bsp/stm32g4/hrtim.su ./src/bsp/stm32g4/led_indicators.cyclo ./src/bsp/stm32g4/led_indicators.d ./src/bsp/stm32g4/led_indicators.o ./src/bsp/stm32g4/led_indicators.su ./src/bsp/stm32g4/mcu.cyclo ./src/bsp/stm32g4/mcu.d ./src/bsp/stm32g4/mcu.o ./src/bsp/stm32g4/mcu.su ./src/bsp/stm32g4/nvstore.cyclo ./src/bsp/stm32g4/nvstore.d ./src/bsp/stm32g4/nvstore.o ./src/bsp/stm32g4/nvstore.su ./src/bsp/stm32g4/pfm_input.cyclo ./src/bsp/stm32g4/pfm_input.d ./src/bsp/stm32g4/pfm_input.o ./src/bsp/stm32g4/pfm_input.su ./src/bsp/stm32g4/qspi_test.cyclo ./src/bsp/stm32g4/qspi_test.d ./src/bsp/stm32g4/qspi_test.o ./src/bsp/stm32g4/qspi_test.su ./src/bsp/stm32g4/uart.cyclo ./src/bsp/stm32g4/uart.d ./src/bsp/stm32g4/uart.o ./src/bsp/stm32g4/uart.su
 
 .PHONY: clean-src-2f-bsp-2f-stm32g4
 

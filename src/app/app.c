@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include "uart.h"
 #include "mcu.h"
+#include "led_indicators.h"
 #include "flash_bank.h"
 #include "boot_diag.h"
 #include "hrtim.h"
@@ -27,6 +28,10 @@
    Runs once from main() after the CubeMX peripheral init. */
 void App_Init(void)
 {
+    /* The front-panel LEDs first: the serial link and the state machine
+       below drive them (led_indicators.h). */
+    LedIndicators_Init();
+
     /* Brings the PFM table module to a known-empty, known-stopped state
        before anything else can touch it (a TABLE:* command over UART, or
        a FIRE). Does not start HRTIM outputs -- see PFM_Init()'s own

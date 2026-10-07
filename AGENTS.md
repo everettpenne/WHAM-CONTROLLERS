@@ -593,6 +593,15 @@ generalized (a streaming writer that writes the header last, copies of any numbe
 read unchanged. `Scpi_FormatFloat` means the `CONFig:PROFile:*` previews and (since 2026-10-05) every XREX float reply no longer depend on the
 `-u _printf_float` link flag; the flag itself STAYS, other replies (`PID:GAINS?` ...) still use `%f`.
 
+## Front-panel LEDs (added 2026-10-07)
+
+UART transmit/receive activity and the four operating states (IDLE/ARMED/FIRING/FAULT) have LEDs on PD2, PD3, PF14, PF2, PC3, PC2
+(`docs/pin_mapping_v4.csv`). `src/drivers/led_indicators.h` / `src/bsp/stm32g4/led_indicators.c` are shared byte-identical with the
+sibling repo (`check_shared.py`). The state LEDs are driven ONLY from `SetState()` in `state_machine.c` -- never assign `g_state`
+directly, or an LED will disagree with `STATE?`. The activity LEDs are pulsed by `uart.c` (any UART instance) and turned off by a
+one-pulse timer (TIM16/TIM17) plus DMA (DMA1 channels 7/8): no interrupt, no polling. These resources are reserved for it. The LEDs are
+cosmetic: keep every call non-blocking, and keep the feature removable (`LED_INDICATORS_ENABLED`). `DIAGnostic:LEDs?` reads back what is driven.
+
 ## Source layout (standing rule -- keep it this way)
 
 Established 2026-09-26 at the user's direction as a **long-term

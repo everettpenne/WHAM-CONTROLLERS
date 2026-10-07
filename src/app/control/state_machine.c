@@ -14,9 +14,27 @@
 #include "mcu.h"
 #include "xrex_io.h"
 #include "telemetry.h"
+#include "led_indicators.h"
 
 static SM_State_t     g_state         = SM_STATE_IDLE;
 static SM_FaultType_t g_faultType     = SM_FAULT_NONE;
+
+/* The ONLY place g_state is assigned: the state LEDs (led_indicators.h) are
+   updated in the same step, so an LED is lit if and only if the machine is
+   in that state, whichever context (main loop, EXTI, control interrupt)
+   caused the transition. */
+static void SetState(SM_State_t s)
+{
+    g_state = s;
+    switch (s)
+    {
+        case SM_STATE_IDLE:   LedIndicators_ShowState(LED_STATE_IDLE);   break;
+        case SM_STATE_ARMED:  LedIndicators_ShowState(LED_STATE_ARMED);  break;
+        case SM_STATE_FIRING: LedIndicators_ShowState(LED_STATE_FIRING); break;
+        case SM_STATE_FAULT:  LedIndicators_ShowState(LED_STATE_FAULT);  break;
+        default:              LedIndicators_ShowState(LED_STATE_NONE);   break;
+    }
+}
 
 /* External-enable interlock -- PF13, MOVED here 2026-09-17 from PF15
    (Fiber_Enable), per direct instruction: enable and trigger are now
@@ -309,7 +327,7 @@ static void EnterFault(SM_FaultType_t type, uint8_t channel)
     g_stateBeforeFault = g_state;   /* captured BEFORE transitioning --
                                         see this variable's own comment
                                         above for why the handlers need it */
-    g_state        = SM_STATE_FAULT;
+    SetState(SM_STATE_FAULT);
     g_faultType    = type;
     g_faultChannel = channel;
 
@@ -397,7 +415,7 @@ static void EnterFault(SM_FaultType_t type, uint8_t channel)
 
 void SM_Init(void)
 {
-    g_state        = SM_STATE_IDLE;
+    SetState(SM_STATE_IDLE);
     g_faultType    = SM_FAULT_NONE;
     g_faultChannel = 0xFFU;
 }
@@ -443,7 +461,7 @@ uint8_t SM_Arm(void)
         return 0U;
     }
 
-    g_state = SM_STATE_ARMED;
+    SetState(SM_STATE_ARMED);
 
     /* External trigger's edge-detection baseline, added 2026-09-16 --
        captured fresh here regardless of whether the trigger feature is
@@ -466,7 +484,7 @@ void SM_Disarm(void)
 {
     if (g_state == SM_STATE_ARMED)
     {
-        g_state = SM_STATE_IDLE;
+        SetState(SM_STATE_IDLE);
         Telemetry_PushState(SM_STATE_IDLE);
     }
 }
@@ -500,7 +518,7 @@ uint8_t SM_Fire(void)
         return 0U;   /* stays ARMED -- e.g. profile timing never set */
     }
 
-    g_state = SM_STATE_FIRING;
+    SetState(SM_STATE_FIRING);
     Telemetry_PushState(SM_STATE_FIRING);
     return 1U;
 }
@@ -529,7 +547,7 @@ uint8_t SM_StartPlain(void)
     }
 
     PID_Start();   /* always succeeds or is already running (idempotent) */
-    g_state = SM_STATE_FIRING;
+    SetState(SM_STATE_FIRING);
     Telemetry_PushState(SM_STATE_FIRING);
     return 1U;
 }
@@ -540,7 +558,7 @@ void SM_Stop(void)
        doc comment in state_machine.h. */
     if ((g_state == SM_STATE_ARMED) || (g_state == SM_STATE_FIRING))
     {
-        g_state = SM_STATE_IDLE;
+        SetState(SM_STATE_IDLE);
         Telemetry_PushState(SM_STATE_IDLE);
     }
 }
@@ -549,7 +567,7 @@ void SM_NotifyShotComplete(void)
 {
     if (g_state == SM_STATE_FIRING)
     {
-        g_state = SM_STATE_IDLE;
+        SetState(SM_STATE_IDLE);
         Telemetry_PushState(SM_STATE_IDLE);
     }
 }
@@ -855,7 +873,7 @@ uint8_t SM_ClearFault(void)
         }
     }
 
-    g_state        = SM_STATE_IDLE;
+    SetState(SM_STATE_IDLE);
     g_faultType    = SM_FAULT_NONE;
     g_faultChannel = 0xFFU;
     Telemetry_PushFaultClear();

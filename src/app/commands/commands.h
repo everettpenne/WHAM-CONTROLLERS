@@ -35,7 +35,7 @@ extern "C" {
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, DEBUG:FAULT:BYPASS,
  *                  OCP:TEST:FAULT, GENERAL:TEST:FAULT
- *   cmd_io.c       EXTernal:*, DIAGnostic:GPOut*, GDS?, XREX:*, GPOut:/PWMAlt:ENAble
+ *   cmd_io.c       EXTernal:*, DIAGnostic:GPOut*, GDS?, DIAGnostic:LEDs?, XREX:*, GPOut:/PWMAlt:ENAble
  *   cmd_pfmin.c    PFMIN:*
  *   cmd_control.c  SOURce:RUN/STOP/SETpoint/STATus?/RAMP, PID:GAINS, LOG:*
  *   cmd_shot.c     PID:LOOPMODE, SOURce:ENAble, CHANnel:NICKname, SHOT:*
@@ -361,6 +361,7 @@ void cmd_config_fault_polarity_ocp_query(uart_instance_t *inst, char *args);
  * state per pin, on a single OK line -- see cmd_io.c for the exact
  * format. */
 void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW ... 12=HIGH|LOW */
+void cmd_diag_leds_query(uart_instance_t *inst, char *args); /* DIAGnostic:LEDs? -- OK TX=0|1 RX= IDLE= ARMED= FIRING= FAULT= */
 
 /* Per-Transrex-channel fault-pin readback, added 2026-09-17 alongside
  * the new xrex_io.c module -- reports one channel's own Water/Temp/

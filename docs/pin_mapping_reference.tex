@@ -250,6 +250,20 @@ Enerpro/OCP signal sources are connected.}
   \code{GPOut\_12} & PD1 & GPO & Generic diagnostic output, default LOW
     at boot. Commands: \code{DIAGnostic:GPOut12},
     \code{DIAGnostic:GPOut12?}. \\
+  \code{UART\_TX\_LED} & PD2 & GPO & Front-panel LED, active high: lit
+    while the controller transmits on any UART (30 ms after the last byte;
+    switched off by a timer and DMA, \code{led\_indicators.c}). Added
+    2026-10-07; V3 \code{GPOut\_03}. \\
+  \code{UART\_RX\_LED} & PD3 & GPO & Front-panel LED: lit while the
+    controller receives. Added 2026-10-07; V3 \code{GPOut\_04}. \\
+  \code{STATE\_IDLE\_LED} & PF14 & GPO & Front-panel LED, lit if and only
+    if the state machine is \code{IDLE}. Added 2026-10-07. \\
+  \code{STATE\_ARMED\_LED} & PF2 & GPO & Lit if and only if \code{ARMED}.
+    Added 2026-10-07; V3 \code{GPInput\_01}. \\
+  \code{STATE\_FIRING\_LED} & PC3 & GPO & Lit if and only if
+    \code{FIRING}. Added 2026-10-07. \\
+  \code{STATE\_FAULT\_LED} & PC2 & GPO & Lit if and only if \code{FAULT}.
+    Added 2026-10-07. \code{DIAGnostic:LEDs?} reads all six back. \\
   \code{STM\_Enable\_Pin} & PC14 & GPO & \textbf{Considered and
     rejected} for the external-enable role (2026-09-16) -- documented
     direction is OUTWARD (the MCU drives it), the wrong direction for
