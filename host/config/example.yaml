@@ -8,3 +8,4 @@ expect_serial: WB-0007-4   # optional: refuse commands if the board on the other
 # log_dir: /var/log/wham   # default: host/logs next to this script
 # registry: /path/devices.csv   # default: host/devices.csv next to this script
 # reconnect_s: 3
+# confirm_dangerous: false   # true: hold dangerous commands until their sender types "!hub confirm" (stalls scripts and firmware updates)

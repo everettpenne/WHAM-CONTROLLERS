@@ -80,6 +80,15 @@ class Client:
         self.writer.write((text + "\r\n").encode())
         await self.writer.drain()
 
+    async def quiet(self, wait=0.25):
+        """Everything that arrives until the line goes quiet for `wait` seconds."""
+        out = []
+        try:
+            while True:
+                out.append((await asyncio.wait_for(self.reader.readline(), wait)).decode().strip())
+        except asyncio.TimeoutError:
+            return out
+
     async def lines_until(self, predicate, timeout=3.0):
         out = []
         end = asyncio.get_running_loop().time() + timeout
@@ -102,7 +111,7 @@ def free_port():
     return p
 
 
-class HubTests(unittest.IsolatedAsyncioTestCase):
+class HubBase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -143,9 +152,12 @@ class HubTests(unittest.IsolatedAsyncioTestCase):
         recs = []
         for root, _, files in os.walk(hub.cfg["log_dir"]):
             for f in files:
-                recs += [json.loads(l) for l in open(os.path.join(root, f))]
+                with open(os.path.join(root, f)) as fh:
+                    recs += [json.loads(l) for l in fh]
         return sorted(recs, key=lambda r: r["t"])
 
+
+class HubTests(HubBase):
     async def test_handshake_binds_identity_and_logs_under_the_serial(self):
         hub = await self.start_hub()
         self.assertEqual(hub.serial(), "WB-0001-8")
@@ -276,12 +288,103 @@ class HubTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(out[-2:], ["OK 3", "1 2 3"])
 
 
+class VisibilityTests(HubBase):
+    """Several operators on one controller: who is connected, and dangerous commands made visible to everyone."""
+
+    async def two(self, **kw):
+        hub = await self.start_hub(**kw)
+        a = await Client.connect(self.listen, "alice")
+        await a.lines_until(lambda l: l.startswith("--- connected"))
+        b = await Client.connect(self.listen, "bob")
+        await b.lines_until(lambda l: l.startswith("--- connected"))
+        return hub, a, b
+
+    async def test_clients_command_lists_everyone(self):
+        hub, a, b = await self.two()
+        await a.lines_until(lambda l: "bob (127.0.0.1) joined" in l)      # joins show the address
+        await a.send("STATE?")
+        await a.lines_until(lambda l: l == "OK IDLE")
+        await b.send("!hub clients")
+        out = await b.lines_until(lambda l: l.strip().startswith("# alice") or l.strip().startswith("#   alice"), 3)
+        text = "\n".join(out)
+        self.assertIn("# hub clients: 2", text)
+        row = [l for l in out if "alice" in l and "127.0.0.1" in l][0]
+        self.assertIn("cmds 1", row)
+        self.assertIn("last: STATE?", row)
+        await b.send("!hub status")
+        st = (await b.lines_until(lambda l: l.startswith("# hub name=")))[-1]
+        self.assertIn("who=alice@127.0.0.1,bob@127.0.0.1", st)
+
+    async def test_leaving_is_announced_and_logged_with_counts(self):
+        hub, a, b = await self.two()
+        await b.send("ARM")
+        await b.lines_until(lambda l: l.startswith("ERR"))
+        b.writer.close()
+        await a.lines_until(lambda l: l == "--- bob left ---")
+        left = [r for r in self.log_records(hub) if r["kind"] == "hub" and "bob left" in r["line"]][-1]
+        self.assertIn("1 commands, 1 dangerous", left["line"])
+
+    async def test_dangerous_command_is_announced_to_the_others_and_logged(self):
+        hub, a, b = await self.two()
+        await b.send("SOURce:ENAble 1 1")                  # the unknown-to-fake command still goes through
+        got_a = await a.lines_until(lambda l: "DANGEROUS" in l)
+        self.assertIn("--- hub: DANGEROUS [output] bob@127.0.0.1: SOURce:ENAble 1 1 ---", got_a)
+        await b.lines_until(lambda l: l.startswith("ERR"))
+        self.assertIn("SOURce:ENAble 1 1", self.ctl.received)             # not blocked
+        rec = [r for r in self.log_records(hub) if r["kind"] == "cmd" and r["line"].startswith("SOURce")][-1]
+        self.assertEqual(rec["danger"], "output")
+        self.assertEqual(rec["client"], "bob")
+        # the sender is not told about their own command, and a harmless one is not announced at all
+        await b.send("STATE?")
+        got_a = await a.lines_until(lambda l: l == "OK IDLE")
+        self.assertFalse(any("DANGEROUS" in l for l in got_a))
+        self.assertFalse(any("DANGEROUS" in l for l in await b.quiet()))
+
+    async def test_confirm_mode_holds_until_confirmed(self):
+        hub, a, b = await self.two(confirm_dangerous=True)
+        await b.send("ARM")
+        told = await b.lines_until(lambda l: "not sent yet" in l)
+        self.assertIn("[arm]", told[-1])
+        about = await a.lines_until(lambda l: "about to send" in l)
+        self.assertIn("bob@127.0.0.1 is about to send: ARM", about[-1])
+        await asyncio.sleep(0.2)
+        self.assertNotIn("ARM", self.ctl.received)                         # held: nothing reached the controller
+        await b.send("STATE?")                                              # harmless commands are not held
+        await b.lines_until(lambda l: l == "OK IDLE")
+        await b.send("!hub confirm")
+        await b.lines_until(lambda l: l.startswith("ERR"))                  # now the fake answers it
+        self.assertIn("ARM", self.ctl.received)
+        kinds = [r["kind"] for r in self.log_records(hub) if r["line"] == "ARM"]
+        self.assertEqual(kinds[:2], ["danger-held", "cmd"])
+
+    async def test_cancel_and_expiry_and_only_the_sender_can_confirm(self):
+        hub, a, b = await self.two(confirm_dangerous=True, confirm_timeout_s=0.3)
+        await b.send("FIRE")
+        await b.lines_until(lambda l: "not sent yet" in l)
+        await a.send("!hub confirm")                                        # someone else's held command is not theirs
+        self.assertIn("nothing is waiting", (await a.lines_until(lambda l: l.startswith("# hub")))[-1])
+        await b.send("!hub cancel")
+        self.assertIn("cancelled", (await b.lines_until(lambda l: l.startswith("# hub")))[-1])
+        await b.send("FIRE")
+        await b.lines_until(lambda l: "not sent yet" in l)
+        await asyncio.sleep(0.5)
+        await b.send("!hub confirm")
+        self.assertIn("too late", (await b.lines_until(lambda l: l.startswith("# hub")))[-1])
+        self.assertNotIn("FIRE", self.ctl.received)
+
+
 class ConfigTests(unittest.TestCase):
     def test_flat_yaml(self):
         d = wh.parse_flat_yaml("# comment\nname: magnet2\nhost: 192.168.130.138   # the bridge\nport: 5000\n"
                                "expect_serial: 'WB-0007-4'\nlog_dir: ~\n")
         self.assertEqual(d, {"name": "magnet2", "host": "192.168.130.138", "port": "5000",
                              "expect_serial": "WB-0007-4", "log_dir": None})
+
+    def test_confirm_dangerous_parses_as_a_bool(self):
+        base = {"config": None, **{k: None for k in wh.DEFAULTS}, "host": "h", "listen_port": 1}
+        self.assertFalse(wh.build_config(type("A", (), base)())["confirm_dangerous"])
+        for v in (True, "true", "yes", "1"):
+            self.assertTrue(wh.build_config(type("A", (), {**base, "confirm_dangerous": v})())["confirm_dangerous"], v)
 
     def test_build_config_needs_a_host_and_a_listen_port(self):
         with self.assertRaises(SystemExit):

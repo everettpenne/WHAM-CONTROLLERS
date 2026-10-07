@@ -75,7 +75,7 @@ the service is that client and everything else connects to the service) and lets
  |  handshake: SYS:ID? -> bind to a serial             |
  |  one command in flight, timeouts, !BOOT -> new epoch   |
  |  JSONL log: logs/<serial>/YYYY-MM-DD.jsonl             |
- |  write lease + dangerous-command list                  |
+ |  who is connected + dangerous-command list              |
  +------+-----------------------------------------------+
         |  TCP bridge or serial port
      controller (serial WB-0007)
@@ -87,8 +87,19 @@ refuses commands, which catches swapped cables), a name, the listen port, the lo
 - Identity is learned by handshake, never configured: a moved IP or a renamed serial port cannot silently talk to the wrong system.
 - Replies match commands by order (the protocol has no request IDs). Multi-line dumps (`LOG:DATA?`, `PFMIN:DATA?`) end according to a
   small per-command table until the firmware frames them itself (pending telemetry phases).
-- One write lease per instance: one writer, any number of observers. Dangerous commands (`ARM`, `SHOT:STARt`, `FIRE`, `BOOT`,
-  `FWUPdate:*`) need the lease and come from the same list `wham_console.py` already uses (one list, not two).
+- Several operators may be connected to one controller at once (decision 2026-10-07: no write lease for now, so a bench computer can run
+  tests and reflash in parallel with the operator's, with in-person guardrails for safety). To keep that safe in practice the service gives
+  everyone visibility: joins and leaves are announced with the client's name and address, `!hub clients` lists who is connected, how long,
+  how recently they sent something and what, and every client sees other clients' commands. A real lease (one writer, many observers) stays
+  possible later without changing the clients.
+- Dangerous commands (`host/dangerous_commands.py`): the commands that start or enable output (`FIRE`, `SOURce:RUN`, `SHOT:STARt`, an enable or
+  DAC output turned on, ...), `ARM`, switch a protection off or change how faults are read or limited, force or clear a fault, reflash or reset the
+  controller (`FWUPdate:BEGin/SWAP/ROLLback`, `BOOT`), or erase the identity. The list matches commands exactly as the firmware's parser does
+  (short/long forms), never flags queries or the safe direction (an output turned off), and counts a missing or garbled direction as dangerous.
+  The service logs each with its category, announces it to every OTHER client (`--- hub: DANGEROUS [output] bob@10.0.0.5: FIRE ---`) and counts it
+  per client. It does not block by default; with `confirm_dangerous` on, the command is held until its sender types `!hub confirm` (or dropped by
+  `!hub cancel`, or expired) -- off by default because scripts and `fw_update.py` cannot confirm. Tests check the list against both products'
+  real command tables and against `wham_console.py`'s older, narrower `_is_dangerous()`, of which it is a superset.
 - Several instances can publish to a shared message broker (for example MQTT, `wham/<serial>/...`) for one stream across all
   devices, without a process in the middle. Optional, later.
 - The protocol has no authentication, so a service port must be reachable only from the host itself or an access-restricted lab
@@ -114,9 +125,10 @@ the default listen address is all interfaces, as agreed for now (set `listen_hos
 - Log record: `{t, ts, dev, serial, name, epoch, session, kind, line[, client][, truncated]}`; kinds `cmd`, `reply` (OK/ERR lines),
   `event` (`!EVT`), `boot` (`!BOOT`), `data` (anything else), `hub`/`hub-cmd`/`hub-reply` (the service's own). `epoch` counts
   `!BOOT` banners, `session` counts connections. Lines are cut at 400 characters; `FWUPdate:DATA` keeps only its first 24.
+- Visibility and dangerous commands: see the bullets in section 5 above; `!hub status` shows `who=` and `confirm=`.
 - Reconnects forever (3 s); commands sent while the controller is away get `--- hub: the controller is not connected ---`.
 - Replies are NOT matched to commands (they are broadcast and logged as they arrive), so multi-line dumps pass through unchanged;
-  matching and the per-command dump table belong with the later steps (leases, a JSON API).
+  matching and the per-command dump table belong with the later steps (a JSON API, an optional lease).
 - Deployment on Linux: `host/deploy/wham-hub@.service` (a systemd template: `systemctl enable --now wham-hub@<name>` reads
   `host/config/<name>.yaml`); written but not yet run on Jack.
 

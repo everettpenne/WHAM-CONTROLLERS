@@ -17,7 +17,12 @@ What it does
     net_client.py, wham_console.py and fw_update.py work through it unchanged;
   * every line, in both directions, is appended to <log_dir>/<serial>/YYYY-MM-DD.jsonl with a host timestamp, the
     serial, the boot epoch (counts !BOOT lines) and the session (counts connections);
-  * a client line starting "!hub" is answered by the service itself:  !hub status | !hub identify.
+  * a client line starting "!hub" is answered by the service itself:  !hub status | !hub clients (who is connected, from
+    where, how long, what they last sent) | !hub identify | !hub confirm | !hub cancel;
+  * several operators may be connected to one controller at once (no lease yet): everyone sees who joins and leaves, and a
+    DANGEROUS command (dangerous_commands.py: starts output, arms, weakens a protection, forces/clears a fault, reflashes,
+    resets, erases the identity) is announced to all the other clients and logged with its category. With confirm_dangerous
+    on, such a command is held until its sender types !hub confirm (default off: scripts and fw_update would stall).
 
 Not here yet (later steps of the plan): write leases and the dangerous-command list, a JSON client API, serial-port
 upstreams, a shared message bus. There is NO authentication and the default listen address is all interfaces (as
@@ -40,11 +45,12 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import provision_board as pb  # parse_id, load_registry (same directory)
+import dangerous_commands as dc
 
 DEFAULTS = {
     "name": None, "host": None, "port": 5000, "listen_host": "0.0.0.0", "listen_port": None,
     "expect_serial": None, "log_dir": os.path.join(HERE, "logs"), "registry": os.path.join(HERE, "devices.csv"),
-    "reconnect_s": 3.0,
+    "reconnect_s": 3.0, "confirm_dangerous": False, "confirm_timeout_s": 15.0,
 }
 BOOT_RE = re.compile(r"^!BOOT WHAM-")
 MAX_LOG_LINE = 400          # characters kept per logged line (firmware-update data lines are far longer)
@@ -84,10 +90,33 @@ def build_config(args):
     cfg["port"] = int(cfg["port"])
     cfg["listen_port"] = int(cfg["listen_port"]) if cfg["listen_port"] is not None else None
     cfg["reconnect_s"] = float(cfg["reconnect_s"])
+    cfg["confirm_timeout_s"] = float(cfg["confirm_timeout_s"])
+    cfg["confirm_dangerous"] = str(cfg["confirm_dangerous"]).strip().lower() in ("1", "true", "yes", "on")
     if not cfg["host"] or cfg["listen_port"] is None:
         raise SystemExit("wham_hub: the controller's host and a listen_port are required (--config or --host/--listen-port)")
     cfg["name"] = cfg["name"] or cfg["host"]
     return cfg
+
+
+class ClientInfo:
+    """Who is connected: what the service knows about one client."""
+
+    def __init__(self, name, addr):
+        self.name, self.addr = name, addr
+        self.since = time.time()
+        self.last_t = None
+        self.last_cmd = ""
+        self.cmds = 0
+        self.danger = 0
+        self.held = None             # (text, time, Danger) waiting for !hub confirm
+
+    def who(self):
+        return f"{self.name}@{self.addr}"
+
+
+def hms(seconds):
+    s = int(seconds)
+    return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
 
 
 # ---- the log ---------------------------------------------------------------------------------------------------
@@ -125,7 +154,7 @@ class Hub:
         self.session = 0             # connections made
         self.up_writer = None
         self.connected = False
-        self.clients = {}            # writer -> name
+        self.clients = {}            # writer -> ClientInfo
         self.busy = False            # a handshake is in progress: client commands wait
         self.held = []               # (client name, text) waiting for the handshake
         self.waiting = None          # future of the internal query in flight
@@ -149,7 +178,7 @@ class Hub:
         sn = self.identity.get("serial")
         return None if not sn or sn == "UNSET" else sn
 
-    def record(self, kind, line, client=None):
+    def record(self, kind, line, client=None, danger=None):
         now = time.time()
         rec = {"t": round(now, 3),
                "ts": datetime.datetime.fromtimestamp(now).astimezone().isoformat(timespec="milliseconds"),
@@ -161,6 +190,8 @@ class Hub:
             rec["truncated"] = len(line) - limit
         if client:
             rec["client"] = client
+        if danger:
+            rec["danger"] = danger
         if not self.identity and not self.identity_settled:
             self.pending.append(rec)       # who this is is not known yet: written once the first handshake settles
         else:
@@ -192,11 +223,12 @@ class Hub:
     def status_line(self):
         i = self.identity
         return ("# hub name={n} target={h}:{p} connected={c} serial={s} identity={idn} verified={v} uid={u} flashuid={f} "
-                "product={pr} fw={fw} epoch={e} session={se} clients={cl} registered={r} expect={x} match={m} log={lg}").format(
+                "product={pr} fw={fw} epoch={e} session={se} clients={cl} who={who} confirm={cf} registered={r} expect={x} match={m} log={lg}").format(
             n=self.cfg["name"], h=self.cfg["host"], p=self.cfg["port"], c=int(self.connected),
             s=i.get("serial", "?"), idn=i.get("identity", "?"), v=i.get("verified", "?"), u=i.get("uid", "?"),
             f=i.get("flashuid", "?"), pr=i.get("product", "?"), fw=i.get("fw", "?"), e=self.epoch, se=self.session,
-            cl=len(self.clients), r={None: "?", True: 1, False: 0}[self.registered], x=self.cfg["expect_serial"] or "-",
+            cl=len(self.clients), who=",".join(c.who() for c in self.clients.values()) or "-",
+            cf=int(self.cfg["confirm_dangerous"]), r={None: "?", True: 1, False: 0}[self.registered], x=self.cfg["expect_serial"] or "-",
             m=0 if self.mismatch else 1, lg=self.log.path or "-")
 
     # -- talking to the controller
@@ -254,22 +286,47 @@ class Hub:
         if self.mismatch:
             print(f"[{self.cfg['name']}] IDENTITY MISMATCH: {self.mismatch}", flush=True)
 
-    async def forward(self, who, text):
+    async def forward(self, who, text, confirmed=False):
+        info = self.info_of(who)
         if not self.connected:
             self.record("refused", text, who)
             self.send_to(who, "--- hub: the controller is not connected ---")
-        elif self.mismatch:
+            return
+        if self.mismatch:
             self.record("refused", text, who)
             self.send_to(who, f"ERR hub identity mismatch: {self.mismatch}")
-        else:
-            self.record("cmd", text, who)
-            self.broadcast(f"[{who}] > {text}", exclude=self.writer_of(who))
-            self.up_writer.write(text.encode() + b"\r\n")
-            await self.up_writer.drain()
+            return
+        danger = dc.classify(text)
+        label = info.who() if info else who
+        if danger and self.cfg["confirm_dangerous"] and not confirmed:
+            if info:
+                info.held = (text, time.time(), danger)
+            self.record("danger-held", text, who, danger.category)
+            self.send_to(who, f"--- hub: DANGEROUS [{danger.category}] not sent yet: type !hub confirm within "
+                              f"{self.cfg['confirm_timeout_s']:g} s to send it, or !hub cancel ---")
+            self.broadcast(f"--- hub: DANGEROUS [{danger.category}] {label} is about to send: {text[:80]} ---",
+                           exclude=self.writer_of(who))
+            return
+        if info:
+            info.cmds += 1
+            info.last_cmd, info.last_t = text, time.time()
+            info.danger += 1 if danger else 0
+        self.record("cmd", text, who, danger.category if danger else None)
+        self.broadcast(f"[{who}] > {text}", exclude=self.writer_of(who))
+        if danger:
+            self.broadcast(f"--- hub: DANGEROUS [{danger.category}] {label}: {text[:80]} ---", exclude=self.writer_of(who))
+        self.up_writer.write(text.encode() + b"\r\n")
+        await self.up_writer.drain()
+
+    def info_of(self, name):
+        for c in self.clients.values():
+            if c.name == name:
+                return c
+        return None
 
     def writer_of(self, name):
-        for w, n in self.clients.items():
-            if n == name:
+        for w, c in self.clients.items():
+            if c.name == name:
                 return w
         return None
 
@@ -357,11 +414,13 @@ class Hub:
             if first.startswith(b"@name "):
                 name = first[6:].decode(errors="replace").strip() or name
                 first = b""
-            while name in self.clients.values():       # names identify clients in the echo: keep them unique
+            while self.info_of(name):                  # names identify clients in the echo: keep them unique
                 name += "'"
-            self.clients[writer] = name
-            self.record("hub", f"{name} joined")
-            self.broadcast(f"--- {name} joined ---", exclude=writer)
+            peer = writer.get_extra_info("peername")
+            addr = peer[0] if peer else "?"
+            self.clients[writer] = ClientInfo(name, addr)
+            self.record("hub", f"{name} joined from {addr}")
+            self.broadcast(f"--- {name} ({addr}) joined ---", exclude=writer)
             writer.write(f"--- connected as {name}; {len(self.clients)} client(s); controller "
                          f"{self.dev_key()} ---\r\n".encode())
             pending = first
@@ -380,8 +439,8 @@ class Hub:
         except (ConnectionError, OSError):
             pass
         finally:
-            self.clients.pop(writer, None)
-            self.record("hub", f"{name} left")
+            gone = self.clients.pop(writer, None)
+            self.record("hub", f"{name} left" + (f" ({gone.cmds} commands, {gone.danger} dangerous)" if gone else ""))
             self.broadcast(f"--- {name} left ---")
             writer.close()
 
@@ -390,6 +449,27 @@ class Hub:
         self.record("hub-cmd", text, name)
         if cmd == "status":
             writer.write((self.status_line() + "\r\n").encode())
+        elif cmd in ("clients", "who"):
+            now = time.time()
+            lines = [f"# hub clients: {len(self.clients)}"]
+            for c in self.clients.values():
+                lines.append(f"#   {c.name:<14} {c.addr:<15} connected {hms(now - c.since)}  "
+                             f"idle {hms(now - (c.last_t or c.since))}  cmds {c.cmds}  dangerous {c.danger}"
+                             + (f"  last: {c.last_cmd[:60]}" if c.last_cmd else ""))
+            writer.write(("\r\n".join(lines) + "\r\n").encode())
+        elif cmd in ("confirm", "cancel"):
+            info = self.info_of(name)
+            held, info.held = (info.held, None) if info else (None, None)
+            if held is None:
+                writer.write(b"# hub: nothing is waiting for confirmation\r\n")
+            elif cmd == "cancel":
+                self.record("danger-cancelled", held[0], name, held[2].category)
+                writer.write(b"# hub: cancelled, not sent\r\n")
+            elif time.time() - held[1] > self.cfg["confirm_timeout_s"]:
+                self.record("danger-expired", held[0], name, held[2].category)
+                writer.write(b"# hub: too late, not sent; send the command again\r\n")
+            else:
+                await self.forward(name, held[0], confirmed=True)
         elif cmd == "identify":
             if self.connected:
                 self.start_handshake()
@@ -397,7 +477,7 @@ class Hub:
             else:
                 writer.write(b"# hub: the controller is not connected\r\n")
         else:
-            writer.write(b"# hub: commands are  !hub status  |  !hub identify\r\n")
+            writer.write(b"# hub: commands are  !hub status  |  !hub clients  |  !hub identify  |  !hub confirm  |  !hub cancel\r\n")
 
     async def run(self):
         server = await asyncio.start_server(self.handle_client, self.cfg["listen_host"], self.cfg["listen_port"])
@@ -424,6 +504,8 @@ def main(argv=None):
     ap.add_argument("--listen-host", dest="listen_host"); ap.add_argument("--listen-port", dest="listen_port", type=int)
     ap.add_argument("--expect-serial", dest="expect_serial"); ap.add_argument("--log-dir", dest="log_dir")
     ap.add_argument("--registry"); ap.add_argument("--reconnect-s", dest="reconnect_s", type=float)
+    ap.add_argument("--confirm-dangerous", dest="confirm_dangerous", action="store_const", const=True, default=None,
+                    help="hold dangerous commands until the sender types !hub confirm")
     cfg = build_config(ap.parse_args(argv))
 
     async def runner():

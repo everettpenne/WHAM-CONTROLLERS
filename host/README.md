@@ -7,11 +7,14 @@ Python 3.8+, standard library only (PyYAML is used for configs if installed, but
   projects' `python/net_broker.py`, so `net_client.py`, `wham_console.py` and `fw_update.py` work through it unchanged),
   asks the board who it is (`SYS:ID?`) on connect and after every reboot, and logs every line with that identity to
   `host/logs/<serial>/YYYY-MM-DD.jsonl`. With `expect_serial` set it refuses to forward commands to a different board.
-  `!hub status` and `!hub identify` talk to the service itself. Design: `docs/device_identity_and_host_service.md`.
+  `!hub status`, `!hub clients`, `!hub identify`, `!hub confirm` and `!hub cancel` talk to the service itself. Several operators can be
+  connected to one controller; everyone sees who joins and what others send, and a dangerous command (`dangerous_commands.py`) is
+  announced to the other clients and logged with its category (optionally held until its sender confirms: `confirm_dangerous`). Design: `docs/device_identity_and_host_service.md`.
   There is no authentication and the default listen address is all interfaces: anyone who can reach the port can send
   commands. Unit tests: `python3 -m unittest discover -s host/tests`.
 - **`provision_board.py`** -- gives a controller its serial number (`SYS:SERial`), reads it back, and keeps the fleet registry
   `devices.csv`. `--check` compares a board with the registry without changing anything; `--list` prints the registry.
+- **`dangerous_commands.py`** -- the list of dangerous commands (what starts output, weakens a protection, reflashes, ...), matched the way the firmware matches.
 - `config/` -- one YAML file per controller (`example.yaml`); `deploy/wham-hub@.service` -- the systemd template unit.
 - Logs go to `host/logs/` and the registry to `host/devices.csv`, next to the scripts, unless the config says otherwise.
 
