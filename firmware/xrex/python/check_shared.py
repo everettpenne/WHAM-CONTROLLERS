@@ -76,15 +76,18 @@ def block(path: Path, start: str, end: str):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--sibling", help="the other repo (default: WHAM-HBRIDGE-PFMG474 or WHAM-XREX-PFMG474 next to this one)")
+    ap.add_argument("--sibling", help="the other repo (default: the other product next to this one)")
     args = ap.parse_args()
 
     here = Path(__file__).resolve().parent.parent
     if args.sibling:
         other = Path(args.sibling).resolve()
     else:
-        name = "WHAM-XREX-PFMG474" if here.name.startswith("WHAM-HBRIDGE") else "WHAM-HBRIDGE-PFMG474"
-        other = here.parent / name
+        # the standalone repos sit side by side (WHAM-XREX-PFMG474, WHAM-HBRIDGE-PFMG474); in the WHAM-CONTROLLERS
+        # repository they are firmware/xrex and firmware/hbridge
+        pair = {"WHAM-XREX-PFMG474": "WHAM-HBRIDGE-PFMG474", "WHAM-HBRIDGE-PFMG474": "WHAM-XREX-PFMG474",
+                "xrex": "hbridge", "hbridge": "xrex"}
+        other = here.parent / pair.get(here.name, "WHAM-HBRIDGE-PFMG474")
     if not other.is_dir():
         print(f"check_shared: sibling repo not found ({other}); nothing to compare")
         return 0

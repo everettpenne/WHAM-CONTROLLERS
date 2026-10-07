@@ -132,8 +132,13 @@ def plan():
 
     objs = [f'"./{d}/{n}.o"' for d in srcs for n in c_files(d)]
     p = os.path.join(DEBUG, "objects.list")
-    old = open(p).read().splitlines() if os.path.exists(p) else []
-    fixed = [l for l in old if any(l.startswith(f'"./{d}/') for d in FIXED_SUBDIRS)]
+    # The vendor/startup objects come from their own (tracked) subdir.mk, not
+    # from the old objects.list: that file is untracked, and if it ever loses
+    # them the link silently drops the startup code and HAL (a ~100-byte image).
+    fixed = []
+    for d in FIXED_SUBDIRS:
+        text = open(os.path.join(DEBUG, d, "subdir.mk")).read()
+        fixed += [f'"{o}"' for o in dict.fromkeys(re.findall(r"\./" + re.escape(d) + r"/[\w.]+\.o", text))]
     out[p] = "\n".join(objs + fixed) + "\n"
 
     p = os.path.join(ROOT, ".cproject")
