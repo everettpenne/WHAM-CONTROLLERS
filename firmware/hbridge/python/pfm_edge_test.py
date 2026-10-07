@@ -1,0 +1,97 @@
+"""pfm_edge_test.py -- raw both-edge capture on PFM_Input_1..4 (2026-09-30 duty
+re-exploration): fires constant-frequency shots over a frequency x duty sweep with
+the four inputs in BOTH-edge mode (PFMIN:EDGes) and saves the raw streams to JSON
+(a list of {hz, duty, per, cmp, ch:{input:{n, ov, lvl, deltas}}}).
+Decode: LEVEL is the pin level before the first captured edge, so the first delta
+after t0 is the time spent at the OPPOSITE level; states then alternate.
+
+    python3 python/pfm_edge_test.py edges.json --mode HVPS --freqs 20000 --duties 40,50,60
+    python3 python/pfm_edge_test.py lim.json --mode LIMITER --freqs 75000,100000,125000 \\
+        --duties 5,15,35,50,65,85,95 [--url socket://localhost:5002] [--steps 50]
+Each shot is a two-setpoint time series (SHOT:*) of about --steps periods.
+Needs an idle HBRIDGE board with U, V, W, UN fibred to PFM_Input_1..4.
+"""
+import argparse, os, sys, time, json
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pfm_shot_test as T
+
+ap = argparse.ArgumentParser()
+ap.add_argument("out")
+ap.add_argument("--url", default="socket://localhost:5002")
+ap.add_argument("--mode", required=True, choices=("LIMITER", "HVPS"))
+ap.add_argument("--freqs", required=True)
+ap.add_argument("--duties", required=True)
+ap.add_argument("--steps", type=int, default=50)
+a = ap.parse_args()
+freqs = [int(x) for x in a.freqs.split(",")]
+duties = [int(x) for x in a.duties.split(",")]
+
+link = T.Link(a.url, "edges")
+print(link.must("*IDN?")); assert link.must("STATE?") == "OK IDLE"
+link.must(f"CONFig:MODE {a.mode}")
+print(link.must("CONFig:LIMits?"))
+CH = [1, 2, 3, 4]
+LIMITS = {"LIMITER": (5, 95), "HVPS": (40, 60)}
+for c in CH: link.must(f"PFMIN:EDGes {c} BOTH")
+
+
+PAGE = 100
+
+
+def read_page(ch, start, count):
+    """One page of PFMIN:RAW?, its SUM= checked. The ethernet serial bridge loses
+    characters (at a fixed place in replies over ~1.7 kB, and randomly elsewhere),
+    so a page is used only if its numbers add up to the reply's SUM."""
+    for _ in range(25):
+        r = link.cmd(f"PFMIN:RAW? {ch} {start} {count}", timeout=6)
+        try:
+            t = r.split(); n = int(t[1]); ov = t[2]; lvl = int(t[3].split("=")[1])
+            want = int(t[4].split("=")[1]); vals = [int(x) for x in t[5:]]
+        except Exception:
+            continue
+        if len(vals) == min(count, n - start) and sum(vals) % 2**32 == want:
+            return n, ov, lvl, vals
+    sys.exit(f"[fail] PFMIN:RAW? {ch} {start} {count}: no reply with a matching SUM in 25 reads")
+
+
+def read_raw(ch):
+    n, ov, lvl, vals = read_page(ch, 0, PAGE)
+    while len(vals) < n:
+        vals += read_page(ch, len(vals), PAGE)[3]
+    return (n, ov, lvl, vals)
+
+
+def shot(hz, duty, steps):
+    """A constant-frequency, constant-duty shot of about `steps` periods, as a
+    two-setpoint time series; the per/cmp of the first entry (what the firmware's
+    generator clamps the request to) is what the analysis compares against."""
+    t_us = int(steps * 1e6 / hz) + 1
+    sp = T.make_setpoints(hz, hz, duty, duty, t_us / 1000)
+    per_all, cmp_all = T.generate_profile(sp, a.mode)
+    per, cmp_ = int(per_all[0]), int(cmp_all[0])
+    link.must("SHOT:BEGin")
+    for t, f_mhz, d_h in sp:
+        r = link.cmd(f"SHOT:STEP {t} {f_mhz // 1000}.{f_mhz % 1000:03d} {d_h // 100}.{d_h % 100:02d}")
+        assert r == "OK", (hz, duty, r)
+    link.must("SHOT:END")
+    link.must(f"PFMIN:CAPTURE {steps}")
+    link.must("ARM"); link.must("FIRE")
+    for _ in range(100):
+        time.sleep(0.1)
+        if link.cmd("STATE?") == "OK IDLE": break
+    else:
+        sys.exit("shot did not finish")
+    print(f"=== {hz} Hz duty {duty}%  per {per} cmp {cmp_} | counts {link.must('PFMIN:STATus?')}", flush=True)
+    out = {}
+    for ch in CH:
+        n, ov, lvl, d = read_raw(ch)
+        out[ch] = {"n": n, "ov": ov, "lvl": lvl, "deltas": d}
+        print(f"  input {ch}: edges {n} {ov} level {lvl} first {d[:6]}", flush=True)
+    return {"hz": hz, "duty": duty, "per": per, "cmp": cmp_, "ch": out}
+
+
+res = []
+for hz in freqs:
+    for duty in duties:
+        res.append(shot(hz, duty, a.steps))
+        json.dump(res, open(a.out, "w"))

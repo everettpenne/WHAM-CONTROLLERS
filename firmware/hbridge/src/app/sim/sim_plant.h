@@ -1,0 +1,51 @@
+/*
+ * sim_plant.h / sim_plant.c -- a simulated supply for testing the closed loop with nothing wired.
+ * Added 2026-10-02. Pure logic, host-tested through the closed-loop tests and on the board.
+ *
+ * Takes the {per, cmp} the controller commands and returns the output voltage a supply would
+ * produce, a first-order lag behind the steady-state value:
+ *   LIMITER  V = gain * vscale * (2D - 1)                   D = cmp / per
+ *   HVPS     V = gain * vpeak / (1 + ((f - resonance) / width)^2)     f = clock / (per + 1)
+ * The model is separate from the controller's own feedforward model on purpose: set them
+ * differently to test the loop against a plant it does not know exactly. `gain` is the
+ * disturbance knob (a supply that loses or gains output mid-shot).
+ */
+#ifndef SIM_PLANT_H
+#define SIM_PLANT_H
+
+#include <stdint.h>
+
+enum { SIM_SHAPE_LINEAR = 0, SIM_SHAPE_LORENTZ = 1 };
+
+typedef struct
+{
+    float tau;          /* seconds */
+    float gain;         /* multiplies the steady-state voltage */
+    float resonance;    /* HVPS, Hz */
+    float width;        /* HVPS, Hz: the curve is half its peak this far from resonance */
+    float vpeak;        /* HVPS, volts at resonance */
+    float vscale;       /* LIMITER, volts at |2D - 1| = 1 */
+    uint8_t shape;      /* HVPS: SIM_SHAPE_LINEAR (default) or SIM_SHAPE_LORENTZ */
+    float fMinHz;       /* HVPS linear: the band's edges, where the output reaches zero (set from the HVPS mode's limits) */
+    float fMaxHz;
+    float v;            /* the output voltage now */
+} sim_plant_t;
+
+void SimPlant_Init(sim_plant_t *p);
+void SimPlant_Reset(sim_plant_t *p, float volts);
+
+/* One step of `dt` seconds with the step {per, cmp} applied; `limiter` selects the model.
+   Returns the output voltage. */
+float SimPlant_Step(sim_plant_t *p, uint8_t limiter, uint16_t per, uint16_t cmp, float dt);
+
+/* The same lag, fed a steady-state voltage directly (the loopback test feeds it the MEASURED duty). */
+float SimPlant_StepSteady(sim_plant_t *p, float steadyVolts, float dt);
+
+/* The HVPS's steady-state voltage at a carrier frequency in Hz. LINEAR: gain x vpeak x (1 - |f - resonance| / distance to the
+   band's edge on that side), 0 beyond the edges -- power, never negative. LORENTZ: gain x vpeak / (1 + ((f - resonance) / width)^2). */
+float SimPlant_HvpsSteady(const sim_plant_t *p, float hz);
+
+/* The Limiter's steady-state voltage for a duty 0..1: gain x vscale x (2D - 1). */
+float SimPlant_LimiterSteady(const sim_plant_t *p, float duty);
+
+#endif /* SIM_PLANT_H */
