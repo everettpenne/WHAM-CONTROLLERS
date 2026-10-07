@@ -1,0 +1,21 @@
+# systemd template unit: one instance per controller.
+#   sudo cp host/deploy/wham-hub@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now wham-hub@magnet2      # reads <install dir>/host/config/magnet2.yaml
+#   journalctl -u wham-hub@magnet2 -f                 # service messages; the full record is host/logs/<serial>/
+# Adjust User, the install directory and python3 to the server. Written for Linux/systemd; not yet run on Jack.
+[Unit]
+Description=WHAM controller service (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wham
+WorkingDirectory=/opt/WHAM-CONTROLLERS/host
+ExecStart=/usr/bin/python3 /opt/WHAM-CONTROLLERS/host/wham_hub.py --config /opt/WHAM-CONTROLLERS/host/config/%i.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

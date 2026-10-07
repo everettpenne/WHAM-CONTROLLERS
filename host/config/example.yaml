@@ -1,0 +1,10 @@
+# One file per controller. Copy to <name>.yaml (the service unit wham-hub@<name> reads host/config/<name>.yaml).
+name: magnet2              # shown in logs and to clients; also the service instance name
+host: 192.168.130.138      # the controller's serial-over-TCP bridge (fixed IP)
+port: 5000                 # the bridge's TCP port
+listen_host: 0.0.0.0       # where clients connect to this service (all interfaces: NO authentication; 127.0.0.1 to restrict)
+listen_port: 5101          # one distinct port per controller
+expect_serial: WB-0007-4   # optional: refuse commands if the board on the other end is a different one
+# log_dir: /var/log/wham   # default: host/logs next to this script
+# registry: /path/devices.csv   # default: host/devices.csv next to this script
+# reconnect_s: 3

@@ -98,12 +98,34 @@ refuses commands, which catches swapped cables), a name, the listen port, the lo
 - On the server: with Linux, a systemd template unit `wham-hub@<name>.service` reading `/etc/wham/<name>.yaml`; containers (one per
   controller) are equivalent.
 
+### 5.1 Service v1 as built
+
+`host/wham_hub.py` (stdlib only; `host/README.md`). Per instance: the controller's bridge address (fixed IP, from the lab) and a
+listen port; defaults written next to the script (`host/logs/<serial>/YYYY-MM-DD.jsonl`, `host/devices.csv`); no authentication and
+the default listen address is all interfaces, as agreed for now (set `listen_host: 127.0.0.1` to restrict later).
+
+- Clients use the same raw protocol as `net_broker.py` (optional first line `@name x`, one command per line, controller output broadcast,
+  other clients' commands echoed as `[name] > cmd`), so the existing tools work through it; `!hub status` / `!hub identify` ask the
+  service itself. A firmware update, with its reboot, runs through it (checked on the simulator board).
+- Identity: `*IDN?` and `SYS:ID?` at connect and 0.6 s after each `!BOOT WHAM-...` line (a stray byte in front of the banner is
+  tolerated); the log key is the serial, or `UNSET-<last 8 of the MCU ID>` for a board with none. Records written before the first
+  handshake settles are held and written under the identity found. `expect_serial` mismatch, or the registry holding that serial
+  for different hardware, makes the service answer `ERR hub identity mismatch: ...` instead of forwarding.
+- Log record: `{t, ts, dev, serial, name, epoch, session, kind, line[, client][, truncated]}`; kinds `cmd`, `reply` (OK/ERR lines),
+  `event` (`!EVT`), `boot` (`!BOOT`), `data` (anything else), `hub`/`hub-cmd`/`hub-reply` (the service's own). `epoch` counts
+  `!BOOT` banners, `session` counts connections. Lines are cut at 400 characters; `FWUPdate:DATA` keeps only its first 24.
+- Reconnects forever (3 s); commands sent while the controller is away get `--- hub: the controller is not connected ---`.
+- Replies are NOT matched to commands (they are broadcast and logged as they arrive), so multi-line dumps pass through unchanged;
+  matching and the per-command dump table belong with the later steps (leases, a JSON API).
+- Deployment on Linux: `host/deploy/wham-hub@.service` (a systemd template: `systemctl enable --now wham-hub@<name>` reads
+  `host/config/<name>.yaml`); written but not yet run on Jack.
+
 ## 6. Build order
 
 1. Read-only identity, no flash writes: UID and flash-unique-ID readers, `SYS:ID?`, identity in `*IDN?` and `!BOOT`. (Done 2026-10-07.)
 2. (Done 2026-10-07.) Persistent serial: identity region, `SYS:SERial`/`LABel`/`ID:CLEar`, host tests (CRC, two-copy recovery, bind check, serial
    validation), `provision_board.py` and a `devices.csv` registry (serial, UIDs, product, date, firmware).
-3. Service v1 (`host/`): one controller per instance, handshake binding, JSONL log, raw passthrough so today's tools keep working.
+3. Service v1 (`host/wham_hub.py`): one controller per instance, handshake binding, JSONL log, raw passthrough so today's tools keep working. (Done 2026-10-07; see section 5.1.)
 4. Leases, permissions, firmware update through the service.
 5. Telemetry schema: self-delimited dumps, a time-series store (the pending phases of `telemetry.md`), the optional broker.
 
