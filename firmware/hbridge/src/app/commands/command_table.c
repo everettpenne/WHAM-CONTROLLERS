@@ -193,6 +193,11 @@ static const scpi_command_t command_table[] = {
        see commands.c's own header comment on cmd_gds_query(). */
     { "GDS?",                cmd_gds_query    },
     { "SYS:ID?",             cmd_sys_id_query },
+    { "SYS:SERial",          cmd_sys_serial         },
+    { "SYS:SERial?",         cmd_sys_serial_query   },
+    { "SYS:LABel",           cmd_sys_label          },
+    { "SYS:LABel?",          cmd_sys_label_query    },
+    { "SYS:ID:CLEar",        cmd_sys_id_clear       },
     { "DIAGnostic:LEDs?",    cmd_diag_leds_query },
 
     /* QUADSPI connectivity test (W25Q128JVS) -- excluded entirely when

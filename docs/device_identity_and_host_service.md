@@ -29,27 +29,30 @@ written for different silicon than the board now has (a cloned or swapped flash 
 serial to system. Replacing a board then means editing one file. The board may carry an optional text `label` as an offline
 convenience, but the host file is the authority.
 
-UID address `0x1FFF7590` (RM0440) and the W25Q128JV unique-ID command `0x4B` (four dummy bytes, then 64 bits) are written from
-memory. The UID read and `SYS:ID?` work on hardware; the flash chip's ID read returned `00000000E4653C34` on the first board (top four bytes
-zero), which is to be compared with a second chip before it is relied on as a 64-bit key.
+Hardware-ID notes (found on hardware, 2026-10-07): the MCU UID is read with `HAL_GetUIDw0/1/2`. The W25Q128's unique-ID command (`0x4B`) sends four
+dummy bytes (32 clocks) before the 64-bit ID, which the chip then repeats; the QUADSPI's dummy-cycle field holds only 0..31, so the firmware reads
+12 bytes with no dummy cycles and drops the first four. (A first version used 32 dummy cycles, which wrapped to 0: the first four "ID" bytes changed
+from boot to boot.) The simulator board's chip reads `E4653C34CB172E22`.
 
 ## 3. Storage
 
 - A reserved identity region at the top of the 16 MiB chip: two 4 KiB sectors, `0xFFD000` and `0xFFE000` (the last sector, `0xFFF000`, is `NVSTORE_SCRATCH_ADDR`, the `QSPI:SELFtest` scratch sector that the bench test erases freely), alternating so that a power
   cut during an update loses nothing. Recorded in each product's flash map (`docs/saved_profiles_shared.md`); today XREX uses
   0-64 KiB and HBRIDGE 64-320 KiB.
-- Record: magic `WID1`, version, serial (at most 16 characters, `A-Z 0-9 -`, with a check character), label (at most 32),
-  the hardware IDs the serial was written against, CRC-32.
-- Independent of everything else: profile `*CLEar`, firmware updates and the other product's firmware never touch it. `nvstore`
-  gets a range guard so no other caller can erase or program those sectors.
+- Record (88 bytes): magic `WID1`, version, sequence number (the newer copy wins), serial (3-16 characters, `A-Z 0-9 -`), label (1-32 characters of
+  `A-Z a-z 0-9 . _ -`, no spaces so `SYS:ID?` stays parseable), the MCU and flash unique IDs the serial was written against, CRC-32.
+  The firmware checks only the serial's format; the `WB-NNNN-C` scheme with its Luhn check digit is the provisioning tool's.
+- Independent of everything else: profile `*CLEar`, firmware updates and the other product's firmware never touch it. `nvstore` refuses
+  any erase or program of those sectors (`NVSTORE_ERR_RESERVED`) except while the identity module has opened it for its own write, and
+  `profile_store.h` refuses to build if the profile slots reach them.
 - Shared code, byte-identical in both products (`check_shared.py`), like `nvstore` and `profile_store`.
-- Provisioning is write-once by default: `SYS:SERial <sn>` is refused when a serial exists or the state is not IDLE; changing it
-  takes `SYS:ID:CLEar` first. Burning the serial into the chip's one-time-programmable security registers is possible later and is
+- Provisioning is write-once by default: `SYS:SERial <sn>` is refused when a serial exists (`ERR 19`) or the state is not IDLE (`ERR 13`); changing it
+  takes `SYS:ID:CLEar CONFIRM` first. `host/provision_board.py` is the way to do it (section 6, step 2). Burning the serial into the chip's one-time-programmable security registers is possible later and is
   deliberately not done now (irreversible).
 
 ## 4. What the board says
 
-- `SYS:ID?` -> `OK serial=WB-0007 uid=<24 hex> flashuid=<16 hex> product=HBRIDGE hw=REVA fw=v0.9 commit=<hash> label=<text> verified=1`
+- `SYS:ID?` -> `OK serial=WB-0007 uid=<24 hex> flashuid=<16 hex> product=HBRIDGE hw=REVA fw=v0.9 commit=<hash> label=<text|-> verified=<0|1> identity=<unset|ok|corrupt|nochip>`
   (`serial=UNSET` and `verified=0` until provisioned).
 - `*IDN?` and the `!BOOT` banner gain the identity at the end of the line; existing parsers read the fields they know.
 - The board does NOT prefix every line with its identity: the host knows which connection a line came from and tags it. This keeps
@@ -98,7 +101,7 @@ refuses commands, which catches swapped cables), a name, the listen port, the lo
 ## 6. Build order
 
 1. Read-only identity, no flash writes: UID and flash-unique-ID readers, `SYS:ID?`, identity in `*IDN?` and `!BOOT`. (Done 2026-10-07.)
-2. Persistent serial: identity region, `SYS:SERial`/`LABel`/`ID:CLEar`, host tests (CRC, two-copy recovery, bind check, serial
+2. (Done 2026-10-07.) Persistent serial: identity region, `SYS:SERial`/`LABel`/`ID:CLEar`, host tests (CRC, two-copy recovery, bind check, serial
    validation), `provision_board.py` and a `devices.csv` registry (serial, UIDs, product, date, firmware).
 3. Service v1 (`host/`): one controller per instance, handshake binding, JSONL log, raw passthrough so today's tools keep working.
 4. Leases, permissions, firmware update through the service.

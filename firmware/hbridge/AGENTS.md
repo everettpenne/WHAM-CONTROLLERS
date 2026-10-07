@@ -553,9 +553,11 @@ cosmetic: keep every call non-blocking, and keep the feature removable (`LED_IND
 
 `src/app/settings/device_identity.{h,c}`, `src/drivers/device_id.h` (+ `src/bsp/stm32g4/device_id.c`) and `NvStore_ReadUniqueId()` are shared
 byte-identical with the sibling product (`check_shared.py`). They report which physical board this is: the MCU's 96-bit unique ID and the
-flash chip's 64-bit unique ID (`SYS:ID?`, and `SN=`/`UID=` at the end of `*IDN?` and the `!BOOT` banner). Identity is reported, never enforced:
-nothing in the controller may depend on it. Plan, the persistent serial (step 2) and the host service: `docs/device_identity_and_host_service.md`
-at the top of the repository. Do not use the chip's last sector for anything (`NVSTORE_SCRATCH_ADDR`).
+flash chip's 64-bit unique ID, plus the provisioned serial/label stored in two reserved flash sectors (`NVSTORE_IDENTITY_ADDR`, magic `WID1`;
+`nvstore` refuses every other write there): `SYS:ID?`, `SYS:SERial`, `SYS:LABel`, `SYS:ID:CLEar CONFIRM`, and `SN=`/`UID=` at the end of `*IDN?` and
+the `!BOOT` banner. Identity is reported, never enforced: nothing in the controller may depend on it. Plan and the host service:
+`docs/device_identity_and_host_service.md` at the top of the repository; provisioning: `host/provision_board.py`. Do not use the last three sectors
+of the chip for anything else. The QUADSPI dummy-cycle field is 5 bits (0..31): a longer dummy phase must be read as data and dropped.
 
 ## Source layout (standing rule -- keep it this way)
 

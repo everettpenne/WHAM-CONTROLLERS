@@ -69,6 +69,7 @@ one; a product simply never sends a code it has no use for. `src/middleware/scpi
 | 16 | (retired) | an old XREX external-trigger coupling; do not reuse | -- | -- |
 | 17 | `ERR_FWUPDATE` | `FWUPdate:*` flash/CRC/image/option-byte failure | yes | yes |
 | 18 | `ERR_PROFILE` | saved profiles: empty or corrupt slot, or the flash failed | yes | yes |
+| 19 | `ERR_IDENTITY` | `SYS:SERial`/`SYS:LABel`/`SYS:ID:CLEar` refused: a serial is already provisioned, none is yet, or the stored record is unusable | yes | yes |
 
 ## Mnemonic matching (SCPI-style)
 

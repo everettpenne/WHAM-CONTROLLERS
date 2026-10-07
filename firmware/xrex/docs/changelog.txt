@@ -1,6 +1,29 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-10-07  —  Device identity, step 2: the persistent serial (SYS:SERial, SYS:LABel, SYS:ID:CLEar), host provisioning tool; flash unique-ID read fixed
+-----------------------------------------------------------------------
+  Request: continue the device-identity plan (docs/device_identity_and_host_service.md, repository top level).
+  Firmware (src/app/settings/device_identity.c, shared byte-identical, check_shared.py): an 88-byte record (magic WID1, sequence, serial, label, the MCU UID
+        and flash UID it was written for, CRC-32) in two alternating copies in two reserved sectors, 0xFFD000 and 0xFFE000 (NVSTORE_IDENTITY_ADDR; the last sector
+        stays the QSPI:SELFtest scratch). A write erases the copy that is NOT the newest valid one, so a power cut leaves the previous record (host test: a cut at every one
+        of the ~90 flash operations of an update, and of a first write). `verified` = written for THIS MCU and THIS flash chip; identity = unset|ok|corrupt|nochip.
+        nvstore refuses every erase/program that touches those sectors (NVSTORE_ERR_RESERVED) unless NvStore_IdentityWriteEnable(1), which only the identity
+        module sets around its own writes; profile_store.h now refuses to build if the profile slots reach the identity sectors.
+        Commands (identical in both products): SYS:SERial <sn> (once; ERR 19 if one exists), SYS:SERial?, SYS:LABel <token|->, SYS:LABel?, SYS:ID:CLEar CONFIRM; writes only
+        while IDLE (ERR 13); new shared error code 19 ERR_IDENTITY. SYS:ID? gains identity=; *IDN? and !BOOT now carry the real serial. tests/test_device_identity.c: 331 checks.
+  Host: host/provision_board.py (reads *IDN?/SYS:ID?, picks the registry's serial for this hardware or the next WB-NNNN-C with a Luhn check digit, asks, writes, reads back
+        and requires verified=1, appends to host/devices.csv; --check, --list, --serial, --label, --no-registry; never clears a serial), host/tests (6 checks).
+  BUG FOUND ON HARDWARE (step 1's flash unique ID): the W25Q128 unique-ID command (0x4B) needs 32 dummy clocks, but the QUADSPI dummy-cycle field holds only 0..31, so my 32
+        wrapped to 0 and the first four "ID" bytes were the chip's dummy bytes: they read 00000000 on one boot and FFFFFFFF on the next (the step 1 entry's
+        "00000000E4653C34" was therefore wrong). Found when the ID changed between boots and confirmed with a temporary DIAGnostic that read 16 bytes with dummy counts
+        0..64: the stream repeats every 8 bytes, E4 65 3C 34 CB 17 2E 22, and 32/40/48/64 behave exactly like 0/8/16/0. Fix: no dummy cycles, read 12 bytes, drop the first 4.
+        The real 64-bit ID of the simulator board's chip is E4653C34CB172E22 and is stable. (A serial provisioned on the broken ID read verified=0 after the fix --
+        the binding check doing its job.)
+  Verified on the simulator board (HBRIDGE image): all error paths; provisioning through the tool (next serial WB-0001-8 with a scratch registry; re-provisioning after a clear
+        reused the registry's serial); the serial, label, both IDs and verified=1 intact across two firmware-update reboots (both flash banks); QSPI:SELFtest, *SAV/*RCL and the profile catalog
+        unaffected. The board was left UNSET (SYS:ID:CLEar CONFIRM) and the scratch registry was not kept: no real serial has been assigned. XREX built, unit-tested, NOT flashed.
+
 2026-10-07  —  Device identity, step 1: which physical board is this (read-only hardware ID)
 -----------------------------------------------------------------------
   Request: a unique, persistent identifier per board so a host service can tell which board it is talking to (several copies will be
@@ -12,8 +35,7 @@ WHAM-XREX-PFMG474 Firmware Changelog
   all byte-identical in both products (check_shared.py), tests/test_device_identity.c (17 checks, both products).
   *IDN? and the !BOOT banner end with "SN=UNSET UID=<24 hex>"; new SYS:ID? -> "OK serial=UNSET uid=... flashuid=... product=... hw=... fw=... commit=... label=- verified=0".
   Verified on the simulator board (HBRIDGE image, bank swap by FWUPdate): banner, *IDN? and SYS:ID? as above, stable over repeated queries, saved profiles
-  intact. NOT yet checked: the flash unique ID against a second chip -- this one reads 00000000E4653C34 (top four bytes zero; the low half is
-  non-trivial and stable, but the zeros are unexplained, so compare with the controller board before relying on it as a 64-bit key). XREX built
+  intact. The flash unique ID read 00000000E4653C34 here -- WRONG, see the step 2 entry (the first four bytes were the chip's dummy bytes). XREX built
   (controller and simulator images) and unit-tested but not flashed.
   Design notes recorded in the doc: the identity region (step 2) must not use the chip's last sector (the QSPI:SELFtest scratch sector, NVSTORE_SCRATCH_ADDR);
   commands are under SYS: (XREX already has SYS:TIME?/TELEM?/EVENT/EVLOG?), not SYSTem:.

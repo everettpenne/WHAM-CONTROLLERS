@@ -55,6 +55,14 @@
    settings live at the low addresses). */
 #define NVSTORE_SCRATCH_ADDR    (NVSTORE_CAPACITY_BYTES - NVSTORE_SECTOR_BYTES)
 
+/* The two sectors below it hold the board's identity record (device_identity.h): two
+   alternating copies. Erasing or programming them is refused (NVSTORE_ERR_RESERVED) unless
+   NvStore_IdentityWriteEnable(1) is in force, which only device_identity.c does, around its own
+   writes. Reads are never restricted. Profile storage lives at the low addresses and never
+   comes near. */
+#define NVSTORE_IDENTITY_ADDR   (NVSTORE_CAPACITY_BYTES - (3UL * NVSTORE_SECTOR_BYTES))
+#define NVSTORE_IDENTITY_BYTES  (2UL * NVSTORE_SECTOR_BYTES)
+
 typedef enum
 {
     NVSTORE_OK = 0,
@@ -63,7 +71,8 @@ typedef enum
     NVSTORE_ERR_TIMEOUT,     /* chip stayed busy longer than its datasheet maximum */
     NVSTORE_ERR_IO,          /* QUADSPI transfer failed */
     NVSTORE_ERR_PROTECTED,   /* block-protect bits set in the chip's status registers */
-    NVSTORE_ERR_VERIFY       /* read-back after an erase/program did not match */
+    NVSTORE_ERR_VERIFY,      /* read-back after an erase/program did not match */
+    NVSTORE_ERR_RESERVED     /* the target overlaps the identity sectors and NvStore_IdentityWriteEnable is off */
 } nvstore_status_t;
 
 /* Short fixed text for a status ("ok", "not ready", ...), for replies
@@ -96,5 +105,9 @@ nvstore_status_t NvStore_ReadStatusRegs(uint8_t sr[3]);
    device_identity.h. A chip that is absent reads as all zeros or all ones; the
    caller judges plausibility. */
 nvstore_status_t NvStore_ReadUniqueId(uint8_t id[8]);
+
+/* Opens (1) or closes (0) the identity sectors to NvStore_EraseSector/NvStore_Program. Closed at
+   start-up. Main loop only. */
+void NvStore_IdentityWriteEnable(uint8_t enable);
 
 #endif /* NVSTORE_H */

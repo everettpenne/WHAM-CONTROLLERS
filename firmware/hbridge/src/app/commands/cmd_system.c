@@ -309,3 +309,124 @@ void cmd_sys_id_query(uart_instance_t *inst, char *args)
     snprintf(buf, sizeof(buf), "OK %s\r\n", body);
     uart_send(inst, buf);
 }
+
+
+/* --------------------------------------------------------------------------
+ * SYS:SERial <sn> / SYS:SERial? / SYS:LABel <text> / SYS:LABel? / SYS:ID:CLEar CONFIRM
+ *
+ * Provisioning of the board's identity (device_identity.h; design in
+ * docs/device_identity_and_host_service.md at the top of the repository). The serial is written ONCE
+ * into the identity region of the external flash and bound to this MCU and this flash chip; it is
+ * refused while one exists (ERR 19) -- clear it first. The label is an optional token (A-Z a-z 0-9 . _ -,
+ * up to 32 characters, "-" clears it) and needs a serial. Changes write flash, which stalls the
+ * command link for tens of milliseconds, so they are accepted only while IDLE (ERR 13), like *SAV.
+ * Identical in both products.
+ * -------------------------------------------------------------------------- */
+static uint8_t IdentityWritable(uart_instance_t *inst)
+{
+    if (SM_GetState() != SM_STATE_IDLE)
+    {
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "identity can be changed only while IDLE");
+        return 0U;
+    }
+    return 1U;
+}
+
+static void IdentityReply(uart_instance_t *inst, devid_result_t r)
+{
+    switch (r)
+    {
+        case DEVID_OK:
+            Scpi_ReplyOk(inst);
+            break;
+        case DEVID_ERR_BAD_SERIAL:
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, "serial must be 3-16 characters of A-Z 0-9 -");
+            break;
+        case DEVID_ERR_BAD_LABEL:
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, "label must be 1-32 characters of A-Z a-z 0-9 . _ - (- clears it)");
+            break;
+        case DEVID_ERR_ALREADY_SET:
+            Scpi_SendErr(inst, ERR_IDENTITY, "a serial is already provisioned (SYS:ID:CLEar CONFIRM first)");
+            break;
+        case DEVID_ERR_NOT_SET:
+            Scpi_SendErr(inst, ERR_IDENTITY, "no serial is provisioned (SYS:SERial first)");
+            break;
+        case DEVID_ERR_NO_HWID:
+            Scpi_SendErr(inst, ERR_QSPI_FAILED, "the flash chip's unique ID could not be read");
+            break;
+        default:
+            Scpi_SendErr(inst, ERR_QSPI_FAILED, "external flash write failed");
+            break;
+    }
+}
+
+/* One whole-token argument and nothing after it; NULL (reply sent) otherwise. */
+static char *IdentityArg(uart_instance_t *inst, char *args, const char *usage)
+{
+    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+
+    if ((tok == NULL) || (strtok(NULL, " \r\n") != NULL))
+    {
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, usage);
+        return NULL;
+    }
+    return tok;
+}
+
+void cmd_sys_serial(uart_instance_t *inst, char *args)
+{
+    char *tok = IdentityArg(inst, args, "SYS:SERial needs one argument: the serial number");
+
+    if ((tok != NULL) && (IdentityWritable(inst) != 0U))
+    {
+        IdentityReply(inst, DeviceIdentity_SetSerial(tok));
+    }
+}
+
+void cmd_sys_serial_query(uart_instance_t *inst, char *args)
+{
+    char buf[40];
+    (void)args;
+
+    snprintf(buf, sizeof(buf), "OK %s\r\n", DeviceIdentity_Serial());
+    uart_send(inst, buf);
+}
+
+void cmd_sys_label(uart_instance_t *inst, char *args)
+{
+    char *tok = IdentityArg(inst, args, "SYS:LABel needs one argument: the label (- clears it)");
+
+    if ((tok != NULL) && (IdentityWritable(inst) != 0U))
+    {
+        IdentityReply(inst, DeviceIdentity_SetLabel(tok));
+    }
+}
+
+void cmd_sys_label_query(uart_instance_t *inst, char *args)
+{
+    char buf[48];
+    const char *label = DeviceIdentity_Label();
+    (void)args;
+
+    snprintf(buf, sizeof(buf), "OK %s\r\n", (label[0] != '\0') ? label : "-");
+    uart_send(inst, buf);
+}
+
+void cmd_sys_id_clear(uart_instance_t *inst, char *args)
+{
+    char *tok = IdentityArg(inst, args, "SYS:ID:CLEar needs the word CONFIRM");
+
+    if (tok == NULL)
+    {
+        return;
+    }
+    if (strcmp(tok, "CONFIRM") != 0)
+    {
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "SYS:ID:CLEar needs the word CONFIRM");
+        return;
+    }
+    if (IdentityWritable(inst) != 0U)
+    {
+        IdentityReply(inst, DeviceIdentity_Clear());
+    }
+}

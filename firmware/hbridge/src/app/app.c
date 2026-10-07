@@ -62,6 +62,9 @@ void App_Init(void)
        pattern already used for BootJump_CheckAndEnter(). */
     QspiTest_Init();
 
+    /* The board identity record in the external flash (device_identity.h): needs the QUADSPI above. */
+    DeviceIdentity_Init();
+
     /* The analog reference first: this board's VREF+ pin is only a capacitor, the
        internal buffer must drive it (vref.h). The DAC and ADC below are scaled to it. */
     (void)Vref_Init();

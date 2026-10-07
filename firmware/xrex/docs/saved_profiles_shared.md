@@ -10,7 +10,8 @@ they divide the chip and which code is common. The identical file is in both rep
 |---|---|---|
 | 0 .. 64 KiB (`0x000000` - `0x00FFFF`) | WHAM-XREX-PFMG474 | 8 slots x 2 copies x 4 KiB (`PROFILE_COPY_SECTORS` 1) |
 | 64 KiB .. 320 KiB (`0x010000` - `0x04FFFF`) | WHAM-HBRIDGE-PFMG474 | 8 slots x 2 copies x 16 KiB (`PROFILE_COPY_SECTORS` 4) |
-| 320 KiB .. 16 MiB - 4 KiB | unused | room for another product or a larger layout |
+| 320 KiB .. 16 MiB - 12 KiB | unused | room for another product or a larger layout |
+| `0xFFD000` - `0xFFEFFF` (two sectors) | board identity (`device_identity.c`, magic `WID1`) | two alternating copies of an 88-byte record: the serial, an optional label and the hardware IDs it was written for. Shared by both products; `nvstore` refuses every write to it except the identity module's |
 | last 4 KiB (`0xFFF000`) | `QSPI:SELFtest` scratch | erased and rewritten freely; never store data here |
 
 | Product | Magic (first 4 bytes of a copy) | Region base |
@@ -24,7 +25,7 @@ overlap, so a board that has run both keeps both products' profiles and neither 
 To add a product: pick a magic, take the next free region (the table above), set the four profile constants in
 its `ctrlr_config.h` (`PROFILE_STORE_BASE`, `PROFILE_SLOT_COUNT`, `PROFILE_COPY_SECTORS`,
 `PROFILE_MAGIC_BYTES`), and add it here. `profile_store.h` refuses to build if the slots would run into the
-scratch sector.
+identity sectors or the scratch sector.
 
 ## Shared code
 

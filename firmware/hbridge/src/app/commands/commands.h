@@ -131,6 +131,11 @@ void cmd_config_channels(uart_instance_t *inst, char *args); /* CONFig:CHANnels?
  * format. */
 void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW ... 12=HIGH|LOW */
 void cmd_sys_id_query(uart_instance_t *inst, char *args); /* SYS:ID? -- OK serial= uid= flashuid= product= hw= fw= commit= label= verified= */
+void cmd_sys_serial(uart_instance_t *inst, char *args);        /* SYS:SERial <sn> -- provision the serial (once) */
+void cmd_sys_serial_query(uart_instance_t *inst, char *args);  /* SYS:SERial? -- OK <serial|UNSET> */
+void cmd_sys_label(uart_instance_t *inst, char *args);         /* SYS:LABel <token|-> */
+void cmd_sys_label_query(uart_instance_t *inst, char *args);   /* SYS:LABel? -- OK <label|-> */
+void cmd_sys_id_clear(uart_instance_t *inst, char *args);      /* SYS:ID:CLEar CONFIRM -- erase the stored identity */
 void cmd_diag_leds_query(uart_instance_t *inst, char *args); /* DIAGnostic:LEDs? -- OK TX=0|1 RX= IDLE= ARMED= FIRING= FAULT= */
 
 /* QUADSPI connectivity test (PE12-PE15/PB10-PB11, W25Q128JVS) -- see

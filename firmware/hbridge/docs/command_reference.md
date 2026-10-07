@@ -100,18 +100,49 @@ Which physical board this is, as `key=value` fields on one line (added
 
 ```
 > SYS:ID?
-< OK serial=UNSET uid=0055002B4232500220343558 flashuid=00000000E4653C34 product=WHAM-HBRIDGE-PFMG474 hw=REVA fw=v0.9 commit=ad9a18ba-dirty label=- verified=0
+< OK serial=WB-0001-8 uid=0055002B4232500220343558 flashuid=E4653C34CB172E22 product=WHAM-HBRIDGE-PFMG474 hw=REVA fw=v0.9 commit=e34e12ad label=bench.sim verified=1 identity=ok
 ```
 
-- `serial`: the board's serial number; `UNSET` until one is provisioned (not yet implemented -- the persistent identity
-  record is step 2 of the plan).
+- `serial`: the board's serial number; `UNSET` until one is provisioned (`SYS:SERial`).
 - `uid`: the MCU's factory unique ID (24 hex). `flashuid`: the W25Q128's factory unique ID (16 hex), read once and kept;
   `0000000000000000` if the chip did not answer. Both are read-only and need no provisioning.
 - `product`, `hw`, `fw`, `commit`: the same values as `*IDN?`.
-- `label`: an optional text label (`-` = none); `verified`: 1 when the stored serial was written for this silicon.
-  Always `-` / 0 until step 2.
+- `label`: the optional label (`-` = none). `verified`: 1 when the stored serial was written for THIS MCU and THIS flash
+  chip; 0 for a board with no serial, or one whose flash chip was moved from another board or whose image was copied.
+- `identity`: `unset` (nothing provisioned), `ok`, `corrupt` (something stored, no copy passes its checks: provision
+  again), `nochip` (the flash chip did not answer).
 - Parse by key, not by position: new keys will be added at the end.
 - Reported only; nothing in the controller depends on it.
+
+### `SYS:SERial <sn>` / `SYS:SERial?`
+
+Writes the board's serial number ONCE into the identity region of the external flash and binds it to this MCU and
+this flash chip; the query returns it (`OK UNSET` before). `<sn>` is 3-16 characters of `A-Z 0-9 -`, whole token.
+Normally done by `host/provision_board.py` (see the repository's `docs/device_identity_and_host_service.md`), which
+picks `WB-NNNN-C` serials with a check digit and keeps the registry; the firmware checks only the format.
+
+| Reply | When |
+|---|---|
+| `OK` | written and read back |
+| `ERR 12 serial must be 3-16 characters ...` / `... needs one argument` | bad format, missing or extra argument |
+| `ERR 13 identity can be changed only while IDLE` | the write stalls the command link for tens of ms, as `*SAV` does |
+| `ERR 19 a serial is already provisioned (SYS:ID:CLEar CONFIRM first)` | one exists: it is never overwritten |
+| `ERR 7 ...` | the flash write failed or the chip's unique ID could not be read (the previous record is intact) |
+
+The record is two alternating copies in two reserved sectors (`0xFFD000`, `0xFFE000`), each CRC-protected: a power
+cut during a write leaves the previous record. Firmware updates, `*SAV`/`*RCL`, `CONFig:PROFile:CLEar` and
+`QSPI:SELFtest` never touch it, and the flash driver refuses any other write to those sectors.
+
+### `SYS:LABel <text>` / `SYS:LABel?`
+
+An optional label, 1-32 characters of `A-Z a-z 0-9 . _ -` (no spaces, so `SYS:ID?` stays parseable); `-` clears it.
+Needs a serial first (`ERR 19` otherwise); IDLE only (`ERR 13`). The query returns the label or `-`.
+
+### `SYS:ID:CLEar CONFIRM`
+
+Erases the stored identity (both copies): the board is `UNSET` again and can be provisioned. The word `CONFIRM` is
+required (`ERR 12` without it); IDLE only. The registry keeps the board's serial, so provisioning it again with
+`host/provision_board.py` restores the same one.
 
 ### `BOOT`
 

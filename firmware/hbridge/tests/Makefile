@@ -74,9 +74,11 @@ SETTINGS := $(ROOT)/src/app/settings
 $(OUT)/test_settings_codec: test_settings_codec.c $(SETTINGS)/settings_codec.c $(SETTINGS)/settings_codec.h $(SCPI_UTIL) fake_uart.c test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c $(SCPI_UTIL) fake_uart.c -lm
 
-$(OUT)/test_device_identity: test_device_identity.c $(SETTINGS)/device_identity.c $(SETTINGS)/device_identity.h \
-                             $(ROOT)/src/drivers/device_id.h $(ROOT)/src/drivers/nvstore.h test_util.h | $(OUT)
-	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_device_identity.c $(SETTINGS)/device_identity.c
+$(OUT)/test_device_identity: test_device_identity.c fake_nvstore.c fake_nvstore.h $(SETTINGS)/device_identity.c \
+                             $(SETTINGS)/device_identity.h $(SETTINGS)/settings_codec.c $(ROOT)/src/drivers/device_id.h \
+                             $(ROOT)/src/drivers/nvstore.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_device_identity.c fake_nvstore.c $(SETTINGS)/device_identity.c \
+	    $(SETTINGS)/settings_codec.c $(SCPI_UTIL) fake_uart.c
 
 $(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(SETTINGS)/profile_store.c \
                            $(SETTINGS)/profile_store.h $(SETTINGS)/settings_codec.c test_util.h | $(OUT)

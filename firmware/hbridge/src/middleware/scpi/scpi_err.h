@@ -30,7 +30,9 @@ typedef enum
     ERR_EXT_ENABLE_LOW      = 15,  /* XREX only: EXTernal:ENAble on and the PF13 interlock reads LOW */
     /* 16: retired (an old XREX external-trigger coupling) -- do not reuse */
     ERR_FWUPDATE            = 17,  /* FWUPdate:* flash/CRC/image/option-byte failure */
-    ERR_PROFILE             = 18   /* saved profiles (*SAV, *RCL, CONFig:PROFile): empty or corrupt slot, or the flash failed */
+    ERR_PROFILE             = 18,  /* saved profiles (*SAV, *RCL, CONFig:PROFile): empty or corrupt slot, or the flash failed */
+    ERR_IDENTITY            = 19   /* SYS:SERial / SYS:LABel / SYS:ID:CLEar refused: a serial is already provisioned (clear it first),
+                                      none is provisioned yet, or the stored record is unusable */
 } cmd_err_t;
 
 #endif /* SCPI_ERR_H */

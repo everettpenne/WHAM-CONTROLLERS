@@ -22,7 +22,7 @@
 #define CMD_READ_SR2        (0x35U)
 #define CMD_READ_SR3        (0x15U)
 #define CMD_READ_DATA       (0x03U)
-#define CMD_READ_UNIQUE_ID  (0x4BU)   /* then 4 dummy bytes, then the 64-bit ID */
+#define CMD_READ_UNIQUE_ID  (0x4BU)   /* then 4 dummy bytes, then the 64-bit ID (see NvStore_ReadUniqueId) */
 #define CMD_PAGE_PROGRAM    (0x02U)
 #define CMD_SECTOR_ERASE_4K (0x20U)
 
@@ -41,6 +41,7 @@
 #define VERIFY_CHUNK        (64U)
 
 static uint8_t g_chipOk = 0U;
+static uint8_t g_identityWrite = 0U;   /* see NvStore_IdentityWriteEnable() */
 
 const char *NvStore_StatusText(nvstore_status_t status)
 {
@@ -53,6 +54,7 @@ const char *NvStore_StatusText(nvstore_status_t status)
     case NVSTORE_ERR_IO:        return "transfer failed";
     case NVSTORE_ERR_PROTECTED: return "write-protected";
     case NVSTORE_ERR_VERIFY:    return "verify failed";
+    case NVSTORE_ERR_RESERVED:  return "reserved region";
     default:                    return "unknown";
     }
 }
@@ -194,6 +196,17 @@ static uint8_t RangeOk(uint32_t addr, uint32_t len)
     return (addr <= NVSTORE_CAPACITY_BYTES && len <= (NVSTORE_CAPACITY_BYTES - addr)) ? 1U : 0U;
 }
 
+/* 1 when [addr, addr+len) overlaps the identity sectors (the range is already known to be in the chip). */
+static uint8_t TouchesIdentity(uint32_t addr, uint32_t len)
+{
+    return (addr < (NVSTORE_IDENTITY_ADDR + NVSTORE_IDENTITY_BYTES) && (addr + len) > NVSTORE_IDENTITY_ADDR) ? 1U : 0U;
+}
+
+void NvStore_IdentityWriteEnable(uint8_t enable)
+{
+    g_identityWrite = (enable != 0U) ? 1U : 0U;
+}
+
 static nvstore_status_t ReadRaw(QSPI_HandleTypeDef *h, uint32_t addr, uint8_t *buf, uint32_t len)
 {
     QSPI_CommandTypeDef cmd;
@@ -268,20 +281,25 @@ nvstore_status_t NvStore_ReadUniqueId(uint8_t id[8])
 {
     QSPI_HandleTypeDef *h;
     QSPI_CommandTypeDef cmd;
+    uint8_t raw[12];
     nvstore_status_t st = Prepare(&h);
 
     if (st != NVSTORE_OK)
     {
         return st;
     }
+    /* The chip sends four dummy bytes (32 clocks) after the instruction, then the ID, which it
+       then repeats. The QUADSPI's dummy-cycle field holds only 0..31, so 32 silently wrapped to 0
+       (found on hardware 2026-10-07: the first four "ID" bytes changed from boot to boot, the
+       rest never did). Read the dummy bytes as data and drop them. */
     InitCmd(&cmd, CMD_READ_UNIQUE_ID);
-    cmd.DummyCycles = 32U;                 /* four dummy bytes on the single data line */
-    SetData(&cmd, 8U);
+    SetData(&cmd, 12U);
     if (HAL_QSPI_Command(h, &cmd, TIMEOUT_XFER_MS) != HAL_OK ||
-        HAL_QSPI_Receive(h, id, TIMEOUT_XFER_MS) != HAL_OK)
+        HAL_QSPI_Receive(h, raw, TIMEOUT_XFER_MS) != HAL_OK)
     {
         return NVSTORE_ERR_IO;
     }
+    memcpy(id, &raw[4], 8U);
     return NVSTORE_OK;
 }
 
@@ -314,6 +332,10 @@ nvstore_status_t NvStore_EraseSector(uint32_t addr)
     if ((addr % NVSTORE_SECTOR_BYTES) != 0U || RangeOk(addr, NVSTORE_SECTOR_BYTES) == 0U)
     {
         return NVSTORE_ERR_RANGE;
+    }
+    if (TouchesIdentity(addr, NVSTORE_SECTOR_BYTES) != 0U && g_identityWrite == 0U)
+    {
+        return NVSTORE_ERR_RESERVED;
     }
     if ((st = CheckNotProtected(h)) != NVSTORE_OK || (st = WaitReady(h, TIMEOUT_ERASE_MS)) != NVSTORE_OK ||
         (st = WriteEnable(h)) != NVSTORE_OK)
@@ -352,6 +374,10 @@ nvstore_status_t NvStore_Program(uint32_t addr, const void *data, uint32_t len)
     if (len == 0U)
     {
         return NVSTORE_OK;
+    }
+    if (TouchesIdentity(addr, len) != 0U && g_identityWrite == 0U)
+    {
+        return NVSTORE_ERR_RESERVED;
     }
     if ((st = CheckNotProtected(h)) != NVSTORE_OK)
     {
@@ -430,6 +456,11 @@ nvstore_status_t NvStore_ReadUniqueId(uint8_t id[8])
 {
     (void)id;
     return NVSTORE_ERR_NOT_READY;
+}
+
+void NvStore_IdentityWriteEnable(uint8_t enable)
+{
+    (void)enable;
 }
 
 #endif /* NVSTORE_FEATURE_ENABLED */

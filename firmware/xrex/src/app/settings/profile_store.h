@@ -63,8 +63,8 @@
 #if (PROFILE_PAYLOAD_MAX > 65535UL)
 #error "the header's payload length is 16 bits: PROFILE_COPY_SECTORS is too large"
 #endif
-#if ((PROFILE_STORE_BASE + PROFILE_SLOT_COUNT * 2UL * PROFILE_COPY_BYTES) > NVSTORE_SCRATCH_ADDR)
-#error "the profile slots overlap the QSPI:SELFtest scratch sector"
+#if ((PROFILE_STORE_BASE + PROFILE_SLOT_COUNT * 2UL * PROFILE_COPY_BYTES) > NVSTORE_IDENTITY_ADDR)
+#error "the profile slots overlap the identity sectors or the QSPI:SELFtest scratch sector"
 #endif
 
 typedef enum

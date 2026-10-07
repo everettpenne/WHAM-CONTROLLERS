@@ -60,6 +60,9 @@ void App_Init(void)
        pattern already used for BootJump_CheckAndEnter(). */
     QspiTest_Init();
 
+    /* The board identity record in the external flash (device_identity.h): needs the QUADSPI above. */
+    DeviceIdentity_Init();
+
     /* PFM_Input period/duty capture (PA15/PD4/PB2/PC12/PB4/PD12, TIM2/
        TIM3/TIM4/TIM5) -- see pfm_input.h. Configures the timers/GPIO
        only; does not arm or start any capture (that's PfmInput_Arm()

@@ -7,6 +7,39 @@ static uint8_t  g_dead;
 static uint8_t  g_haveBudget;
 static uint32_t g_budget;
 static uint32_t g_used;
+static uint8_t  g_identityWrite;                     /* the guard of the real driver, kept in step */
+static uint8_t  g_uniqueId[8];
+static nvstore_status_t g_uniqueIdStatus = NVSTORE_ERR_NOT_READY;
+
+void FakeNv_SetUniqueId(const uint8_t id[8], nvstore_status_t status)
+{
+    memcpy(g_uniqueId, id, sizeof(g_uniqueId));
+    g_uniqueIdStatus = status;
+}
+
+void NvStore_IdentityWriteEnable(uint8_t enable)
+{
+    g_identityWrite = (enable != 0U) ? 1U : 0U;
+}
+
+static uint8_t Reserved(uint32_t addr, uint32_t len)
+{
+    return (g_identityWrite == 0U && addr < (NVSTORE_IDENTITY_ADDR + NVSTORE_IDENTITY_BYTES) &&
+            (addr + len) > NVSTORE_IDENTITY_ADDR) ? 1U : 0U;
+}
+
+nvstore_status_t NvStore_ReadUniqueId(uint8_t id[8])
+{
+    if (g_dead != 0U)
+    {
+        return NVSTORE_ERR_IO;
+    }
+    if (g_uniqueIdStatus == NVSTORE_OK)
+    {
+        memcpy(id, g_uniqueId, sizeof(g_uniqueId));
+    }
+    return g_uniqueIdStatus;
+}
 
 void FakeNv_Reset(void)
 {
@@ -15,6 +48,7 @@ void FakeNv_Reset(void)
     g_haveBudget = 0U;
     g_budget = 0U;
     g_used = 0U;
+    g_identityWrite = 0U;
 }
 
 void FakeNv_CutPowerAfter(uint32_t units)
@@ -98,6 +132,10 @@ nvstore_status_t NvStore_EraseSector(uint32_t addr)
     {
         return NVSTORE_ERR_RANGE;
     }
+    if (Reserved(addr, NVSTORE_SECTOR_BYTES) != 0U)
+    {
+        return NVSTORE_ERR_RESERVED;
+    }
     if (Spend() == 0U)
     {
         /* Cut during the erase: the first half is already blank, the rest untouched. */
@@ -118,6 +156,10 @@ nvstore_status_t NvStore_Program(uint32_t addr, const void *data, uint32_t len)
     if (addr > NVSTORE_CAPACITY_BYTES || len > (NVSTORE_CAPACITY_BYTES - addr))
     {
         return NVSTORE_ERR_RANGE;
+    }
+    if (Reserved(addr, len) != 0U)
+    {
+        return NVSTORE_ERR_RESERVED;
     }
     for (uint32_t i = 0U; i < len; i++)
     {
