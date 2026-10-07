@@ -61,6 +61,18 @@ Board and firmware identification.
 < OK WHAM-XREX-PFMG474 REVA v0.1 74994292-dirty
 ```
 
+Since 2026-10-07 the reply ends with two more fields that say which
+PHYSICAL board answered: `SN=<serial>` (`SN=UNSET` until a serial is
+provisioned) and `UID=<24 hex>` (the MCU's factory-programmed 96-bit unique
+ID, different on every board). Hosts that read the earlier fields by
+position are unaffected. The same two fields end the `!BOOT` banner. Full
+identity: `SYS:ID?` below; design: `docs/device_identity_and_host_service.md`
+at the top of the repository.
+
+```
+< OK WHAM-HBRIDGE-PFMG474 REVA v0.9 ad9a18ba-dirty SN=UNSET UID=0055002B4232500220343558
+```
+
 Reports, space-separated: `HW_BOARD_NAME`, `HW_BOARD_REV`,
 `FW_VERSION_STRING` (compile-time constants, `src/config/ctrlr_config.h`),
 then `FW_GIT_COMMIT` (added 2026-09-11, per direct request) — the
@@ -84,6 +96,26 @@ to close, see `docs/changelog.txt`'s 2026-09-10 entry). One command
 instead of three separate steps to remember; see that script's own
 header comment. `git_version.h` is gitignored -- see `.gitignore`'s own
 comment on why it's deliberately not tracked.
+
+### `SYS:ID?`
+
+Which physical board this is, as `key=value` fields on one line (added
+2026-10-07, identical in both products).
+
+```
+> SYS:ID?
+< OK serial=UNSET uid=0055002B4232500220343558 flashuid=00000000E4653C34 product=WHAM-HBRIDGE-PFMG474 hw=REVA fw=v0.9 commit=ad9a18ba-dirty label=- verified=0
+```
+
+- `serial`: the board's serial number; `UNSET` until one is provisioned (not yet implemented -- the persistent identity
+  record is step 2 of the plan).
+- `uid`: the MCU's factory unique ID (24 hex). `flashuid`: the W25Q128's factory unique ID (16 hex), read once and kept;
+  `0000000000000000` if the chip did not answer. Both are read-only and need no provisioning.
+- `product`, `hw`, `fw`, `commit`: the same values as `*IDN?`.
+- `label`: an optional text label (`-` = none); `verified`: 1 when the stored serial was written for this silicon.
+  Always `-` / 0 until step 2.
+- Parse by key, not by position: new keys will be added at the end.
+- Reported only; nothing in the controller depends on it.
 
 ### `BOOT`
 

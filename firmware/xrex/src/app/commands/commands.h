@@ -361,6 +361,7 @@ void cmd_config_fault_polarity_ocp_query(uart_instance_t *inst, char *args);
  * state per pin, on a single OK line -- see cmd_io.c for the exact
  * format. */
 void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW ... 12=HIGH|LOW */
+void cmd_sys_id_query(uart_instance_t *inst, char *args); /* SYS:ID? -- OK serial= uid= flashuid= product= hw= fw= commit= label= verified= */
 void cmd_diag_leds_query(uart_instance_t *inst, char *args); /* DIAGnostic:LEDs? -- OK TX=0|1 RX= IDLE= ARMED= FIRING= FAULT= */
 
 /* Per-Transrex-channel fault-pin readback, added 2026-09-17 alongside

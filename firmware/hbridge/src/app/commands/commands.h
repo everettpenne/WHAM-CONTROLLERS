@@ -130,6 +130,7 @@ void cmd_config_channels(uart_instance_t *inst, char *args); /* CONFig:CHANnels?
  * state per pin, on a single OK line -- see commands.c for the exact
  * format. */
 void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW ... 12=HIGH|LOW */
+void cmd_sys_id_query(uart_instance_t *inst, char *args); /* SYS:ID? -- OK serial= uid= flashuid= product= hw= fw= commit= label= verified= */
 void cmd_diag_leds_query(uart_instance_t *inst, char *args); /* DIAGnostic:LEDs? -- OK TX=0|1 RX= IDLE= ARMED= FIRING= FAULT= */
 
 /* QUADSPI connectivity test (PE12-PE15/PB10-PB11, W25Q128JVS) -- see

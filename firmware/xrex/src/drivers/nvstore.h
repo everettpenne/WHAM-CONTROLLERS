@@ -91,4 +91,10 @@ nvstore_status_t NvStore_Program(uint32_t addr, const void *data, uint32_t len);
    bits 2-4 = block-protect. */
 nvstore_status_t NvStore_ReadStatusRegs(uint8_t sr[3]);
 
+/* The chip's factory-programmed 64-bit unique ID (W25Q128: instruction 0x4B), in
+   the order the chip sends it. Identifies this physical chip -- see
+   device_identity.h. A chip that is absent reads as all zeros or all ones; the
+   caller judges plausibility. */
+nvstore_status_t NvStore_ReadUniqueId(uint8_t id[8]);
+
 #endif /* NVSTORE_H */

@@ -22,6 +22,7 @@
 #define CMD_READ_SR2        (0x35U)
 #define CMD_READ_SR3        (0x15U)
 #define CMD_READ_DATA       (0x03U)
+#define CMD_READ_UNIQUE_ID  (0x4BU)   /* then 4 dummy bytes, then the 64-bit ID */
 #define CMD_PAGE_PROGRAM    (0x02U)
 #define CMD_SECTOR_ERASE_4K (0x20U)
 
@@ -263,6 +264,27 @@ nvstore_status_t NvStore_ReadStatusRegs(uint8_t sr[3])
     return st;
 }
 
+nvstore_status_t NvStore_ReadUniqueId(uint8_t id[8])
+{
+    QSPI_HandleTypeDef *h;
+    QSPI_CommandTypeDef cmd;
+    nvstore_status_t st = Prepare(&h);
+
+    if (st != NVSTORE_OK)
+    {
+        return st;
+    }
+    InitCmd(&cmd, CMD_READ_UNIQUE_ID);
+    cmd.DummyCycles = 32U;                 /* four dummy bytes on the single data line */
+    SetData(&cmd, 8U);
+    if (HAL_QSPI_Command(h, &cmd, TIMEOUT_XFER_MS) != HAL_OK ||
+        HAL_QSPI_Receive(h, id, TIMEOUT_XFER_MS) != HAL_OK)
+    {
+        return NVSTORE_ERR_IO;
+    }
+    return NVSTORE_OK;
+}
+
 nvstore_status_t NvStore_Read(uint32_t addr, void *buf, uint32_t len)
 {
     QSPI_HandleTypeDef *h;
@@ -401,6 +423,12 @@ nvstore_status_t NvStore_Program(uint32_t addr, const void *data, uint32_t len)
 nvstore_status_t NvStore_ReadStatusRegs(uint8_t sr[3])
 {
     (void)sr;
+    return NVSTORE_ERR_NOT_READY;
+}
+
+nvstore_status_t NvStore_ReadUniqueId(uint8_t id[8])
+{
+    (void)id;
     return NVSTORE_ERR_NOT_READY;
 }
 

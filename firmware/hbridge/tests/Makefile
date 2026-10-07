@@ -17,7 +17,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
 SCPI_UTIL := $(ROOT)/src/middleware/scpi/scpi_util.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_settings $(OUT)/test_closed_loop
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_settings $(OUT)/test_closed_loop
 
 .PHONY: all run clean
 all: run
@@ -73,6 +73,10 @@ SETTINGS := $(ROOT)/src/app/settings
 
 $(OUT)/test_settings_codec: test_settings_codec.c $(SETTINGS)/settings_codec.c $(SETTINGS)/settings_codec.h $(SCPI_UTIL) fake_uart.c test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_settings_codec.c $(SETTINGS)/settings_codec.c $(SCPI_UTIL) fake_uart.c -lm
+
+$(OUT)/test_device_identity: test_device_identity.c $(SETTINGS)/device_identity.c $(SETTINGS)/device_identity.h \
+                             $(ROOT)/src/drivers/device_id.h $(ROOT)/src/drivers/nvstore.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(SETTINGS) -o $@ test_device_identity.c $(SETTINGS)/device_identity.c
 
 $(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(SETTINGS)/profile_store.c \
                            $(SETTINGS)/profile_store.h $(SETTINGS)/settings_codec.c test_util.h | $(OUT)

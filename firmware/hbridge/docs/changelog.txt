@@ -1,6 +1,23 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-07  —  Device identity, step 1: which physical board is this (read-only hardware ID)
+-----------------------------------------------------------------------
+  Request: a unique, persistent identifier per board so a host service can tell which board it is talking to (several copies will be
+  deployed, each controlling a different system). Plan and host-service design: docs/device_identity_and_host_service.md at the top of the
+  WHAM-CONTROLLERS repository (new this day: firmware/xrex + firmware/hbridge with their histories, hardware/, host/, docs/).
+  Step 1 (this entry): read-only hardware identity, no flash writes.
+  device_id.h/.c (MCU 96-bit unique ID), NvStore_ReadUniqueId() (W25Q128 instruction 0x4B, four dummy bytes, 64 bits), device_identity.h/.c
+  (src/app/settings: reads both, keeps the flash ID once good, rejects all-0/all-1 as "no chip", formats SN=/UID= and the SYS:ID? line) --
+  all byte-identical in both products (check_shared.py), tests/test_device_identity.c (17 checks, both products).
+  *IDN? and the !BOOT banner end with "SN=UNSET UID=<24 hex>"; new SYS:ID? -> "OK serial=UNSET uid=... flashuid=... product=... hw=... fw=... commit=... label=- verified=0".
+  Verified on the simulator board (HBRIDGE image, bank swap by FWUPdate): banner, *IDN? and SYS:ID? as above, stable over repeated queries, saved profiles
+  intact. NOT yet checked: the flash unique ID against a second chip -- this one reads 00000000E4653C34 (top four bytes zero; the low half is
+  non-trivial and stable, but the zeros are unexplained, so compare with the controller board before relying on it as a 64-bit key). XREX built
+  (controller and simulator images) and unit-tested but not flashed.
+  Design notes recorded in the doc: the identity region (step 2) must not use the chip's last sector (the QSPI:SELFtest scratch sector, NVSTORE_SCRATCH_ADDR);
+  commands are under SYS: (XREX already has SYS:TIME?/TELEM?/EVENT/EVLOG?), not SYSTem:.
+
 2026-10-07  —  Front-panel LEDs: UART activity and operating state (branch scpi-shared; same change in both repos)
 -----------------------------------------------------------------------
   Request: pin map entries and firmware for six LEDs (new hardware revision): PD2 UART_TX_LED, PD3 UART_RX_LED, PF14 STATE_IDLE_LED,

@@ -5,16 +5,19 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../src/app/settings/device_identity.c \
 ../src/app/settings/profile_store.c \
 ../src/app/settings/settings.c \
 ../src/app/settings/settings_codec.c
 
 OBJS += \
+./src/app/settings/device_identity.o \
 ./src/app/settings/profile_store.o \
 ./src/app/settings/settings.o \
 ./src/app/settings/settings_codec.o
 
 C_DEPS += \
+./src/app/settings/device_identity.d \
 ./src/app/settings/profile_store.d \
 ./src/app/settings/settings.d \
 ./src/app/settings/settings_codec.d
@@ -27,7 +30,7 @@ src/app/settings/%.o src/app/settings/%.su src/app/settings/%.cyclo: ../src/app/
 clean: clean-src-2f-app-2f-settings
 
 clean-src-2f-app-2f-settings:
-	-$(RM) ./src/app/settings/profile_store.cyclo ./src/app/settings/profile_store.d ./src/app/settings/profile_store.o ./src/app/settings/profile_store.su ./src/app/settings/settings.cyclo ./src/app/settings/settings.d ./src/app/settings/settings.o ./src/app/settings/settings.su ./src/app/settings/settings_codec.cyclo ./src/app/settings/settings_codec.d ./src/app/settings/settings_codec.o ./src/app/settings/settings_codec.su
+	-$(RM) ./src/app/settings/device_identity.cyclo ./src/app/settings/device_identity.d ./src/app/settings/device_identity.o ./src/app/settings/device_identity.su ./src/app/settings/profile_store.cyclo ./src/app/settings/profile_store.d ./src/app/settings/profile_store.o ./src/app/settings/profile_store.su ./src/app/settings/settings.cyclo ./src/app/settings/settings.d ./src/app/settings/settings.o ./src/app/settings/settings.su ./src/app/settings/settings_codec.cyclo ./src/app/settings/settings_codec.d ./src/app/settings/settings_codec.o ./src/app/settings/settings_codec.su
 
 .PHONY: clean-src-2f-app-2f-settings
 

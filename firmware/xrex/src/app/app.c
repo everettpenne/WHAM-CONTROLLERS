@@ -9,6 +9,7 @@
 #include "uart.h"
 #include "mcu.h"
 #include "led_indicators.h"
+#include "device_identity.h"
 #include "flash_bank.h"
 #include "boot_diag.h"
 #include "hrtim.h"
@@ -156,6 +157,7 @@ void App_Init(void)
 void App_SendBootBanner(void)
 {
     char banner[200];
+    char idTag[64];
     uint8_t bank    = FlashBank_Active();
     uint8_t bfb2    = FlashBank_Bfb2();
     const char *stateName;
@@ -167,12 +169,13 @@ void App_SendBootBanner(void)
         case SM_STATE_FAULT:  stateName = "FAULT";  break;
         default:              stateName = "UNKNOWN"; break;
     }
+    (void)DeviceIdentity_FormatTag(idTag, sizeof(idTag));   /* SN=... UID=... (device_identity.h) */
     snprintf(banner, sizeof(banner),
-             "!BOOT %s %s %s%s BANK=%u BFB2=%u STATE=%s tick=%lu\r\n",
+             "!BOOT %s %s %s%s BANK=%u BFB2=%u STATE=%s tick=%lu %s\r\n",
              HW_BOARD_NAME, FW_VERSION_STRING, FW_GIT_COMMIT,
              (FW_GIT_DIRTY != 0U) ? "-dirty" : "",
              (unsigned)bank, (unsigned)bfb2, stateName,
-             (unsigned long)Mcu_GetTickMs());
+             (unsigned long)Mcu_GetTickMs(), idTag);
     uart_send(&uart2, banner);
 
     /* Previous boot's record and this boot's reset cause (boot_diag.c). */

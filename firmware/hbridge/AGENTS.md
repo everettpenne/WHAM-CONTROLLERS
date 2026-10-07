@@ -549,6 +549,14 @@ directly, or an LED will disagree with `STATE?`. The activity LEDs are pulsed by
 one-pulse timer (TIM16/TIM17) plus DMA (DMA1 channels 7/8): no interrupt, no polling. These resources are reserved for it. The LEDs are
 cosmetic: keep every call non-blocking, and keep the feature removable (`LED_INDICATORS_ENABLED`). `DIAGnostic:LEDs?` reads back what is driven.
 
+## Device identity (added 2026-10-07)
+
+`src/app/settings/device_identity.{h,c}`, `src/drivers/device_id.h` (+ `src/bsp/stm32g4/device_id.c`) and `NvStore_ReadUniqueId()` are shared
+byte-identical with the sibling product (`check_shared.py`). They report which physical board this is: the MCU's 96-bit unique ID and the
+flash chip's 64-bit unique ID (`SYS:ID?`, and `SN=`/`UID=` at the end of `*IDN?` and the `!BOOT` banner). Identity is reported, never enforced:
+nothing in the controller may depend on it. Plan, the persistent serial (step 2) and the host service: `docs/device_identity_and_host_service.md`
+at the top of the repository. Do not use the chip's last sector for anything (`NVSTORE_SCRATCH_ADDR`).
+
 ## Source layout (standing rule -- keep it this way)
 
 Adopted 2026-09-29 (ported from WHAM-XREX-PFMG474, where it was
