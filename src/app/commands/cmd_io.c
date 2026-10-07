@@ -4,6 +4,7 @@
  * unchanged. See commands.h for the file map.
  */
 #include "commands.h"
+#include "led_indicators.h"
 #include "cmd_common.h"
 #include "ctrlr_config.h"
 #include "gate_driver.h"
@@ -56,5 +57,30 @@ void cmd_gds_last_query(uart_instance_t *inst, char *args)
     char buf[48];
     (void)args;
     snprintf(buf, sizeof(buf), "OK %03X %lu\r\n", (unsigned)GateDriver_DebugBadRaw(), (unsigned long)GateDriver_DebugEdges());
+    uart_send(inst, buf);
+}
+
+/* --------------------------------------------------------------------------
+ * DIAGnostic:LEDs? -- OK TX=<0|1> RX=<0|1> IDLE=<0|1> ARMED=<0|1> FIRING=<0|1> FAULT=<0|1>
+ *
+ * Added 2026-10-07 with the front-panel LEDs (led_indicators.h): which LEDs
+ * the firmware is driving lit right now (the output register, not the pin
+ * voltage, so it reads the same with or without LEDs fitted). The state LEDs
+ * always agree with STATE?; TX/RX are the activity LEDs, which light for
+ * LED_ACTIVITY_MS after serial traffic -- this reply's own request lit RX, and
+ * the previous reply lit TX, so a query sent right after another shows both
+ * and one sent a moment later shows both off. All zero when
+ * LED_INDICATORS_ENABLED is 0.
+ * -------------------------------------------------------------------------- */
+void cmd_diag_leds_query(uart_instance_t *inst, char *args)
+{
+    uint8_t m = LedIndicators_GetMask();
+    char buf[80];
+    (void)args;
+
+    snprintf(buf, sizeof(buf), "OK TX=%u RX=%u IDLE=%u ARMED=%u FIRING=%u FAULT=%u\r\n",
+             (unsigned)((m & LED_MASK_TX) != 0U),     (unsigned)((m & LED_MASK_RX) != 0U),
+             (unsigned)((m & LED_MASK_IDLE) != 0U),   (unsigned)((m & LED_MASK_ARMED) != 0U),
+             (unsigned)((m & LED_MASK_FIRING) != 0U), (unsigned)((m & LED_MASK_FAULT) != 0U));
     uart_send(inst, buf);
 }

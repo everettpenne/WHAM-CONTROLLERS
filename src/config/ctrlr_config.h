@@ -295,4 +295,16 @@
 #define PROFILE_COPY_SECTORS    (4U)
 #define PROFILE_MAGIC_BYTES     { 'H', 'S', 'P', 'F' }
 
+/* --------------------------------------------------------------------------
+ * Front-panel LEDs (led_indicators.h, added 2026-10-07)
+ *
+ * UART transmit / receive activity and the four operating-state LEDs
+ * (PD2, PD3, PF14, PF2, PC3, PC2 -- docs/pin_mapping_v4.csv). Cosmetic only.
+ * LED_INDICATORS_ENABLED 0 removes the whole feature (and frees TIM16, TIM17
+ * and DMA1 channels 7 and 8, which it uses). LED_ACTIVITY_MS is how long an
+ * activity LED stays lit after the last byte (1..6000).
+ * -------------------------------------------------------------------------- */
+#define LED_INDICATORS_ENABLED  (1)
+#define LED_ACTIVITY_MS         (30U)
+
 #endif /* INC_CTRLR_CONFIG_H_ */

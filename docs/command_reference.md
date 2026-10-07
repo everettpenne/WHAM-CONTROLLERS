@@ -599,6 +599,24 @@ existing single-`OK <value>`-line response convention rather than the
 sibling PFM-STM32G474 project's multi-line/bitmask `GDS?` reply
 shapes.
 
+### `DIAGnostic:LEDs?`
+
+Which front-panel LEDs the firmware is driving lit (`led_indicators.h`; pins in `docs/pin_mapping_v4.csv`: `UART_TX_LED` PD2,
+`UART_RX_LED` PD3, `STATE_IDLE_LED` PF14, `STATE_ARMED_LED` PF2, `STATE_FIRING_LED` PC3, `STATE_FAULT_LED` PC2). It reads the
+output register, not the pin, so it works with no LEDs fitted.
+
+```
+> DIAGnostic:LEDs?
+< OK TX=0 RX=1 IDLE=1 ARMED=0 FIRING=0 FAULT=0
+```
+
+- Exactly one of `IDLE`/`ARMED`/`FIRING`/`FAULT` is 1 and it is the state `STATE?` reports (all 0 only before start-up completes).
+- `TX`/`RX` are the activity LEDs: lit by serial traffic and turned off 30 ms (`LED_ACTIVITY_MS`) after the last byte by a
+  timer and DMA, not by the CPU. The query's own request lights `RX`, so a query sent right after another shows `RX=1` (and `TX=1` from
+  the previous reply); one sent more than 30 ms later is likely to show `RX=1` only for its own request.
+- All zeros when the firmware is built with `LED_INDICATORS_ENABLED 0`.
+
+
 ### `FWUPdate:*` — in-application firmware update (dual-bank)
 
 Added 2026-09-29 (ported from WHAM-XREX-PFMG474, where it was verified on

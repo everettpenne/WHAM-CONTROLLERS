@@ -1,6 +1,28 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-07  —  Front-panel LEDs: UART activity and operating state (branch scpi-shared; same change in both repos)
+-----------------------------------------------------------------------
+  Request: pin map entries and firmware for six LEDs (new hardware revision): PD2 UART_TX_LED, PD3 UART_RX_LED, PF14 STATE_IDLE_LED,
+  PF2 STATE_ARMED_LED, PC3 STATE_FIRING_LED, PC2 STATE_FAULT_LED; purely cosmetic, DMA where possible, never allowed to disturb the controller.
+  docs/pin_mapping_v4.csv: the six rows renamed in the V4 column (Peripheral GPO; XREX also in the "XREX Pin Name" column); XREX's pin_mapping_reference.tex lists them.
+  src/drivers/led_indicators.h + src/bsp/stm32g4/led_indicators.c (identical in both repos, in check_shared.py), switch LED_INDICATORS_ENABLED and
+  LED_ACTIVITY_MS (30) in ctrlr_config.h.
+  State LEDs: state_machine.c now assigns the state ONLY through SetState(), which lights the matching LED in the same step (one BSRR store per GPIO port),
+        so an LED is lit if and only if STATE? says so, whichever context made the transition (command, main loop, EXTI, control interrupt). All four are
+        off until SM_Init(); a fault latched before it is re-asserted by SM_Init/the first poll. HBRIDGE test_state_machine.c gained a fake LED driver that
+        checks, at every update, that the LED shown is the machine's state (161 checks).
+  Activity LEDs: uart.c (shared, so any UART instance) pulses TX around every uart_send() (lit at the start AND after the last byte, so a long send does
+        not let it lapse) and RX in the receive callback. A pulse = pin on + restart a one-pulse timer (TIM16 TX, TIM17 RX, 10 kHz); the timer's update
+        event is a DMA request (DMA1 channels 7 and 8, memory-to-peripheral, circular, one word) that writes the pin's reset bit into GPIOD->BSRR, so the LED goes
+        dark 30 ms later with NO interrupt, polling or CPU time -- including while the main loop is inside the blocking transmit. Traffic closer together than
+        30 ms keeps the LED lit. TIM16/17 and DMA1 ch 7/8 were unused (pfm_input.c: DMA1 ch 1-6, ADC: DMA2 ch 1). The state LEDs are NOT DMA-driven: they change
+        a few times per shot and one register store is cheaper than any DMA setup.
+  DIAGnostic:LEDs? (new, cmd_io.c) -> "OK TX=0 RX=0 IDLE=1 ARMED=0 FIRING=0 FAULT=0": the LEDs the firmware is driving lit (output register), the way to check
+        the logic without LEDs fitted.
+  Verified: both repos build with no warnings (XREX controller + simulator, HBRIDGE), host tests pass, check_shared OK. NOT yet verified on hardware: the
+        DMA turn-off and the pin levels (bench needs the tunnel; no LEDs are fitted on the current boards) -- see the verification note below if added.
+
 2026-10-05  —  SCPI protocol layer shared with XREX: strict arguments, shared reply helpers and error codes (branch scpi-shared)
 -----------------------------------------------------------------------
   Request: compare the two SCPI command libraries and bring them into harmony (steps A and B of that comparison).

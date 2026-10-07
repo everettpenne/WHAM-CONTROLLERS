@@ -38,7 +38,7 @@ extern "C" {
  *   cmd_adc.c      ADC:* (the four analog inputs, PA0/PA1/PC0/PB0)
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, GENERAL:TEST:FAULT
- *   cmd_io.c       GDS?
+ *   cmd_io.c       GDS?, DIAGnostic:LEDs?
  *   cmd_pfmin.c    PFMIN:*
  *   cmd_phase.c    PHASe:ENAble/SELect (which of U, V, W drive their gate drivers)
  * Shared reply/precondition helpers live in cmd_common.c/.h.
@@ -130,6 +130,7 @@ void cmd_config_channels(uart_instance_t *inst, char *args); /* CONFig:CHANnels?
  * state per pin, on a single OK line -- see commands.c for the exact
  * format. */
 void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW ... 12=HIGH|LOW */
+void cmd_diag_leds_query(uart_instance_t *inst, char *args); /* DIAGnostic:LEDs? -- OK TX=0|1 RX= IDLE= ARMED= FIRING= FAULT= */
 
 /* QUADSPI connectivity test (PE12-PE15/PB10-PB11, W25Q128JVS) -- see
  * qspi_test.h. Issues the flash's standard JEDEC Read ID instruction

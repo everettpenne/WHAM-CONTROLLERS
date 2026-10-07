@@ -8,6 +8,7 @@
 #include "hrtim.h"
 #include "gate_driver.h"
 #include "mcu.h"
+#include "led_indicators.h"
 #include "test_util.h"
 #include <string.h>
 
@@ -30,6 +31,19 @@ uint8_t GateDriver_FaultIsLatched(void) { return f_gdsLatched; }
 void GateDriver_FaultClear(void){ f_gdsLatched = f_gdsPin; }        /* re-checks the pins */
 void Mcu_IrqDisable(void)       { f_irqDepth++; if (f_irqDepth > f_irqMax) { f_irqMax = f_irqDepth; } }
 void Mcu_IrqEnable(void)        { f_irqDepth--; }
+
+/* The state LEDs: the fake checks, at the moment of every update, that the LED
+   shown is the state the machine is in -- so any transition from anywhere
+   (command, poll, fault) is verified, not just the ones a test remembers to look at. */
+static led_state_t f_led = LED_STATE_NONE;
+static int         f_ledUpdates, f_ledMismatch;
+void LedIndicators_ShowState(led_state_t s)
+{
+    static const led_state_t want[] = { LED_STATE_IDLE, LED_STATE_ARMED, LED_STATE_FIRING, LED_STATE_FAULT };
+    f_led = s;
+    f_ledUpdates++;
+    if (s != want[SM_GetState()]) { f_ledMismatch++; }
+}
 
 static void Reset(void)
 {
@@ -165,6 +179,35 @@ static void TestSoftFaultStaysUntilCleared(void)
     CHECK(f_irqMax <= 1);                         /* critical sections never nest */
 }
 
+static void TestLedsFollowState(void)
+{
+    f_led = LED_STATE_NONE; f_ledUpdates = 0; f_ledMismatch = 0;
+    Reset();
+    CHECK(f_led == LED_STATE_IDLE);               /* SM_Init() lights IDLE */
+    CHECK(SM_Arm() == 1U);
+    CHECK(f_led == LED_STATE_ARMED);
+    SM_Disarm();
+    CHECK(f_led == LED_STATE_IDLE);
+    CHECK(SM_Arm() == 1U && SM_Fire() == 1U);
+    CHECK(f_led == LED_STATE_FIRING);
+    f_pfmState = PFM_STATE_STOPPED;               /* table exhausted */
+    SM_PollFaults();
+    CHECK(f_led == LED_STATE_IDLE);
+    CHECK(SM_Arm() == 1U && SM_Fire() == 1U);
+    f_gdsLatched = 1U; f_gdsPin = 0U;             /* a fault mid-shot */
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_FAULT && f_led == LED_STATE_FAULT);
+    f_gdsLatched = 1U; f_gdsPin = 1U;
+    CHECK(SM_ClearFault() == 0U);                 /* refused: stays FAULT, LED unchanged */
+    CHECK(f_led == LED_STATE_FAULT);
+    f_gdsPin = 0U;
+    CHECK(SM_ClearFault() == 1U);
+    CHECK(f_led == LED_STATE_IDLE);
+    SM_ReportGeneralFault();                      /* software fault from IDLE */
+    CHECK(f_led == LED_STATE_FAULT);
+    CHECK(f_ledUpdates > 0 && f_ledMismatch == 0);
+}
+
 int main(void)
 {
     TestNormalShot();
@@ -174,5 +217,6 @@ int main(void)
     TestArmRefusedWithLatchedSource();
     TestFaultBeatsShotCompletion();
     TestSoftFaultStaysUntilCleared();
+    TestLedsFollowState();
     return test_report("test_state_machine");
 }

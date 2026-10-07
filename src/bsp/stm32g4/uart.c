@@ -15,6 +15,7 @@
  */
 
 #include "uart_hw.h"
+#include "led_indicators.h"
 #include <string.h>
 
 struct uart_instance
@@ -49,7 +50,12 @@ void uart_start(uart_instance_t *inst)
 
 void uart_send(uart_instance_t *inst, const char *str)
 {
+    /* Activity LED (led_indicators.h): lit at the start and again when the
+       last byte has gone, so a long send never lets it expire mid-way. The
+       LED turns itself off; nothing here waits for it. */
+    LedIndicators_PulseTx();
     HAL_UART_Transmit(inst->huart, (uint8_t *)str, strlen(str), HAL_MAX_DELAY);
+    LedIndicators_PulseTx();
 }
 
 /*
@@ -61,6 +67,8 @@ void uart_send(uart_instance_t *inst, const char *str)
 void uart_rx_callback(uart_instance_t *inst)
 {
     char c = (char)inst->rx_byte;
+
+    LedIndicators_PulseRx();   /* activity LED, any instance (led_indicators.h) */
 
     /* Simple accumulation */
     if (c == '\n' || c == '\r') {
