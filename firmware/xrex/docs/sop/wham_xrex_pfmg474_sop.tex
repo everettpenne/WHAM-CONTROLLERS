@@ -1,0 +1,1109 @@
+\documentclass[11pt]{article}
+
+\usepackage{color,hyperref,amsmath}
+\usepackage[sc,osf]{mathpazo} % Palatino font, w/ smallcaps & old-style figures
+\usepackage[a4paper, total={5in, 8.25in}]{geometry}
+
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{shadows.blur, positioning}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\cmd}[1]{\texttt{#1}}
+
+% The 5in measure is narrow for unbreakable \code identifiers; let TeX
+% stretch interword space rather than overrun the margin.
+\setlength{\emergencystretch}{1.5em}
+
+% Default \tabcolsep (6pt each side of every column) adds up fast in
+% this narrow 5in measure -- e.g. a 4-column table pays 48pt (0.67in)
+% of padding alone. Trim it once, globally, rather than fighting
+% column-width arithmetic per table.
+\setlength{\tabcolsep}{4pt}
+
+% Simple boxed CAUTION callout, styled plainly (no tcolorbox dependency).
+\newcommand{\caution}[1]{%
+  \par\noindent
+  \fbox{\parbox{4.7in}{\textbf{CAUTION:} #1}}
+  \par\smallskip
+}
+
+\title{WHAM-XREX-PFMG474\\ \large Firmware Build, Flash, and Verification \\ Standard Operating Procedure}
+\author{}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+% longtable, not tabular/center: this table grew past one page as of
+% Rev E (five rows now), and a plain tabular cannot break across a page
+% boundary -- same overflow bug already fixed once in the Troubleshooting
+% table (Section~\ref{sec:troubleshooting}), below. \endhead repeats the
+% header row on each continuation page.
+\begin{longtable}{p{0.45in} p{0.75in} p{0.5in} p{2.7in}}
+  \hline
+  \textbf{Rev} & \textbf{Date} & \textbf{Author} & \textbf{Description} \\
+  \hline
+  \endhead
+  A & 2026-08-31 & -- & Initial issue: build, bootstrap flash, serial
+    reflash. No power-stage procedures yet (Section~\ref{sec:scope}). \\
+  B & 2026-09-04 & -- & Added Section~\ref{sec:table-fire}: uploading a
+    PFM table and firing it -- this firmware now drives real HRTIM PWM
+    output (Section~\ref{sec:scope} updated accordingly). Serial baud
+    raised 9600~$\to$~115200 throughout (Section~\ref{sec:verify} and
+    elsewhere). \\
+  C & 2026-09-22 & -- & Added Section~\ref{sec:profile-fire}: the modern
+    closed-loop shot-profile procedure (\code{ARM}/\code{SHOT:*}),
+    driven by hand over raw SCPI, bypassing \code{wham\_console.py}'s
+    \code{shot} wizard. Corrected Section~\ref{sec:scope}'s Rev~B claim
+    that this firmware has ``no ARM precondition, no state machine, no
+    fault interlock'' -- all three now exist (added between Rev~B and
+    Rev~C; Section~\ref{sec:table-fire}'s own caution still applies
+    as-is to the legacy \code{TABLE:*}/\code{FIRE} path specifically,
+    which remains interlock-free by design). \\
+  D & 2026-09-22 & -- & Added Section~\ref{sec:telemetry}: reading and
+    translating the \code{!EVT} telemetry stream and the retained
+    flight-recorder log (\code{SYS:EVLOG?}). Updated
+    Section~\ref{sec:profile-fire}: the external-enable
+    (\code{EXTernal:ENAble}, PF13) and external-trigger
+    (\code{EXTernal:TRIGger}, PF15) interlocks now default \textbf{ON}
+    at every boot (were opt-in/OFF through Rev~C), a real behavior
+    change for this procedure's own \code{ARM} step on hardware with
+    nothing wired to PF13; and \code{ARM}'s failure reporting was
+    reworked to name the specific failed precondition (which channel,
+    which interlock) instead of one generic error. Documented firing
+    via the external trigger as an alternative to Step~8's manual
+    \code{SHOT:STARt}. Updated
+    Section~\ref{sec:troubleshooting} to match. \\
+  E & 2026-09-22 & -- & Wire-protocol rename: the output/demand commands
+    moved out of \code{PID:*} into \code{SOURce:*}/\code{SHOT:*}/
+    \code{LOG:*}/\code{CHANnel:*} (clean cut, no aliases);
+    \code{PID:*} now means only \code{PID:GAINS}/\code{PID:LOOPMODE}.
+    All command names in this document updated accordingly. \\
+  F & 2026-09-23 & -- & Added Section~\ref{sec:signals}: a complete
+    reference inventory of every physical signal the controller drives
+    (OUTPUT) and reads (INPUT) at its Transrex- and operator/facility-
+    facing boundary -- per-channel signals (\code{DRIVE}/\code{FEEDBACK}/
+    \code{ENA\_OUT}/\code{CONTACT\_OUT}/the three gate-driver fault
+    inputs/\code{OCP}), the system-wide interlock/trigger/hardware-fault
+    inputs (PF13/PF15/PC10), and the bench-only diagnostic loopback
+    outputs. Includes a direct caution that \code{ENA\_OUT}/
+    \code{CONTACT\_OUT} are commands only, with no physical confirmation
+    signal back from the Transrex -- \code{SM\_FAULT\_ENABLE\_OUTPUT}
+    detects the controller's own commanded GPIO state changing, not
+    whether the Transrex's contactor actually responded. \\
+  G & 2026-09-29 & -- & Added Section~\ref{sec:nrst} (a required
+    hardware modification: a firm pull-up on the \code{NRST} line, with
+    the evidence and the next-board-revision list) and
+    Section~\ref{sec:network-update} (updating firmware over the
+    ethernet serial bridge with \code{fw\_update.py}). Two new
+    troubleshooting rows. Without the pull-up, bank swaps and cold
+    starts were found to hang with no serial output at all. \\
+  \hline
+\end{longtable}
+
+\section{Purpose}
+
+This document specifies the procedure for building, flashing, and
+verifying WHAM-XREX-PFMG474 firmware, and for confirming a board is
+running the expected firmware version before it is put into service or
+handed off.
+
+\section{Scope}
+\label{sec:scope}
+
+Covers firmware build and flashing (Sections~\ref{sec:build}--\ref{sec:verify}),
+the legacy PWM-table shot path (Section~\ref{sec:table-fire}, Rev~B), and,
+as of Rev~C, the modern closed-loop shot-profile path
+(Section~\ref{sec:profile-fire}) -- this firmware \textbf{drives real
+HRTIM PWM output} the moment \code{FIRE} (legacy path) or
+\code{SHOT:STARt} (modern path) is sent.
+
+\textbf{Correction, Rev~C:} Rev~B stated this firmware had ``no ARM
+precondition, no state machine, and no fault interlock.'' The ARM/
+state-machine part was accurate for Rev~B's own scope (the legacy
+\code{TABLE:*}/\code{FIRE} path \emph{still} has no \code{ARM} step and
+no state machine, by design -- Section~\ref{sec:table-fire}'s caution
+covers this) -- but the ``no fault interlock'' part was already
+incomplete even at Rev~B (\code{FIRE} has always rejected a latched
+fault with \code{ERR 6}, see Section~\ref{sec:table-fire}'s own
+caution, now corrected). A full state machine
+(\code{IDLE}/\code{ARMED}/\code{FIRING}/\code{FAULT}), an \code{ARM}
+precondition, and a richer, per-category fault interlock set
+(overcurrent, water/temp, Enerpro, enable-output) were added to the
+\emph{modern} path between Rev~B and Rev~C -- see Section~\ref
+{sec:profile-fire}. Treat any gate driver or power stage wired to these
+pins as live before either procedure, per your lab's normal HV/gate-
+driver procedure -- the modern path's interlocks protect against
+several real fault conditions but this SOP still provides no substitute
+for that normal procedure. This document still does not cover power-
+stage bring-up or calibration.
+
+\section{Prerequisites}
+
+\subsection{Equipment}
+
+\begin{center}
+\begin{tabular}{p{1.5in} p{3.2in}}
+  \hline
+  \textbf{Item} & \textbf{Notes} \\
+  \hline
+  WHAM-XREX-PFMG474 board & Powered per its own hardware documentation
+    (not covered here). \\
+  ST-Link (or equivalent SWD debug probe) & Required for the bootstrap
+    flash (Section~\ref{sec:bootstrap}) and for recovery if a board
+    stops responding over serial entirely. \\
+  USB-to-serial adapter & Wired to USART2: adapter TX~$\to$~PA3
+    (USART2\_RX), adapter RX~$\to$~PA2 (USART2\_TX), GND~$\leftrightarrow$~GND. \\
+  \hline
+\end{tabular}
+\end{center}
+
+\noindent\textit{(TX\slash RX wiring above is crossed: adapter TX goes
+to the MCU's RX pin and vice versa, as usual for a point-to-point serial
+link.)}
+
+\subsection{Software}
+
+\begin{center}
+\begin{tabular}{p{1.5in} p{3.2in}}
+  \hline
+  \textbf{Tool} & \textbf{Notes} \\
+  \hline
+  STM32CubeIDE & Project build and the bootstrap SWD flash. \\
+  \code{stm32flash} & AN3155 USART bootloader client. macOS:
+    \code{brew install stm32flash}. \\
+  Python 3 + \code{pyserial} & Runs \code{python/wham\_serial\_flash.py}.
+    \code{pip install pyserial}. \\
+  \hline
+\end{tabular}
+\end{center}
+
+\caution{This firmware has not yet been through an ESD-controlled
+production process. Use standard ESD precautions (grounding strap,
+static-safe surface) when handling the bare board.}
+
+\subsection{Required Hardware Modification: NRST Pull-Up}
+\label{sec:nrst}
+
+\textbf{Every board that will be updated over the network, or expected
+to start reliably from a cold power-on, needs a firm pull-up on the
+\code{NRST} line: a resistor from \code{NRST} to +3V3.} 5.1~k$\Omega$ is
+the value verified on the controller (see Evidence, below); anything from 4.7 to
+5.1~k$\Omega$ is expected to behave the same.
+
+\caution{The current bench modification (a bodge resistor) prevents the
+ST-Link from being used at the same time. Remove the resistor, or lift it
+with a jumper, before connecting an ST-Link, and restore it afterwards.
+Do \textbf{not} tie \code{NRST} directly to +3V3: a hard tie was tried
+once and did not cure the hang, and it stops the chip pulling its own
+reset line low. Use a resistor.}
+
+\subsubsection*{Why it is needed}
+
+The STM32G474 has \emph{no} pull-down on \code{NRST}. It has only a weak
+internal pull-up (about 40~k$\Omega$) that the reference manual says is
+switched off during every internal reset, including the option-byte
+reload that ends a bank swap and the power-on reset. On these boards
+something else on the net holds it partway down: \code{NRST} measured
+\textbf{1.6~V} on the controller while it sat silent, between the chip's
+low (about 1.0~V) and high (about 2.3~V) input thresholds at 3.3~V. A
+reset input that has seen a reset low stays in reset until it rises past
+the high threshold, so the chip never started. A firm external pull-up
+lifts the same divider to about 3~V, above the threshold.
+
+\subsubsection*{Symptoms without it}
+
+\begin{itemize}
+  \item After \code{FWUPdate:SWAP} the board acknowledges the swap and
+    then sends nothing: no \code{!BOOT} banner, no reply to \code{*IDN?}.
+  \item After a power cycle the board stays silent until an ST-Link is
+    connected (which pulls the line up and releases it).
+  \item It may recover on its own reset-pin pulse, or not at all, so the
+    failure looks random.
+\end{itemize}
+
+\subsubsection*{Evidence}
+
+\begin{center}
+\begin{tabular}{p{1.4in} p{1.6in} p{1.6in}}
+  \hline
+  \textbf{Board} & \textbf{Without a firm pull-up} & \textbf{With it} \\
+  \hline
+  Controller (5.1~k$\Omega$) & Hung after an SWD session; silent through
+    a power cycle; \code{NRST} = 1.6~V &
+    30 operations clean: 4 swaps, a full network reflash, a 20-swap
+    soak, 5 swaps after a true cold start (\code{BOR} set) \\
+  Simulator (value to be recorded) & 8 of 8 swaps hung; silent after a
+    power cycle & 16 of 16 swaps clean \\
+  \hline
+\end{tabular}
+\end{center}
+
+\noindent The result held with the original option bytes on the
+controller, so no firmware or option-byte change is required.
+
+\subsubsection*{Checking a board}
+
+With the board powered and running, measure \code{NRST} to ground with a
+meter. A healthy board reads close to 3.3~V. A reading between about 1~V
+and 2.3~V means the net is contested and the board can hang at the next
+reset. With the board unpowered, resistance from \code{NRST} to ground
+should be high; a low value means an external path is dragging the line.
+The source of that path has \emph{not} been identified yet; the pull-up
+masks it.
+
+\subsubsection*{Recommended for the next board revision}
+
+These are recommendations, not yet verified except the first.
+
+\begin{itemize}
+  \item Populate a 4.7--5.1~k$\Omega$ pull-up from \code{NRST} to +3V3 on
+    the PCB itself, away from the debug header, so the ST-Link and the
+    pull-up coexist.
+  \item Do not share the \code{NRST} net with the ESTOP fiber receiver
+    output (\code{PG10} is the reset pin; driving that net resets the
+    MCU), and find and remove the path that pulls the line down.
+  \item Add a pull-down (about 10~k$\Omega$) on \code{BOOT0} (\code{PB8}).
+    The simulator, with \code{BOOT0} floating (only a capacitor to
+    ground), booted the ROM bootloader after resets, silent to serial.
+    It was fixed there by clearing the \code{nSWBOOT0} option bit, so
+    the chip ignores the pin; the controller's \code{BOOT0} measured
+    0~V but is unprotected.
+  \item Consider a reset supervisor device to give \code{NRST} a defined
+    level at power-on.
+\end{itemize}
+
+\section{Procedure: Build the Firmware}
+\label{sec:build}
+
+\begin{enumerate}[label=\arabic*.]
+  \item Open the project in STM32CubeIDE and press \textbf{Refresh}
+    (\code{F5}) on the project if any files were added outside the IDE
+    since it was last opened.
+  \item Build the \textbf{Debug} configuration (\code{Project~$\to$~Build
+    Project}, or from the command line: \code{cd Debug \&\& make all -j4}).
+  \item Confirm the build produced no warnings. A clean build produces
+    \code{WHAM-XREX-PFMG474.elf} in \code{Debug/}.
+  \item \textbf{Generate the \code{.bin}.} This project's build
+    configuration does not have the ``Convert to binary file'' post-build
+    step enabled, so build with the project script instead, which also
+    runs the layout check and the off-target tests, generates the
+    \code{.bin}, and publishes both images to \code{build/}:
+\begin{quote}\ttfamily\small\raggedright
+python3 python/wham\_build.py
+\end{quote}
+    This writes \code{build/WHAM-XREX-PFMG474.bin} (simulator:
+    \code{--target simulator}, \code{build/WHAM-XREX-PFMG474-SIM.bin}).
+\end{enumerate}
+
+\section{Procedure: Bootstrap Flash (SWD)}
+\label{sec:bootstrap}
+
+Required the \emph{first} time a board receives firmware with the
+serial-bootloader feature (\code{BOOT} command), since that feature is
+what the serial reflash path in Section~\ref{sec:serial-flash} depends
+on -- a board cannot use it to receive the very first firmware that adds
+it. Also use this procedure to recover a board that no longer responds
+to \code{BOOT} over serial at all.
+
+\begin{enumerate}[label=\arabic*.]
+  \item Connect the ST-Link to the board's SWD header and to the host
+    computer.
+  \item In STM32CubeIDE, press \textbf{Run} (or \textbf{Debug}) to build
+    and flash via the ST-Link, as normal for this IDE.
+  \item Proceed to Section~\ref{sec:verify} to confirm the board is
+    running the expected firmware.
+\end{enumerate}
+
+\section{Procedure: Serial Reflash}
+\label{sec:serial-flash}
+
+Use this for all firmware updates \emph{after} the bootstrap flash in
+Section~\ref{sec:bootstrap} has been done once. This is the
+remote-friendly path: no physical BOOT0\slash NRST\slash SWD access is
+required, only the USART2 serial link.
+
+\begin{enumerate}[label=\arabic*.]
+  \item With the board powered and running its current firmware, and the
+    USB-serial adapter connected, run:
+\begin{quote}\ttfamily\small\raggedright
+python3 python/wham\_serial\_flash.py \textbackslash\\
+\hspace*{1em}--port /dev/cu.usbserial-XXXXX
+\end{quote}
+    substituting the actual serial device path. (On macOS, a single
+    USB-serial adapter shows up as both a \code{cu.*} and \code{tty.*}
+    device node; the script sees this as two candidates and will not
+    auto-detect -- \code{--port} must be passed explicitly. Prefer the
+    \code{cu.*} node.)
+  \item The script will: send \code{BOOT} and wait for the
+    acknowledgement; run \code{stm32flash} to write and verify
+    \code{build/WHAM-XREX-PFMG474.bin}; then start the new firmware
+    automatically (no manual reset needed -- see
+    Section~\ref{sec:reset-note}).
+  \item Confirm the script reports \texttt{[done]} with firmware
+    written and verified before proceeding.
+  \item Proceed to Section~\ref{sec:verify}.
+\end{enumerate}
+
+\subsection{Note on automatic restart after flashing}
+\label{sec:reset-note}
+
+Early testing of this procedure found that the newly-flashed firmware
+could come up unresponsive over serial until the board was manually
+power-cycled, because the STM32 ROM bootloader's \emph{Go} command (used
+to start the new firmware without a physical reset) does not perform a
+true chip reset, and left the processor's vector table pointer aimed at
+the bootloader's own vector table rather than the application's. This
+has been fixed in firmware (\code{boot\_jump.c}) -- a manual reset should
+not be necessary. If a board flashed under this SOP does not respond to
+the verification step below without a manual reset, that is a
+regression and should be reported, not treated as expected behavior.
+
+\section{Procedure: Network Firmware Update}
+\label{sec:network-update}
+
+Use this for boards reached through the ethernet serial bridge: a raw TCP
+connection to USART2 at 115200~8N1 that accepts \textbf{one client at a
+time}. It needs no USB-serial adapter and no ST-Link, and it does not use
+the ROM bootloader (which needs 8E1, something the bridge cannot carry).
+The firmware writes the new image into the \emph{inactive} flash bank,
+checks it (CRC-32 and a product-name check, so a simulator image cannot be
+loaded onto the controller and the reverse), then swaps banks and
+reboots. The previous image stays in the other bank.
+
+\caution{Requires the \code{NRST} pull-up of Section~\ref{sec:nrst}.
+Without it, the swap can leave the board silent until it is reset or an
+ST-Link is connected.}
+
+\begin{enumerate}[label=\arabic*.]
+  \item \textbf{Connect.} Reach the bridge (on the bench, an SSH tunnel
+    to the bridge address), then start the shared broker so several tools
+    can watch the same session, for example:
+\begin{quote}\ttfamily\small\raggedright
+python3 python/net\_broker.py \textbackslash\\
+\hspace*{1em}--upstream localhost:5010 --listen-port 5001
+\end{quote}
+    Watch it with \code{python3 python/net\_client.py --port 5001}. After
+    a power cycle of the board the bridge session drops; restart the
+    broker.
+  \item \textbf{Identify the board.}
+\begin{quote}\ttfamily\small\raggedright
+python3 python/fw\_update.py --url socket://localhost:5001 \textbackslash\\
+\hspace*{1em}--name fw\_update --target controller --status
+\end{quote}
+    Confirm the product name (\code{WHAM-XREX-PFMG474} or
+    \code{...-SIM}) and the running bank. \code{--target} is only a
+    guard: the board reached is whatever the URL leads to.
+  \item \textbf{Build} with \code{python3 python/wham\_build.py}
+    (\code{--target simulator} for the simulator). The image is
+    published to \code{build/}.
+  \item \textbf{Reach \code{STATE IDLE}.} The update is refused in any
+    other state. A bench board with nothing wired to the overcurrent
+    inputs boots in \code{FAULT OVERCURRENT 1}. Send
+    \code{EXTernal:ENAble 0}, then \code{FAULT:CLEAR}, and confirm
+    \code{STATE?} returns \code{IDLE}. (\code{FAULT:CLEAR} refuses while
+    the external-enable interlock is on and its input, PF13, is
+    unwired.)
+  \item \textbf{Run the update} and type \code{yes} at the prompt:
+\begin{quote}\ttfamily\small\raggedright
+python3 python/fw\_update.py --url socket://localhost:5001 \textbackslash\\
+\hspace*{1em}--name fw\_update --target controller
+\end{quote}
+    The transfer takes one to two minutes (about 2~KB/s on the
+    controller, 0.8~KB/s on the simulator). Do not skip the prompt
+    (\code{--yes}) except in a scripted, supervised run.
+  \item \textbf{Confirm.} The tool prints \code{OK ERASED},
+    \code{OK VERIFIED CRC=...}, \code{OK SWAPPING}, then the
+    \code{!BOOT} banner within about a second, and finally
+    \code{[ok] now running <version> from bank <n>}. Check that the
+    version and bank are what you expect.
+  \item \textbf{Rollback (optional).} \code{--rollback} boots the image in
+    the other bank, with no transfer.
+\end{enumerate}
+
+\caution{Step~4 turns the PF13 external-enable interlock off until the
+board's next reboot (the reboot restores the default). Do not do this on
+a system with a Transrex connected without knowing why the interlock is
+unsatisfied.}
+
+\noindent A bench board reboots into its normal power-up state after the
+swap, which for a board with unwired overcurrent inputs is \code{FAULT
+OVERCURRENT 1}. That is expected.
+
+\section{Procedure: Verification}
+\label{sec:verify}
+
+\begin{enumerate}[label=\arabic*.]
+  \item Open a serial connection to the board at \textbf{115200 8N1}
+    (raised from 9600 as of Rev~B -- see \code{docs/changelog.txt}).
+  \item Send \code{*IDN?} followed by a line ending (\code{\textbackslash
+    r}, \code{\textbackslash n}, or both).
+  \item Confirm a reply of the form:
+    \begin{quote}
+      \code{OK <board name> <hardware rev> <firmware version>}
+    \end{quote}
+    e.g.\ \code{OK WHAM-XREX-PFMG474 REVA v0.1}.
+  \item Confirm the reported firmware version matches the version that
+    was just built\slash flashed.
+\end{enumerate}
+
+Acceptance criterion for this SOP: Step 3 above returns a well-formed
+reply with the expected version, on the first query, with no manual
+reset performed since the flash in Section~\ref{sec:build} or
+\ref{sec:serial-flash}.
+
+\section{Procedure: Upload and Fire a PFM Table}
+\label{sec:table-fire}
+
+New in Rev~B. Uploads a complete PWM shot profile (a sequence of
+period/duty entries, one per switching cycle) and plays it back on
+demand. Full protocol detail: \code{docs/command\_reference.md}'s
+\code{TABle:*} and \code{FIRE} entries.
+
+\caution{\code{FIRE} drives real HRTIM PWM output on six pins (three
+complementary phase pairs, $\sim$100\,ns hardware dead time between
+each pair) the instant it is sent. There is still no \code{ARM} step
+and no state machine on \emph{this legacy path} as of Rev~C -- \code{FIRE}
+always takes effect immediately once its two checks pass (below),
+whether the board was idle or a previous shot was still running; the
+\code{ARM}/state-machine system added since Rev~B applies only to the
+modern \code{SHOT:*} path (Section~\ref{sec:profile-fire}), not
+to \code{FIRE}. \textbf{Correction, Rev~C:} \code{FIRE} DOES check for a
+latched fault (\code{ERR 6} if one is, \code{FAULT:CLEAR} first) in
+addition to the empty-table check below -- Rev~B's ``no fault
+interlock'' claim for this path was incomplete even at the time and is
+corrected here; this is still a single blanket check (any latched
+fault, not per-category), not the modern path's richer interlock set.
+Treat any gate driver or power stage wired to these pins as live before
+proceeding, per your lab's normal HV/gate-driver procedure.}
+
+\begin{enumerate}[label=\arabic*.]
+  \item Complete Sections~\ref{sec:build}--\ref{sec:verify} first --
+    a board must already be running current, verified firmware.
+  \item Table \emph{construction} (what shot profile to build) lives
+    entirely on the host, not in firmware -- see \code{pfm.h}'s own
+    header note for why. \code{python/pfm\_table\_upload.py} is the
+    reference builder: edit its \code{PROFILE} constant (1--5; see the
+    script's own header comment for what each one is) before running:
+\begin{quote}\ttfamily\small\raggedright
+python3 python/pfm\_table\_upload.py \textbackslash\\
+\hspace*{1em}--port /dev/cu.usbserial-XXXXX
+\end{quote}
+  \item Confirm the script reports \code{[done] table uploaded and
+    confirmed} with the expected entry count (\code{TABLE:END -> OK
+    <count>}).
+  \item Optionally confirm independently at any time with \code{TABLE?}
+    over a serial terminal (e.g.\ \code{python/scpi.py}) -- replies
+    \code{OK <count>}, matching the upload.
+  \item With the CAUTION above acknowledged and anything downstream of
+    these six pins confirmed safe to drive, send \code{FIRE}. A prompt
+    \code{OK} confirms the shot started; output stops on its own, at a
+    coherent period boundary, once the table is exhausted -- there is
+    no separate \code{STOP} command and no completion notification.
+  \item Sending \code{FIRE} against an empty table (nothing uploaded
+    yet) is rejected with \code{ERR 5} and drives nothing; sending it
+    with a fault latched is rejected with \code{ERR 6} (send
+    \code{FAULT:CLEAR} first) -- these two checks are this path's only
+    built-in safeguards, not a substitute for the interlock discussed
+    above.
+\end{enumerate}
+
+Acceptance criterion for this SOP: \code{TABLE:END} reports the exact
+entry count the host script intended to send, and \code{FIRE} returns
+\code{OK} with no \code{ERR}. Confirming the actual output waveform
+(dead time, phase spacing, duty accuracy) is a bench/instrumentation
+task outside this SOP's scope -- see \code{docs/test\_protocol.md}'s T4
+group if that level of verification is needed.
+
+\section{Procedure: Program and Fire a Shot Profile (Raw SCPI)}
+\label{sec:profile-fire}
+
+New in Rev~C. The modern shot path -- \code{ARM}/\code{SHOT:*} --
+driven entirely by hand over a bare serial terminal, for an operator who
+wants to understand (or reproduce without any host tooling) exactly what
+\code{python/wham\_console.py}'s guided \code{shot} wizard does under the
+hood. \textbf{For routine bench work, use the \code{shot} wizard instead}
+(\code{python3 python/wham\_console.py}, then \code{shot} -- it applies
+every step below automatically, with prompts, a pre-fire summary, and
+automatic plotting) -- this procedure is for when that tooling is
+unavailable, being debugged itself, or an operator specifically wants
+direct command-by-command control. Full protocol detail for every
+command below: \code{docs/command\_reference.md}'s \code{SOURce:*}/
+\code{SHOT:*}/\code{LOG:*}/\code{CHANnel:*} and \code{XREX:*} entries.
+
+\caution{\code{SHOT:STARt} (Step~8a) drives real HRTIM PWM output
+on every enabled channel, ramping toward that channel's own commanded
+demand current, from the moment it returns \code{OK}. Unlike the legacy
+path (Section~\ref{sec:table-fire}), this path DOES have a state machine
+(\code{IDLE} $\to$ \code{ARMED} $\to$ \code{FIRING}, back to \code{IDLE}
+automatically at shot end or on a fault) and DOES check real
+preconditions before \code{ARM} succeeds (Step~7) -- but those
+preconditions are about channel readiness and interlock state, not
+about whether a human has actually confirmed the downstream hardware is
+safe to drive. Treat any gate driver or power stage wired to an enabled
+channel's output as live before Step~8, per your lab's normal
+HV/gate-driver procedure, exactly as for the legacy path.
+
+\textbf{If firing via the external trigger instead (Step~8b, Rev~D):}
+the board stays \code{ARMED} -- and will fire on the very next PF15
+rising edge -- for as long as it takes an operator to reach for that
+trigger, which may be well after Step~7. Treat \code{ARMED} with
+\code{EXTernal:TRIGger} on as ``could fire at any moment,'' not just
+``about to fire right now'': confirm the downstream hardware is safe
+BEFORE sending \code{ARM} in this mode, not just before the trigger
+pull, and \code{DISARM} promptly if the trigger will not be pulled
+soon after arming.}
+
+\begin{enumerate}[label=\arabic*.]
+  \item Open a serial connection at \textbf{115200 8N1} and confirm the
+    board responds to \code{*IDN?} (as in Section~\ref{sec:verify}).
+  \item Confirm the starting state with \code{STATE?} -- expect
+    \code{OK IDLE}. If it instead reports \code{OK FAULT <type>}, resolve
+    the underlying condition first, then send \code{FAULT:CLEAR} (a
+    fault cleared without resolving its real cause will simply re-latch,
+    for every fault type this firmware detects).
+  \item \textbf{For each channel to be used this shot}, send, in this
+    order (every value explicit -- this firmware never resets a
+    channel's configuration between shots on its own, so anything not
+    sent here keeps whatever a previous shot, or a previous operator,
+    left it at):
+    \begin{enumerate}[label=(\alph*)]
+      \item \code{XREX:CHANnel:ENAOut <ch> 1}
+      \item \code{XREX:CHANnel:CONTactOut <ch> 1}
+      \item \code{SOURce:ENAble <ch> 1}
+      \item \code{PID:LOOPMODE <ch> <0|1>} -- \code{0} = open-loop
+        (profile value written straight to output, no correction),
+        \code{1} = closed-loop.
+      \item \emph{Closed-loop only:} \code{PID:GAINS <ch> <Kp> <Ki> <Kd>}.
+      \item \code{SHOT:CURRent <ch> <demandCurrentA>} -- this
+        channel's peak current for the shot (clamped to its own
+        configured full-scale current).
+    \end{enumerate}
+  \item \textbf{For every channel NOT being used this shot}, explicitly
+    disable it: \code{SOURce:ENAble <ch> 0}, \code{XREX:CHANnel:
+    ENAOut <ch> 0}, \code{XREX:CHANnel:CONTactOut <ch> 0}. Step~8 drives
+    \emph{every currently-enabled} channel, not just the ones just
+    configured in Step~3 -- a channel left enabled from an earlier shot
+    will fire too, toward whatever demand current it was last given.
+  \item Set the shared shot timing (one synchronized clock for every
+    channel): \code{SHOT:TIMing <rampUpTimeS> <flatTopTimeS>
+    <rampDownTimeS>} -- three independent durations as of Rev~C (all
+    three required, each must be $>0$; ramp up and ramp down no longer
+    have to match).
+  \item \emph{Optional but recommended:} arm waveform logging, so the
+    shot's actual behavior can be inspected afterward:
+    \code{LOG:ARM <ch> <maxSamples> <decim>} for one channel, or
+    \code{LOG:ARM 0 <maxSamples> <decim>} for every enabled channel at
+    once, from the same real ticks.
+  \item Send \code{ARM}. A plain \code{OK} confirms the transition to
+    \code{ARMED}. On failure, the reply now names the specific
+    precondition that failed (reworked Rev~D -- previously one generic
+    \code{ERR 13} covered every cause): \code{ERR 13 Can't ARM -- not
+    currently IDLE} (clear a fault or \code{DISARM} first);
+    \code{ERR 15 External enable interlock not satisfied -- PF13 reads
+    LOW} (see the \code{EXTernal:ENAble} note below); or
+    \code{ERR 13 Channel~N's ENA\_OUT/CONTACT\_OUT not both set} (fix
+    that channel per Step~3a/3b, or disable it per Step~4). Only the
+    \emph{first} failing precondition is reported per attempt -- fix it
+    and re-send \code{ARM} to see the next one, if any. Send
+    \code{DISARM} at any point before Step~8 to cancel back to
+    \code{IDLE} without firing anything.
+
+    \textbf{\code{EXTernal:ENAble} default, Rev~D:} this interlock
+    (PF13) now defaults \textbf{ON} at every boot (was opt-in/OFF
+    through Rev~C). On hardware with a real external-enable signal
+    wired to PF13, this Just Works. On a bare bench setup with nothing
+    wired there, PF13's resting level depends on the specific hardware
+    -- some fiber receivers idle HIGH with no signal present (interlock
+    satisfied by default), a genuinely floating pin reads LOW via the
+    board's own pull-down (interlock blocks \code{ARM} until either the
+    real signal is wired, looped back via \code{DIAGnostic:GPOut11}
+    (below), or \code{EXTernal:ENAble 0} is sent first for this
+    session). Check \code{EXTernal:INPut?} to see PF13's actual current
+    level before assuming which case applies.
+  \item With the CAUTION above acknowledged, fire the shot -- either
+    manually (send \code{SHOT:STARt}) or, \textbf{new Rev~D}, by
+    physical trigger:
+    \begin{enumerate}[label=(\alph*)]
+      \item \emph{Manual:} send \code{SHOT:STARt}. \code{OK}
+        confirms the shot has begun -- every enabled channel begins its
+        own linear ramp (0\,A $\to$ its own \code{demandCurrentA} $\to$
+        flat-top $\to$ 0\,A) from the same synchronized instant.
+        \code{ERR 12} means \code{SHOT:TIMing} was never
+        successfully sent this boot (Step~5); \code{ERR 15} means the
+        external-enable interlock dropped between \code{ARM} and this
+        command.
+      \item \emph{External trigger:} send \code{EXTernal:TRIGger 1}
+        (defaults ON as of Rev~D, same as \code{EXTernal:ENAble} above
+        -- confirm with \code{EXTernal:TRIGger?} if unsure). While
+        \code{ARMED}, a genuine \textbf{LOW-to-HIGH transition} on PF15
+        fires the shot exactly as \code{SHOT:STARt} would --
+        \textbf{edge-triggered, not level-triggered}: a signal already
+        HIGH at the moment \code{ARM} succeeded does \emph{not} count,
+        even if it stays HIGH afterward; only a fresh transition after
+        arming fires it. Check \code{EXTernal:TRIGger:INPut?} to see
+        PF15's current level, and see Section~\ref{sec:telemetry} for
+        how to confirm the fire actually happened (a triggered shot
+        emits its own \code{!EVT ... TRIGGER FIRING} line, distinct
+        from a command-initiated one) -- unlike Step~(a), a trigger that
+        fails to fire (wrong state, timing not set, interlock dropped)
+        reports nothing back over serial; it just silently stays
+        \code{ARMED}.
+    \end{enumerate}
+  \item Wait for completion: poll \code{SOURce:STATus? <ch>} (its
+    \code{running} field drops to \code{0}), or simply wait
+    \code{rampUpTimeS + flatTopTimeS + rampDownTimeS} plus a small
+    margin. The shot ends itself (a full stop, output off entirely --
+    not a hold-at-floor) with no separate \code{STOP} command and no
+    completion notification; the state machine returns to \code{IDLE}
+    on its own.
+  \item If logging was armed, fetch it: \code{LOG:DATA? <ch>} --
+    replies \code{OK <count> <rateHz>} then \code{count} groups of
+    \code{setpointHz measuredHz outputHz}, one per logged sample.
+  \item Return the board to a known-safe state before the next shot --
+    Step~9's automatic stop does \emph{not} do this: for every channel
+    used, \code{SOURce:ENAble <ch> 0}, \code{XREX:CHANnel:ENAOut
+    <ch> 0}, \code{XREX:CHANnel:CONTactOut <ch> 0}, \code{PID:LOOPMODE
+    <ch> 0}, \code{PID:GAINS <ch> 0 0 0}.
+\end{enumerate}
+
+Acceptance criterion for this SOP: \code{SHOT:STARt} returns
+\code{OK} with no \code{ERR}; \code{SOURce:STATus?} shows \code{running=1}
+immediately afterward and \code{running=0} once the total shot duration
+has elapsed; and, if logging was armed, \code{LOG:DATA?} reports the
+same sample count that was requested (or fewer only if the shot itself
+was shorter than the log's own capacity). Confirming the actual output
+waveform against the commanded profile (ramp linearity, flat-top
+accuracy, closed-loop convergence) is a bench/instrumentation task
+outside this SOP's scope -- \code{python/wham\_console.py}'s own
+\code{plot}/\code{report} commands, or \code{python/run\_simulator\_
+validation.py} against the bench simulator, cover that.
+
+\section{Procedure: Telemetry -- Reading and Translating the Event Stream}
+\label{sec:telemetry}
+
+New in Rev~D. The controller emits \textbf{unsolicited} \code{!EVT}
+lines -- device-initiated, not sent in response to any command -- any
+time the top-level state (\code{IDLE}/\code{ARMED}/\code{FIRING}/
+\code{FAULT}) changes, so an operator (or a host script) can observe
+what the board is doing in real time instead of having to continuously
+poll \code{STATE?}/\code{FAULT?}. A separate, always-on retained log
+(the \textbf{flight recorder}) keeps the same history for post-mortem
+review after the fact, even if nobody was watching the live stream when
+it happened. Full protocol detail: \code{docs/command\_reference.md}'s
+``Unsolicited telemetry events'' section and \code{docs/telemetry.md}.
+
+\subsection{The live stream}
+
+Enabled by default (\code{SYS:EVENT?} reports \code{1}). A \code{!EVT}
+line can arrive interleaved between any two commands' own \code{OK}/
+\code{ERR} replies -- the \code{!EVT} prefix can never collide with
+either, so it is always unambiguous which kind of line just arrived.
+\code{python/wham\_console.py} handles this automatically: every
+\code{!EVT} line is printed inline, tagged with the host's own
+wall-clock time, the moment it arrives -- nothing special has to be
+sent or typed to see it happen. Driving the board over a bare terminal
+instead, the same lines simply appear on their own between typed
+commands and replies; no special terminal mode is needed. To silence
+the live stream without losing anything (the flight recorder, below,
+keeps recording regardless): \code{SYS:EVENT 0}. Re-enable with
+\code{SYS:EVENT 1}.
+
+\subsection{Translating an \code{!EVT} line}
+
+Every line has the same shape: \code{!EVT <tick\_ms> <rest>}.
+\code{<tick\_ms>} is a monotonic millisecond counter since this boot
+(the same clock \code{SYS:TIME?} reports on demand) -- \textbf{not} a
+wall-clock time; this board has no RTC. To relate an event's timestamp
+back to a real time of day, note the host's own wall-clock time
+alongside a \code{SYS:TIME?} query close in time to the event and work
+from the difference -- \code{wham\_console.py}'s own inline tagging
+(above) already does this automatically for the live stream.
+
+\begin{center}
+\begin{tabular}{p{2in} p{2.7in}}
+  \hline
+  \textbf{Line} & \textbf{Meaning} \\
+  \hline
+  \code{STATE IDLE} &
+    Boot, a shot completed on its own, \code{DISARM}, \code{SOURce:STOP},
+    or a successful \code{FAULT:CLEAR}. \\
+  \code{STATE ARMED} &
+    A successful \code{ARM} (Section~\ref{sec:profile-fire}, Step~7). \\
+  \code{STATE FIRING} &
+    Output has actually begun -- either \code{SHOT:STARt} sent
+    manually, \emph{or} the external trigger (below). This line alone
+    does \textbf{not} distinguish which. \\
+  \code{TRIGGER FIRING} &
+    Emitted as an EXTRA line, immediately alongside a \code{STATE
+    FIRING} caused specifically by a PF15 rising edge
+    (Section~\ref{sec:profile-fire}, Step~8b) -- \textbf{this} is how to
+    tell a trigger-initiated shot apart from a command-initiated one: a
+    \code{STATE FIRING} with no accompanying \code{TRIGGER FIRING} was
+    started by \code{SHOT:STARt} (or \code{SOURce:RUN}); one
+    with it was started by the physical trigger. \\
+  \code{FAULT <type> [ch]} &
+    A fault was just latched -- \code{<type>} is one of \code{GENERAL}
+    (Water/Temp, or either hardware fault source, system-wide),
+    \code{OVERCURRENT}, \code{ENABLE\_OUTPUT}, or \code{ENERPRO} (all
+    three per-channel, \code{[ch]} 1-based and present only for these),
+    or \code{EXTERNAL\_ENABLE} (system-wide, PF13 dropped while
+    \code{FIRING}). See Section~\ref{sec:profile-fire}'s Scope
+    correction and \code{docs/command\_reference.md} for what each type
+    actually does to the output (ramp-down vs.\ immediate stop,
+    system-wide vs.\ single-channel). \\
+  \code{FAULT CLEAR} &
+    A successful \code{FAULT:CLEAR} -- the underlying condition was
+    confirmed actually gone, not merely requested; a \code{FAULT:CLEAR}
+    that fails to actually clear (condition still present) produces no
+    line at all, since nothing changed. \\
+  \hline
+\end{tabular}
+\end{center}
+
+\subsection{The flight recorder (post-mortem)}
+
+\code{SYS:EVLOG?} replays every retained event since this boot, oldest
+first, as a header \code{OK <n>} followed by \code{n} \code{!EVT}
+lines in the exact same format as the live stream above -- the same
+translation table applies unchanged. Retains up to 128 entries
+(overwrite-oldest once full); RAM-only, so it clears on reset like
+every other runtime state this firmware keeps. Critically, \textbf{this
+keeps recording even with the live stream silenced} (\code{SYS:EVENT
+0}) or with nobody connected/watching at all -- so the first
+diagnostic step after ``something unexpected happened and I don't know
+why'' should usually be \code{SYS:EVLOG?}, not a guess.
+
+\textbf{Worked example.} A real session this same day: an operator
+found the controller unexpectedly in \code{STATE?} \code{OK FAULT
+GENERAL} with no memory of having caused it, and \code{GDS?} (the raw
+gate-driver pin snapshot) showing every pin already healthy --
+suggesting whatever tripped it had since cleared on its own, but the
+\emph{latch} (by design, see Section~\ref{sec:table-fire}'s original
+fault-interlock discussion) does not clear itself. \code{SYS:EVLOG?}
+resolved it immediately:
+\begin{verbatim}
+> SYS:EVLOG?
+< OK 3
+< !EVT 40344 STATE ARMED
+< !EVT 40354 STATE IDLE
+< !EVT 275847 FAULT GENERAL
+\end{verbatim}
+This showed the fault fired spontaneously \textasciitilde{}4 minutes
+\emph{after} the last ARM/IDLE activity, while genuinely \code{IDLE} --
+ruling out a shot-in-progress cause and pointing instead at a real,
+transient signal edge on the fiber-fed Water/Temp inputs (in this
+case, traced to another board's own transmitter glitching during an
+unrelated reset). \code{FAULT:CLEAR} then succeeded cleanly, since
+\code{GDS?} had already confirmed the real condition was gone. Without
+the flight recorder, the only available facts would have been ``it's
+faulted now'' and ``the pins look fine now'' -- not enough, on their
+own, to tell a real-but-resolved event apart from a false latch.
+
+\section{Reference: Controller I/O -- Signals Sent To and Received From
+the Transrex}
+\label{sec:signals}
+
+New in Rev~F. A complete inventory of the physical signals this
+controller drives (\textbf{OUTPUT}) and reads (\textbf{INPUT}) at its
+Transrex-facing and operator/facility-facing boundary -- everything in
+this section is real hardware I/O, not a wire-protocol command.
+Authoritative source: \code{docs/pin\_mapping\_v4.csv}; every entry
+below was cross-checked against it and against the firmware source
+directly, not assumed from memory.
+
+\subsection{One thing to be careful about before reading the tables}
+
+\caution{\textbf{\code{XRn\_ENA\_OUT} and \code{XRn\_CONTACT\_OUT} are
+OUTPUTS ONLY -- the controller has no way to confirm the Transrex
+actually responded.} These two signals (Section~\ref{sec:signals-perch}
+below) are commands this firmware sends outward; there is no
+corresponding status/feedback input anywhere in the pin mapping. The
+firmware's own design comment is direct about this: ``these are OUTPUTS
+this firmware commands, not hardware-driven INPUTS it reads --
+`checking' them is a readback of this firmware's own last-written GPIO
+state..., not an interpretation of external signal polarity''
+(\code{src/app/protection/xrex\_io.h}). Concretely: \code{SM\_FAULT\_ENABLE\_OUTPUT}
+(Section~\ref{sec:profile-fire}) detects ``did this MCU's own GPIO
+register stop reading what we told it to be'' -- it CANNOT detect ``the
+controller is still commanding the contactor, but the Transrex's
+contactor itself failed to close or opened unexpectedly.'' If physical
+contactor confirmation matters for your operation, this is a real,
+currently-uncovered gap, not a case this fault type happens to also
+catch -- treat every ``contactor is closed'' assumption downstream of
+\code{XREX:CHANnel:CONTactOut?}/\code{ENAOut?} as ``the controller
+believes it commanded this,'' not as physical confirmation.}
+
+\subsection{Per-channel signals (XR1--XR4)}
+\label{sec:signals-perch}
+
+Eight signal types, one instance per Transrex channel (4 channels on
+this build -- confirm with \code{CONFig:CHANnels?}). Pin letters below
+follow \code{docs/pin\_mapping\_v4.csv}'s own channel order
+(XR1/XR2/XR3/XR4); wire commands use 1-based channel numbers
+(\code{XR1} = channel~1).
+
+% 3 columns, not 4 -- an earlier 4-column cut (Signal | Dir. | Pins |
+% Purpose) put "OUTPUT"/"INPUT" in their own narrow column, which is a
+% single unbreakable word with no wrap point: at any width narrow
+% enough to fit the other three columns in the page's 5in text width,
+% it overflowed solid into the next column with no separating space
+% (rendered as literally "OUTPUTPA8," -- caught visually, not just
+% from the hbox-overflow point count, which looked deceptively small).
+% Folding direction into the Signal column's own text avoids the
+% narrow-unbreakable-column problem entirely.
+\begin{longtable}{p{1.5in} p{0.95in} p{2.15in}}
+  \hline
+  \textbf{Signal (direction)} & \textbf{Pins (XR1--4)} & \textbf{Purpose / commands} \\
+  \hline
+  \endhead
+  \code{XRn\_DRIVE} (OUTPUT) & PA8, PA10, PB12, PB14 &
+    Real PFM switching waveform to the Transrex (HRTIM1 CHA1--CHD1) --
+    the actual power-stage drive signal. Driven the instant \code{FIRE}
+    (legacy, Section~\ref{sec:table-fire}) or
+    \code{SHOT:STARt}/\code{SOURce:RUN} (modern,
+    Section~\ref{sec:profile-fire}) succeeds. \\
+  \code{XRn\_FEEDBACK} (INPUT) & PA15, PD4, PB2, PC12 &
+    Measured output frequency (TIM2/TIM5 capture), from the Transrex's
+    own real PFM response -- this is what \code{SOURce:STATus?}'s
+    \code{measuredHz} field and closed-loop PID correction
+    (\code{PID:LOOPMODE}) are built on. A genuine hardware input,
+    unlike the two below. \\
+  \code{XRn\_ENA\_OUT} (OUTPUT) & PG0--PG3 &
+    Commands the Transrex's own enable line
+    (\code{XREX:CHANnel:ENAOut <ch> <0\textbar 1>}); both this and
+    \code{CONTACT\_OUT} below must be \code{1} for a channel before
+    \code{ARM} will succeed for it. \textbf{See the caution above --
+    output only, no confirmation.} \\
+  \code{XRn\_CONTACT\_OUT} (OUTPUT) & PG4--PG7 &
+    Commands the Transrex's own contactor
+    (\code{XREX:CHANnel:CONTactOut <ch> <0\textbar 1>}). \textbf{See
+    the caution above -- output only, no confirmation.} \\
+  \code{XRn\_WATER\_FLT} (INPUT) & PE0--PE3 &
+    Water-interlock fault input (one of the 12 \code{GateDriverStatus}
+    pins, \code{GDS?}). Polarity-configurable
+    (\code{CONFig:FaultPolarity:WATER}), routes to
+    \code{SM\_FAULT\_GENERAL} (system-wide full stop) with
+    \code{TMP\_FLT} below. \\
+  \code{XRn\_TMP\_FLT} (INPUT) & PE4--PE7 &
+    Temperature-interlock fault input, same 12-pin
+    \code{GateDriverStatus} group. Polarity-configurable
+    (\code{CONFig:FaultPolarity:TEMP}), also routes to
+    \code{SM\_FAULT\_GENERAL}. \\
+  \code{XRn\_ENERPRO\_FLT} (INPUT) & PE8--PE11 &
+    Enerpro fault input, same 12-pin group. Polarity-configurable
+    (\code{CONFig:FaultPolarity:ENERPRO}) -- unlike Water/Temp,
+    reclassified to its own per-channel \code{SM\_FAULT\_ENERPRO}
+    (individual disable + derate + ramp, survivors keep running), not
+    a full system stop. \\
+  \code{XRn\_OCP} (INPUT) & PF4, PF8, PF12, PF5 &
+    Per-channel overcurrent fault input (note the irregular pin order
+    -- matches the firmware's own \code{kOcpPin[]}). Polled, not
+    interrupt-driven -- these four pins share EXTI line numbers
+    already claimed by the \code{GateDriverStatus} group above, a real
+    hardware conflict, not a preference. Polarity-configurable
+    (\code{CONFig:FaultPolarity:OCP}); routes to per-channel
+    \code{SM\_FAULT\_OVERCURRENT}, same individual-disable-and-derate
+    response as Enerpro. \\
+  \hline
+\end{longtable}
+
+\subsection{System-wide signals (not per-channel)}
+
+\begin{longtable}{p{1.3in} p{0.45in} p{2.85in}}
+  \hline
+  \textbf{Signal (direction)} & \textbf{Pin} & \textbf{Purpose / commands} \\
+  \hline
+  \endhead
+  External enable (INPUT) & PF13 & Operator/facility permissive
+    interlock. \code{EXTernal:ENAble} gates \code{ARM}/a fire attempt
+    on this reading \code{HIGH} -- \textbf{defaults ON at every boot as
+    of Rev~D} (Section~\ref{sec:telemetry}'s own revision-table
+    entry). Raw level: \code{EXTernal:INPut?}. \\
+  External trigger (INPUT) & PF15 & ``Fiber\_Enable'' in
+    \code{docs/pin\_mapping\_v4.csv}. A genuine LOW-to-HIGH transition
+    fires a shot while \code{ARMED} -- \code{EXTernal:TRIGger}, also
+    defaults ON as of Rev~D. Edge-triggered, not level-triggered; see
+    Step~8b, Section~\ref{sec:profile-fire}. Raw level:
+    \code{EXTernal:TRIGger:INPut?}. \\
+  Native HRTIM fault (INPUT) & PC10 & \code{HRTIM1\_FLT6} -- a real
+    hardware fault input wired directly into the HRTIM peripheral,
+    active-low. Forces every fault-enabled channel's output to a safe
+    level \emph{autonomously, in silicon}, no CPU/interrupt/polling
+    latency, and keeps working even if the firmware is completely
+    hung -- the only signal in this whole reference that doesn't
+    depend on the firmware running correctly to protect the hardware. \\
+  \hline
+\end{longtable}
+
+\subsection{Diagnostic loopback outputs (bench-only, not Transrex-facing)}
+
+Four generic, software-driven outputs used to exercise the external
+enable/trigger inputs above from the serial console alone, without a
+hand-operated bench jumper -- referenced by
+Section~\ref{sec:troubleshooting}'s own entries and by
+\code{python/run\_simulator\_validation.py}'s automated campaign. Loop
+the relevant pin directly to PF13 or PF15 with a bench wire to use
+these.
+
+\begin{longtable}{p{1.7in} p{0.4in} p{2.5in}}
+  \hline
+  \textbf{Command (direction)} & \textbf{Pin} & \textbf{Typical use} \\
+  \hline
+  \endhead
+  \code{DIAGnostic:GPOut09} (OUTPUT) & PG8 & Generic diagnostic
+    output, no fixed loopback target -- available for ad-hoc bench
+    use. \\
+  \code{DIAGnostic:GPOut10} (OUTPUT) & PG9 & Same as \code{GPOut09}. \\
+  \code{DIAGnostic:GPOut11} (OUTPUT) & PD0 & Loop to PF13 to drive the
+    external-enable interlock entirely from software -- precise,
+    repeatable timing instead of a hand-operated switch. \\
+  \code{DIAGnostic:GPOut12} (OUTPUT) & PD1 & Loop to PF15 to drive the
+    external-trigger input the same way. \\
+  \hline
+\end{longtable}
+
+\section{Troubleshooting}
+\label{sec:troubleshooting}
+
+% longtable, not tabular/center: this table grew past one page as of
+% Rev D (two new rows), and a plain tabular cannot break across a page
+% boundary -- it either gets pushed whole onto the next page (leaving
+% the previous one mostly blank) or overflows the bottom margin. \endhead
+% repeats the header row on each continuation page.
+\begin{longtable}{p{1.7in} p{3in}}
+  \hline
+  \textbf{Symptom} & \textbf{Cause / action} \\
+  \hline
+  \endhead
+  \code{stm32flash} reports \code{Failed to init device, timeout.}
+    before any write occurs &
+    Not a firmware issue -- this probe doesn't depend on what's running
+    on the chip. Check board power, serial wiring (TX\slash RX not
+    crossed, common GND), and that no other program has the port
+    open. \\
+  \code{BOOT} gets no reply, but power/wiring check out &
+    The firmware currently on the board may predate the \code{BOOT}
+    command (run the bootstrap flash, Section~\ref{sec:bootstrap}) or
+    may be a board affected by the \code{Go}-jump issue in
+    Section~\ref{sec:reset-note} -- power-cycle once, then retry. \\
+  Verification (Section~\ref{sec:verify}) fails after a serial reflash &
+    Power-cycle the board once and repeat verification. If it then
+    succeeds, this is the regression described in
+    Section~\ref{sec:reset-note} -- report it. If it still fails, treat
+    as a failed flash and repeat Section~\ref{sec:serial-flash} from the
+    start. \\
+  \code{ARM} returns \code{ERR 13}/\code{ERR 15}
+    (Section~\ref{sec:profile-fire}) &
+    \textbf{Reworked Rev~D: the reply itself now names the cause} --
+    \code{ERR 13 Can't ARM -- not currently IDLE} (clear a fault or
+    \code{DISARM} first); \code{ERR 15 External enable interlock not
+    satisfied -- PF13 reads LOW} (see Step~7's own note, and
+    \code{EXTernal:INPut?}); or \code{ERR 13 Channel~N's ENA\_OUT/
+    CONTACT\_OUT not both set} (that channel's \code{XREX:CHANnel:
+    ENAOut}/\code{CONTactOut} aren't both asserted --
+    \code{SOURce:ENAble} alone is not sufficient). Only the first
+    failing precondition is reported per attempt; fix it and re-send
+    \code{ARM} to see the next one if any. \\
+  \code{ARM} returns \code{ERR 15} unexpectedly, on hardware with
+    nothing physically wired to PF13 &
+    New Rev~D: \code{EXTernal:ENAble} now defaults \textbf{ON} at every
+    boot. Whether this blocks \code{ARM} on unwired hardware depends on
+    how that specific board's PF13 rests with nothing connected --
+    check \code{EXTernal:INPut?} directly rather than assuming. If it
+    reads LOW and no real interlock is available for this session, send
+    \code{EXTernal:ENAble 0} first (see Step~7's own note). \\
+  \code{SHOT:STARt} returns \code{ERR 12}
+    (Section~\ref{sec:profile-fire}) &
+    \code{SHOT:TIMing} was never successfully sent this boot, or
+    was rejected -- as of Rev~C it takes three arguments (\code{SHOT:
+    TIMing} itself will report the same \code{ERR 12} with
+    ``needs three arguments'' if only two were sent, the pre-Rev-C
+    form). \\
+  A channel that should be silent shows real output or logged data
+    (Section~\ref{sec:profile-fire}) &
+    Confirm it was explicitly disabled THIS session (Step~4) --
+    \code{SHOT:STARt} drives every \emph{currently-enabled}
+    channel, not just the ones just configured, and enable state is
+    never implicitly reset between shots or between operators. \\
+  The external trigger (Step~8b) doesn't fire anything, with no error
+    reported at all &
+    New Rev~D. A triggered fire is a \emph{silent} no-op on failure --
+    check, in order: (1) \code{STATE?} is \code{ARMED}, not some other
+    state (only fires from \code{ARMED} -- see
+    Section~\ref{sec:telemetry}'s translation table); (2)
+    \code{SHOT:TIMing} was actually sent this boot (the same
+    RAM-only config \code{SHOT:STARt} needs -- a fresh reflash
+    wipes it, a real cause found live this same day); (3)
+    \code{EXTernal:TRIGger:INPut?} is genuinely transitioning LOW then
+    HIGH, not just sitting HIGH (edge-triggered, per Step~8b's own
+    note); (4) the external-enable interlock, if on, is satisfied
+    (\code{EXTernal:INPut?}). \code{SYS:EVLOG?}
+    (Section~\ref{sec:telemetry}) settles which of these it was after
+    the fact -- a genuine attempt that failed the interlock check still
+    leaves no trace either way, exactly like the command-driven path's
+    own re-check silently staying \code{ARMED}, so ruling out (1)-(3)
+    first is the faster path. \\
+  Silent after \code{FWUPdate:SWAP} (acknowledged, then no
+    \code{!BOOT} banner and no reply), or silent after a power cycle &
+    New Rev~G. Almost certainly the \code{NRST} line
+    (Section~\ref{sec:nrst}): check the pull-up is fitted and intact and
+    measure \code{NRST} (healthy is near 3.3~V; 1--2.3~V is the fault).
+    A power cycle or a reset-switch press may bring the board back; an
+    attached ST-Link releases it. After recovering, the banner's
+    \code{rst=} flags show what happened: \code{OBL} still set means no
+    boot ran since the swap. \\
+  \code{fw\_update.py} reports the update ``refused'', or the
+    board ``needs STATE IDLE'' &
+    Send \code{EXTernal:ENAble 0} then \code{FAULT:CLEAR} and check
+    \code{STATE?} (Section~\ref{sec:network-update}, Step~4). \\
+  \code{fw\_update.py} reports ``the connected board is the
+    simulator, not the controller'' (or the reverse) &
+    The product-name guard did its job: the URL leads to the other
+    board. Check \code{*IDN?} and the tunnel or broker port. \\
+  Network tools get no reply after a power cycle, or the broker exits &
+    The bridge session dropped (it accepts one client at a time).
+    Restart the broker, and make sure only one tool holds the bridge. \\
+  \hline
+\end{longtable}
+
+\section{References}
+
+\begin{itemize}
+  \item \code{AGENTS.md} -- project orientation and current functionality.
+  \item \code{docs/command\_reference.md} -- full serial command protocol,
+    including \code{TABle:*}/\code{FIRE} (Section~\ref{sec:table-fire})
+    and \code{SOURce:*}/\code{SHOT:*}/\code{LOG:*}/\code{CHANnel:*}/
+    \code{XREX:*} (Section~\ref{sec:profile-fire}).
+  \item \code{docs/serial\_reflash\_guide.md} -- detailed reflash
+    mechanism, including the \code{Go}-jump bug referenced in
+    Section~\ref{sec:reset-note}.
+  \item \code{docs/test\_protocol.md} -- bench-level verification,
+    including waveform checks beyond this SOP's acceptance criteria.
+  \item \code{python/pfm\_table\_upload.py} -- reference table builder
+    used in Section~\ref{sec:table-fire}; see its own header comment
+    for what each \code{PROFILE} value builds.
+  \item \code{python/wham\_console.py} -- the maintained interactive
+    operator console; its \code{shot}/\code{refire} commands apply
+    every step of Section~\ref{sec:profile-fire} automatically, with
+    guided prompts and automatic plotting -- the recommended tool for
+    routine bench work, with Section~\ref{sec:profile-fire} as the
+    reference for what it does under the hood.
+  \item \code{docs/telemetry.md} -- the \code{!EVT} stream and flight
+    recorder's own design writeup (wire format, buffering, the
+    packet-framing invariant); Section~\ref{sec:telemetry} above is
+    this SOP's operator-facing companion to it.
+  \item \code{python/fw\_update.py} -- the network update tool used in
+    Section~\ref{sec:network-update}.
+  \item \code{python/net\_broker.py} and \code{python/net\_client.py}
+    -- the shared-connection broker and viewer for the bridge session.
+  \item \code{docs/changelog.txt} -- dated development history; the
+    2026-09-28 and 2026-09-29 entries hold the full record of the
+    \code{NRST} investigation behind Section~\ref{sec:nrst}.
+\end{itemize}
+
+\end{document}
