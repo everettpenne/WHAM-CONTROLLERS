@@ -22,3 +22,9 @@ This repository replaces the standalone `WHAM-XREX-PFMG474` and `WHAM-HBRIDGE-PF
 full histories; the old repositories stop at that point and are no longer updated). All the projects are maintained here from now on:
 firmware for both products, the hardware files, the host software and the design documents. `docs/device_identity_and_host_service.md`
 is the plan for board identity and the host service.
+
+## License
+
+The software is licensed under the GNU Affero General Public License v3.0 only (`AGPL-3.0-only`): see [`LICENSE`](LICENSE).
+What that covers, what keeps its own license (the ST and Arm vendor code), and what is not licensed yet (documents and
+hardware designs) is spelled out in [`LICENSING.md`](LICENSING.md).

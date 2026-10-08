@@ -14,3 +14,6 @@ large third-party document archives (`hardware/*.zip`; GitHub refuses files over
 
 The pin map still lives with each firmware project (the firmware, the SOP and the command reference point at it). Moving it here, with
 product columns beside it and a changelog of board revisions, is the natural next step.
+
+**License:** the hardware designs are not licensed yet (all rights reserved); the AGPL in the repository root covers the software only.
+See `LICENSING.md`.
