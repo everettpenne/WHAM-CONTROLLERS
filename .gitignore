@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+# Python
+__pycache__/
+# KiCad: backups, autosaves, caches and per-user view state are not source
+**/*-backups/
+**/_autosave-*
+**/fp-info-cache
+**/*.kicad_prl
+# the fabrication toolkit's generated backup zips
+**/production/backups/
+# large archives of third-party documents (GitHub refuses files over 100 MB); keep them elsewhere
+hardware/*.zip
