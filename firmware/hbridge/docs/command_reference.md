@@ -189,6 +189,14 @@ period at a time. Open-loop shots run from about 10 ms to 1 s.
 < OK
 ```
 
+- **One duty per phase** (2026-10-13): a setpoint may give each phase its own duty,
+  `SHOT:STEP <t_us> <freq_hz> <duty_U> <duty_V> <duty_W>`. The time and the carrier frequency stay shared (the
+  three phases are locked to one master timer); each phase's duty ramps linearly to its own next value and is checked
+  against the mode's duty limits on its own (`ERR 10 duty of phase V is above ...`). The three-value form gives every
+  phase that duty, exactly as before, and a shot made only of those plays exactly as before (the same per-period
+  numbers; checked by the tests). Forms can be mixed from one setpoint to the next. `SHOT:POINt? <i>` answers
+  `OK <t_us> <freq_hz> <duty>` when all phases have the same duty at that setpoint, else
+  `OK <t_us> <freq_hz> <duty_U> <duty_V> <duty_W>`.
 - **Units on the wire:** time is an integer number of microseconds; frequency
   is in Hz with up to 3 decimals (`20000.5`); duty is in percent with up to 2
   decimals (`47.25`).
@@ -198,7 +206,7 @@ period at a time. Open-loop shots run from about 10 ms to 1 s.
   `SHOT_MAX_DURATION_US` (1 s); at least two setpoints are needed
   (`SHOT:END` refuses otherwise); at most `SHOT_SETPOINT_MAX` (500).
 - **Limits are checked at upload, per setpoint**, against the selected supply
-  mode (`CONFig:LIMits?`): `ERR 10` for a frequency or duty outside the mode,
+  mode (`CONFig:LIMits?`): `ERR 10` for a frequency or duty (of any phase) outside the mode,
   `ERR 4` for an ordering/format error or a time beyond the longest shot,
   `ERR 3` when full, `ERR 13` with no supply mode or while `FIRING`. A straight
   line between two setpoints inside the limits stays inside them; the
@@ -547,37 +555,60 @@ fixed; Limiter: duty, carrier fixed). The command layout follows the XREX contro
 All voltages are in the loop's own units ("process volts"): the target, the measurement
 and `CONFig:MAXVolts` are the same unit, set by the feedback calibration below (ADC volts
 by default, real supply volts once `CONFig:FEEDback:RANGE` or `SCALE`/`OFFSet` is set).
-The loop number is always `1` (the Limiter's three independent loops are not built yet).
 
-**Running it.** `CONFig:MODE`, then `PID:LOOPMODE 1 1`, then a target (`TARGet:*`), then
-`ARM` and `FIRE` (or `SOURce:RUN`, which runs a constant `SOURce:SETpoint` instead of a
-profile). With `PID:LOOPMODE 1 0` (the default) `FIRE` plays the open-loop `SHOT:*` as before.
+**Three loops, one per phase** (2026-10-13). The loop number `<ch>` is the phase: **1 = U, 2 = V, 3 = W**;
+`0` means all three where a command takes it. Each loop has its own mode (open or closed), gains, feedback
+input and calibration, hold setpoint and target series. Their feedback inputs default to **U on PA0, V on PA1,
+W on PB0** (`CONFig:FEEDback:CHANnel`). The shared settings (rate, limits, plant parameters, filter, clip time,
+slew) are set once for all. The HVPS has ONE loop, loop 1: its actuator, the frequency, is shared by every
+phase, so loops 2 and 3 apply to the Limiter only (their settings are kept, and ignored in HVPS mode).
+
+**Running it.** `CONFig:MODE`, then `PID:LOOPMODE <ch> 1` for each phase to close, then a target
+(`TARGet:*`), then `ARM` and `FIRE` (or `SOURce:RUN`, which runs a constant `SOURce:SETpoint` per loop
+instead of a profile). A phase whose loop is open (`PID:LOOPMODE <ch> 0`, the default) follows its duty in the
+open-loop shot (`SHOT:*`), so a run can MIX them: closed phases are driven by their controllers, open phases by the
+shot, at one carrier -- the shot's frequency when any enabled phase is open, otherwise the fixed closed-loop
+carrier (`CONFig:CLOSEDloop:FREQuency`). The run lasts as long as the shot when any phase follows it, otherwise as
+long as the target; a closed phase whose target ends earlier holds its last value. Disabled phases (`PHASe:ENAble`)
+take no part: their loops do not run and their feedback inputs are not checked. With every loop open `FIRE` plays
+the open-loop shot as before. Errors: no shot for an open phase (`ERR 5`); `SOURce:RUN` needs every enabled phase
+closed (`ERR 13`). *Behaviour change:* before the three loops existed `PID:LOOPMODE 1 1` closed the one loop that
+drove all phases; now it closes phase U only, and the other phases follow the shot (`PID:LOOPMODE 0 1` closes all).
 The loop ticks at `CONFig:PIDRate` (default 10 kHz, one tick per ADC block: the sampler
-timer starts the ADC, DMA fills the scan buffer, the block interrupt runs the loop). A run
-ends when the target ends: the HRTIM outputs are disabled at a period boundary.
+timer starts the ADC, DMA fills the scan buffer, the block interrupt runs all the loops). A run
+ends when its profile ends: the HRTIM outputs are disabled at a period boundary.
 
 ```
-> PID:LOOPMODE 1 1                 loop, 0 = open loop, 1 = closed loop (loop 0 = all)
-> PID:GAINS 1 0.167 6.667 0        kp ki kd, up to 3 decimals; Hz per V (HVPS), % duty per V (Limiter)
+> PID:LOOPMODE 1 1                 loop (1-3, 0 = all), 0 = open loop, 1 = closed loop
+> PID:LOOPMODE? 0                  OK 1 0 0   the three loops' modes
+> PID:GAINS 1 0.167 6.667 0        loop, kp ki kd, up to 3 decimals; Hz per V (HVPS), % duty per V (Limiter)
 < OK
 > TARGet:BEGin
-> TARGet:STEP 0 0                  t_us volts; the first setpoint must be t = 0; linear between setpoints
-> TARGet:STEP 25000 720
+> TARGet:STEP 0 0                  t_us volts (every phase); the first setpoint must be t = 0; linear between setpoints
+> TARGet:STEP 25000 720            ... or  TARGet:STEP 25000 720 -300 500  = a target per phase U, V, W
 > TARGet:END
 < OK 3 25000                       setpoints, duration in us
-> LOG:ARM 1 1000 1               loop, max samples (<= 1000), decimation (ticks per sample)
+> LOG:ARM 1 1000 1               loop (0 = all three), max samples (<= 1000; <= 333 for all three), decimation (ticks per sample)
 > ARM
 > FIRE
 > LOG:DATA? 1 0 40               loop, start, count (<= 40 per reply, SUM= check value)
 < OK 1000 10000 SUM=... 3 0 50638 ...   count, tick rate, then target mV, measured mV, output (milli-Hz or milli-%)
 > SOURce:STATus? 1
-< OK 0 -0.003 0.228 65.02          running, target, measured, output
+< OK 0 -0.003 0.228 65.02          running, target, measured, output (of that loop; an open phase shows its shot duty as the output)
+> PID:FAULT?                       OK 2 CLIPPED_LOW   which loop stopped the last run, and why (OK 0 NONE)
+> PID:DIAG?                        OK <ticks> <longest tick> <mean tick> <cycles per tick period>   the control tick's cost in CPU cycles
 ```
 
-`TARGet:STEP` refuses a voltage beyond `CONFig:MAXVolts`. Other target commands:
-`TARGet:CLEar`, `TARGet?`, `TARGet:POINt? <i>`. `SOURce:RUN`, `SOURce:STOP`, `SOURce:SETpoint <ch> <volts>`.
+`TARGet:STEP` takes ONE voltage for every phase or one per phase (U, V, W) on a shared time grid, and refuses a
+voltage beyond `CONFig:MAXVolts` (naming the phase). `TARGet:POINt? <i>` answers `OK <t_us> <volts>` when the
+phases agree, else `OK <t_us> <volts_U> <volts_V> <volts_W>`. Other target commands:
+`TARGet:CLEar`, `TARGet?`. `SOURce:RUN`, `SOURce:STOP`, `SOURce:SETpoint <ch> <volts>` (loop 0 = all).
 
-**Feedback input and calibration** (`CONFig:FEEDback:*`, default input PA1):
+**Feedback input and calibration** (`CONFig:FEEDback:*`; defaults U = PA0, V = PA1, W = PB0). `CHANnel`, `SCALE`,
+`OFFSet` and `RANGE` belong to a loop: with one argument they set loop 1 (as before there were three loops), with a loop
+first (`CONFig:FEEDback:RANGE 2 900`) that loop, and loop 0 sets all three (`CONFig:FEEDback:RANGE 0 900`); their queries take
+an optional loop the same way. `SOURce SIM` simulates every closed loop; `DAC` and `LOOP` (below) apply to loop 1 (phase U) only,
+the other loops read their real ADC inputs.
 
 | Command | Meaning |
 |---|---|
@@ -633,7 +664,8 @@ band (30 kHz above, 10 kHz below), `VPEAK` at `RESonance`, a straight line betwe
 
 **Simulated plant** (`CONFig:FEEDback:SOURce SIM`): the firmware answers its own commands
 through a first-order lag, so the loop runs with nothing wired. The plant starts at the run's first target voltage. `SIM:PLANT:SHAPE LINEAR|LORENTZ` (HVPS; default LINEAR, zero at the band's edges, matching the controller's default; LORENTZ is a nonlinear resonance, to test a loaded CURVe table against). `SIM:PLANT:TAU`, `GAIN`
-(a mid-shot disturbance knob), `RESonance`, `WIDTH`, `VPEAK`, `VSCALE`. Set the simulated
+(a mid-shot disturbance knob; `SIM:PLANT:GAIN <loop> <x>` for one plant, loop 0 for all, one argument = loop 1), `RESonance`, `WIDTH`, `VPEAK`, `VSCALE`
+(these apply to every loop's simulated plant). Set the simulated
 plant differently from the controller's model to test it against a supply it does not know.
 
 ### `GDS?`

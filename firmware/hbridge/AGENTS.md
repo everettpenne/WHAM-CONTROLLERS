@@ -496,6 +496,21 @@ range. `PID:LOOPMODE 1 1` makes `FIRE` play the target instead of the open-loop
 loop against a firmware plant model with nothing wired. Commands:
 `docs/command_reference.md`; history: `docs/changelog.txt` 2026-10-02.
 
+## Per-channel profiles and three loops (added 2026-10-13)
+
+Each phase U, V, W has its own duty profile and its own closed loop. Open loop: `SHOT:STEP <t> <f> <duty>` (all phases) or
+`<t> <f> <dU> <dV> <dW>`; time and frequency are shared (one master timer), the duty of each channel is interpolated and clamped on
+its own (`shot_profile.c`: `shot_setpoint_t.dutyHundredths[]`, `ShotGen_Next()` fills a compare per channel, with a fast path
+when the channels are equal; `ShotEval_At()` gives the shot at any time for mixed runs). The live step (`PFM_LiveSet(per, cmp[])`) is
+a two-buffer mailbox published with one byte store. Closed loop: `control_runtime.c` owns `g_cl[CTL_LOOPS]` (one `closed_loop_t` per
+phase; shared plant settings are copied to all, per-loop ones are mode, gains, feedback input -- defaults U = PA0, V = PA1, W = PB0 --
+calibration and hold setpoint) and `OnBlock()` ticks every closed loop, then `BuildStep()` composes one step: closed phases from their
+controllers, open phases from the shot, the carrier from the shot when any phase is open. The HVPS keeps a single frequency loop (loop 1).
+Targets (`target_profile.c`) have a value per channel on a shared time grid. Saved profiles: loop 1 keeps its old ids, loops 2 and 3
+have new ids, and a table is saved in the original format unless its phases differ (`docs/saved_profiles.md`). `closed_loop.c`,
+`pid_core.c`, `feedback.c` are compiled at -O2 (the control tick runs three loops; `PID:DIAG?` reports its cost). Ask before
+changing a frozen field id, or the per-channel meaning of loop numbers 1-3.
+
 ## Phase enable (added 2026-10-05)
 
 `PHASe:ENAble <phases> <0|1>` / `PHASe:SELect <phases>` (cmd_phase.c) choose which of U, V, W drive their outputs.

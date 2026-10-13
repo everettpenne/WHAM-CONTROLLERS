@@ -1,6 +1,28 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-13  —  Independent per-channel duty profiles and three closed loops (U on PA0, V on PA1, W on PB0)   (branch per-channel-profiles)
+-----------------------------------------------------------------------
+  Request: each channel should be able to output its own PWM duty profile, in open loop and in closed loop with its own feedback: phase U on the ADC at PA0,
+  V on PA1, W on PB0.
+  Open loop: SHOT:STEP <t> <f> <duty> (all phases, as before) or <t> <f> <dU> <dV> <dW>; time and frequency stay shared (one master timer). shot_profile.c
+        generates a compare per channel (a fast path when the channels are equal), checked per channel against the one-duty generator it must equal; the
+        per-period numbers of an ordinary shot are unchanged (the old GOLDEN values still hold). ShotEval_At() evaluates the shot at any time (mixed runs);
+        the live mailbox PFM_LiveSet(per, cmp[]) is a two-buffer ping-pong published by one byte store. python/pfm_shot_test.py has the matching Python port.
+  Closed loop: control_runtime.c now runs CTL_LOOPS = 3 loops (one closed_loop_t per phase, own mode, gains, feedback input and calibration, hold setpoint, simulated
+        plant); the shared plant settings are copied to all. A run may MIX them: closed phases from their controllers, open phases from the shot, the carrier from the
+        shot when any phase is open (else CONFig:CLOSEDloop:FREQuency); the run lasts as long as the shot, else as long as the target. TARGet:STEP takes one voltage per
+        phase on a shared time grid. The HVPS keeps ONE frequency loop (loop 1). Commands take the loop 1-3 (0 = all): PID:LOOPMODE, PID:GAINS, SOURce:SETpoint/STATus?,
+        LOG:ARM/DATA? (one pool: 1000 samples for one loop, 333 for all three), CONFig:FEEDback:CHANnel/SCALE/OFFSet/RANGE (optional loop, default loop 1). New PID:FAULT?
+        (which loop stopped the run) and PID:DIAG? (the control tick's cost in cycles). The loop controllers are compiled at -O2 like the generator.
+  BEHAVIOUR CHANGE: PID:LOOPMODE 1 1 used to close the one loop that drove every phase; it now closes phase U only and the other phases follow the shot
+        (PID:LOOPMODE 0 1 closes all three). The default feedback input of loop 1 is PA0 (was PA1).
+  Saved profiles: loop 1 keeps its ids; loops 2 and 3 have ids 19-22 and 35-37; shot and target have per-phase formats (ids 70-73) used only when the phases differ, so
+        ordinary profiles are saved byte for byte as before. Worst case (both series full, different on every phase, plus the HVPS curve): 15,656 of 16,336 bytes.
+  Tests: host suite all green (shot 47,853 checks incl. per-channel equality with the one-duty reference and the evaluator; target 668; codec 570; settings 355 incl.
+        per-phase round trip, old-format recall into every phase, the worst case). Firmware builds with no warnings: RAM +7 KB (bss 122,216; about 7 KB free), flash 104,248.
+  NOT yet verified on hardware: see the verification entry below if one has been added.
+
 2026-10-07  —  Device identity, step 2: the persistent serial (SYS:SERial, SYS:LABel, SYS:ID:CLEar), host provisioning tool; flash unique-ID read fixed
 -----------------------------------------------------------------------
   Request: continue the device-identity plan (docs/device_identity_and_host_service.md, repository top level).

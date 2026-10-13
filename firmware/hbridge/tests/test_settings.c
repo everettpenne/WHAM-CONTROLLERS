@@ -609,6 +609,16 @@ static void TestWorstCaseFits(void)
     BuildCurve(21000.0f);
     Settings_LiveTables(&tBefore);
     CHECK(Settings_Save(5U, "worst", "v0.9") == PROFILE_OK);          /* PROFILE_ERR_TOO_BIG here means the slot is too small */
+    {
+        settings_snapshot_t s;
+        settings_tables_t t;
+        profile_info_t info;
+        settings_decode_info_t d;
+
+        CHECK(Settings_Inspect(5U, &s, &t, &d, &info) == PROFILE_OK);
+        printf("  worst-case profile payload: %u of %lu bytes\n", (unsigned)info.payloadLen, (unsigned long)PROFILE_PAYLOAD_MAX);
+        CHECK(info.payloadLen <= PROFILE_PAYLOAD_MAX - 200U);          /* and keeps some room for fields added later */
+    }
     ShotProfile_Clear();
     Target_Clear();
     CHECK(Settings_Recall(5U, &res) == PROFILE_OK && res.apply.failed == 0U);

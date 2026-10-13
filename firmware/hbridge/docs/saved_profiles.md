@@ -45,9 +45,21 @@ does not have are left alone on recall, so an older and a newer firmware can rea
 | System scalars | supply mode (1), PIDRate (2), ADC:AVERage (3), ADC:SAMPle x10 (4), SLEWRate (5), MAXVolts (6), feedback channel / SCALE / OFFSet / FILTer / CLIPTime (7-11), PID:LOOPMODE (12) | in loop units (process volts); see `command_reference.md` |
 | Closed-loop plant | HVPS duty (13), Limiter carrier (14), resonance (15), VPEAK (16), VSCALE (17), BRANCH (18) | |
 | Per plant (channel byte = plant: 0 HVPS, 1 Limiter) | kp, ki, kd (32-34) | both plants are saved whichever mode is selected |
-| Shot table | count (64), points (65) | 10 bytes per point (t_us, freq_mHz, duty_hundredths), 24 points per record |
-| Target table | count (66), points (67) | 8 bytes per point (t_us, millivolts), 30 per record |
+| Loops 2 and 3 (channel byte = loop - 2) | LOOPMODE (19), feedback channel (20), SCALE (21), OFFSet (22) | added 2026-10-13 with the three loops; loop 1's values keep ids 7-12 |
+| Loops 2 and 3, gains (channel byte = plant + 2 x (loop - 2)) | kp, ki, kd (35-37) | |
+| Shot table | count (64), points (65) | 10 bytes per point (t_us, freq_mHz, duty_hundredths), 24 points per record: one duty for every phase |
+| Shot table, per phase | count (70), points (71) | 14 bytes per point (t_us, freq_mHz, a duty per phase U, V, W), 18 per record |
+| Target table | count (66), points (67) | 8 bytes per point (t_us, millivolts), 30 per record: one voltage for every phase |
+| Target table, per phase | count (72), points (73) | 16 bytes per point (t_us, a millivolts per phase), 15 per record |
 | HVPS curve | count (68), points (69) | 8 bytes per point (Hz, volts as floats), 30 per record; count 0 = the linear default |
+
+**Which table format a save uses.** A shot or target whose phases all have the same value at every point is saved in
+the original format (ids 64-67), byte for byte as before the three loops, so ordinary profiles are the same size and
+older firmware can read them; one whose phases differ is saved in the per-phase format (ids 70-73). A recall accepts
+either, and an original-format table gives every phase that value. The worst case -- both series at their full 500
+points with different values on every phase, plus the HVPS curve -- is 15,656 of the 16,336 bytes a slot holds
+(a host test saves and recalls exactly that). Older firmware reading a newer save skips the records it does not know
+(loops 2 and 3, the per-phase tables), so a per-phase profile recalls there with that table missing.
 
 **Not saved**, on purpose: ARM/FIRE/SOURce run state and `SOURce:SETpoint`, which phases are enabled (`PHASe:ENAble`:
 a recall must never change which legs of the bridge are driven), the DAC outputs, and every
@@ -88,7 +100,8 @@ last 4 KiB       QSPI:SELFtest scratch sector
   injecting a cut at every step of small saves and at a spread of steps of a 9 KB multi-sector save).
 * **Product magic.** HBRIDGE writes `HSPF`, XREX `WSPF`. The two controllers share this board and chip; each
   reads the other's data as "corrupt" in its catalog and never decodes it (the field ids overlap).
-* **Streaming.** A full profile is about 5.5 KB with a 500-point shot and about 9.5 KB with both tables full,
+* **Streaming.** A full profile is about 5.5 KB with a 500-point shot and about 9.5 KB with both tables full
+  (15,656 bytes with per-phase tables full),
   and free RAM is about 14 KB, so tables are never copied: they are encoded straight from the live table into
   flash (a counting pass first, because the header needs the length) and decoded straight from flash into the
   live table, with the whole payload's CRC verified before anything is applied.
