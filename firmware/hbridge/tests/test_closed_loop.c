@@ -64,7 +64,7 @@ static float CodeFor(float volts, float scale, float offsetV)
 static void Profile(const uint32_t *t, const int32_t *mv, int n)
 {
     Target_Clear();
-    for (int i = 0; i < n; i++) { CHECK(Target_Append(t[i], mv[i], 4000) == TARGET_APPEND_OK); }
+    for (int i = 0; i < n; i++) { CHECK(Target_AppendUniform(t[i], mv[i], 4000) == TARGET_APPEND_OK); }
 }
 
 static void TestLimiterTracksTriangle(void)
@@ -128,7 +128,7 @@ static void TestLimiter900V(void)
 
     SupplyMode_Set(SUPPLY_MODE_LIMITER);
     Target_Clear();
-    for (int i = 0; i < 5; i++) { CHECK(Target_Append(t[i], mv[i], 1000000) == TARGET_APPEND_OK); }
+    for (int i = 0; i < 5; i++) { CHECK(Target_AppendUniform(t[i], mv[i], 1000000) == TARGET_APPEND_OK); }
     Cl_Init(&cl, RATE, VREF);
     Feedback_SetBipolarRange(&cl.fb, 900.0f);
     cl.cfg.maxVolts = 1000.0f;

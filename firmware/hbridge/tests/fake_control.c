@@ -15,14 +15,38 @@ static uint8_t  g_init = 0U;
 static uint32_t g_rate = 10000U;
 static uint16_t g_scans = 4U;
 static uint16_t g_sample = 475U;
-static float    g_slew = 0.0f, g_maxV = 4.0f, g_scale = 1.0f, g_offset = 0.0f, g_filter = 0.0f, g_clip = 10.0f;
-static uint8_t  g_channel = 1U, g_loop = 0U;
+static float    g_slew = 0.0f, g_maxV = 4.0f, g_filter = 0.0f, g_clip = 10.0f;
+/* per loop, as in the real control_runtime.c: the defaults are U on PA0, V on PA1, W on PB0 */
+static float    g_scale[CTL_LOOPS], g_offset[CTL_LOOPS];
+static uint8_t  g_channel[CTL_LOOPS], g_loop[CTL_LOOPS];
+static float    g_gain[CTL_LOOPS][CL_PLANT_COUNT][3];
+
+static void LoopDefaults(void)
+{
+    static const uint8_t kCh[CTL_LOOPS] = { 0U, 1U, 3U };
+
+    for (uint8_t l = 0U; l < CTL_LOOPS; l++)
+    {
+        g_scale[l] = 1.0f; g_offset[l] = 0.0f; g_channel[l] = kCh[l]; g_loop[l] = 0U;
+        for (uint8_t p = 0U; p < CL_PLANT_COUNT; p++) { g_gain[l][p][0] = g_gain[l][p][1] = g_gain[l][p][2] = 0.0f; }
+    }
+}
+
+/* the loops' own selection of "one loop or every loop", as the real setters take it */
+static int LoopRange(uint8_t loop, uint8_t *lo, uint8_t *hi)
+{
+    if (loop == CTL_ALL_LOOPS) { *lo = 0U; *hi = CTL_LOOPS; return 1; }
+    if (loop >= CTL_LOOPS) { return 0; }
+    *lo = loop; *hi = (uint8_t)(loop + 1U);
+    return 1;
+}
 
 closed_loop_t *Control_Loop(void)
 {
     if (g_init == 0U)
     {
         Cl_Init(&g_cl, 10000U, 2.9f);
+        LoopDefaults();
         g_init = 1U;
     }
     return &g_cl;
@@ -33,8 +57,8 @@ void FakeControl_Reset(void)
     g_init = 0U;
     g_fakeSource = PFM_SOURCE_TABLE;
     g_rate = 10000U; g_scans = 4U; g_sample = 475U;
-    g_slew = 0.0f; g_maxV = 4.0f; g_scale = 1.0f; g_offset = 0.0f; g_filter = 0.0f; g_clip = 10.0f;
-    g_channel = 1U; g_loop = 0U;
+    g_slew = 0.0f; g_maxV = 4.0f; g_filter = 0.0f; g_clip = 10.0f;
+    LoopDefaults();
     (void)Control_Loop();
 }
 
@@ -80,12 +104,30 @@ ctl_set_result_t Control_SetSlewPerTick(float v) { if (v < 0.0f) { return CTL_SE
 float Control_GetSlewPerTick(void) { return g_slew; }
 ctl_set_result_t Control_SetMaxVolts(float v) { if (v <= 0.0f || v > 10000.0f) { return CTL_SET_RANGE; } g_maxV = v; return CTL_SET_OK; }
 float Control_GetMaxVolts(void) { return g_maxV; }
-ctl_set_result_t Control_SetFeedbackChannel(uint8_t c) { if (c > 5U) { return CTL_SET_RANGE; } g_channel = c; return CTL_SET_OK; }
-uint8_t Control_GetFeedbackChannel(void) { return g_channel; }
-ctl_set_result_t Control_SetFeedbackScale(float v) { if (v <= 0.0f || v > 1.0e6f) { return CTL_SET_RANGE; } g_scale = v; return CTL_SET_OK; }
-float Control_GetFeedbackScale(void) { return g_scale; }
-ctl_set_result_t Control_SetFeedbackOffset(float v) { if (v < 0.0f || v > 2.9f) { return CTL_SET_RANGE; } g_offset = v; return CTL_SET_OK; }
-float Control_GetFeedbackOffset(void) { return g_offset; }
+ctl_set_result_t Control_SetFeedbackChannel(uint8_t l, uint8_t c)
+{
+    uint8_t lo, hi;
+    if (!LoopRange(l, &lo, &hi) || c > 5U) { return CTL_SET_RANGE; }
+    for (uint8_t i = lo; i < hi; i++) { g_channel[i] = c; }
+    return CTL_SET_OK;
+}
+uint8_t Control_GetFeedbackChannel(uint8_t l) { return g_channel[l % CTL_LOOPS]; }
+ctl_set_result_t Control_SetFeedbackScale(uint8_t l, float v)
+{
+    uint8_t lo, hi;
+    if (!LoopRange(l, &lo, &hi) || v <= 0.0f || v > 1.0e6f) { return CTL_SET_RANGE; }
+    for (uint8_t i = lo; i < hi; i++) { g_scale[i] = v; }
+    return CTL_SET_OK;
+}
+float Control_GetFeedbackScale(uint8_t l) { return g_scale[l % CTL_LOOPS]; }
+ctl_set_result_t Control_SetFeedbackOffset(uint8_t l, float v)
+{
+    uint8_t lo, hi;
+    if (!LoopRange(l, &lo, &hi) || v < 0.0f || v > 2.9f) { return CTL_SET_RANGE; }
+    for (uint8_t i = lo; i < hi; i++) { g_offset[i] = v; }
+    return CTL_SET_OK;
+}
+float Control_GetFeedbackOffset(uint8_t l) { return g_offset[l % CTL_LOOPS]; }
 ctl_set_result_t Control_SetFeedbackFilterHz(float v)
 {
     if (v < 0.0f || v >= (float)g_rate / 2.0f) { return CTL_SET_RANGE; }
@@ -95,18 +137,24 @@ ctl_set_result_t Control_SetFeedbackFilterHz(float v)
 float Control_GetFeedbackFilterHz(void) { return g_filter; }
 ctl_set_result_t Control_SetClipMs(float v) { if (v < 0.0f || v > 1000.0f) { return CTL_SET_RANGE; } g_clip = v; return CTL_SET_OK; }
 float Control_GetClipMs(void) { return g_clip; }
-void Control_SetLoopMode(uint8_t m) { g_loop = (m != 0U) ? 1U : 0U; }
-uint8_t Control_GetLoopMode(void) { return g_loop; }
-
-ctl_set_result_t Control_SetGainsFor(uint8_t p, float kp, float ki, float kd)
+void Control_SetLoopMode(uint8_t l, uint8_t m)
 {
-    if (p >= CL_PLANT_COUNT || kp < 0.0f || ki < 0.0f || kd < 0.0f) { return CTL_SET_RANGE; }
-    Control_Loop()->cfg.kp[p] = kp; Control_Loop()->cfg.ki[p] = ki; Control_Loop()->cfg.kd[p] = kd;
+    uint8_t lo, hi;
+    if (!LoopRange(l, &lo, &hi)) { return; }
+    for (uint8_t i = lo; i < hi; i++) { g_loop[i] = (m != 0U) ? 1U : 0U; }
+}
+uint8_t Control_GetLoopMode(uint8_t l) { return g_loop[l % CTL_LOOPS]; }
+
+ctl_set_result_t Control_SetGainsFor(uint8_t l, uint8_t p, float kp, float ki, float kd)
+{
+    uint8_t lo, hi;
+    if (!LoopRange(l, &lo, &hi) || p >= CL_PLANT_COUNT || kp < 0.0f || ki < 0.0f || kd < 0.0f) { return CTL_SET_RANGE; }
+    for (uint8_t i = lo; i < hi; i++) { g_gain[i][p][0] = kp; g_gain[i][p][1] = ki; g_gain[i][p][2] = kd; }
     return CTL_SET_OK;
 }
-void Control_GetGainsFor(uint8_t p, float *kp, float *ki, float *kd)
+void Control_GetGainsFor(uint8_t l, uint8_t p, float *kp, float *ki, float *kd)
 {
-    *kp = Control_Loop()->cfg.kp[p]; *ki = Control_Loop()->cfg.ki[p]; *kd = Control_Loop()->cfg.kd[p];
+    *kp = g_gain[l % CTL_LOOPS][p][0]; *ki = g_gain[l % CTL_LOOPS][p][1]; *kd = g_gain[l % CTL_LOOPS][p][2];
 }
 
 ctl_set_result_t Control_SetHvpsDuty(float v)

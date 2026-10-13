@@ -36,7 +36,12 @@ static volatile uint8_t  g_underrun = 0U;
 static volatile uint8_t  g_refillPended = 0U;   /* a refill is pended or running: don't pend again every period */
 static PFM_Source_t      g_source   = PFM_SOURCE_TABLE;
 static PFM_Source_t      g_openSource = PFM_SOURCE_TABLE;   /* the last non-live source selected */
-static volatile uint32_t g_live = 0U;                       /* per << 16 | cmp, the closed loop's next step */
+/* The closed loop's next step: per and one compare per channel. Two buffers and an index: the writer (the control
+   interrupt, priority 2) fills the one that is NOT published, then publishes it with one byte store; the reader (the
+   per-period interrupt, priority 1) can preempt the writer anywhere but only ever reads the published one, and the
+   writer cannot preempt the reader, so the reader never sees a half-written step. */
+static PFM_Step_t         g_liveBuf[2];
+static volatile uint8_t   g_liveIdx = 0U;
 static volatile uint8_t  g_liveReady = 0U;
 static volatile uint8_t  g_liveStop = 0U;
 
@@ -304,9 +309,6 @@ static void CycleBoundaryBody(void)
        at a period boundary, like the end of a table. */
     if (g_source == PFM_SOURCE_LIVE)
     {
-        PFM_Step_t live;
-        uint32_t v;
-
         if (g_liveStop != 0U)
         {
             g_liveStop = 0U;
@@ -316,13 +318,7 @@ static void CycleBoundaryBody(void)
             PfmInput_OnShotEnd();
             return;
         }
-        v = g_live;
-        live.per = (uint16_t)(v >> 16);
-        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
-        {
-            live.cmp[ch] = (uint16_t)(v & 0xFFFFU);
-        }
-        ApplyStep(&live);
+        ApplyStep(&g_liveBuf[g_liveIdx]);
         return;
     }
 
@@ -395,19 +391,14 @@ static void FillRing(void)
     {
         PFM_Step_t *slot = &g_pfmTable[g_ringHead % PFM_TABLE_SIZE];
         uint16_t per;
-        uint16_t cmp;
         uint8_t  last;
 
-        if (ShotGen_Next(&per, &cmp, &last) == 0U)
+        if (ShotGen_Next(&per, slot->cmp, &last) == 0U)
         {
             g_genDone = 1U;
             return;
         }
         slot->per = per;
-        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
-        {
-            slot->cmp[ch] = cmp;
-        }
         if (last != 0U)
         {
             g_genDone = 1U;   /* before the entry is published, see the ring's comment */
@@ -452,9 +443,16 @@ void PFM_RestoreOpenSource(void)
     g_source = g_openSource;
 }
 
-void PFM_LiveSet(uint16_t per, uint16_t cmp)
+void PFM_LiveSet(uint16_t per, const uint16_t cmp[HRTIM_NUM_CHANNELS])
 {
-    g_live = ((uint32_t)per << 16) | cmp;
+    uint8_t w = (uint8_t)(g_liveIdx ^ 1U);
+
+    g_liveBuf[w].per = per;
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        g_liveBuf[w].cmp[ch] = cmp[ch];
+    }
+    g_liveIdx = w;              /* publish */
     g_liveReady = 1U;
 }
 
@@ -515,12 +513,7 @@ void PFM_Restart(void)
     if (g_source == PFM_SOURCE_LIVE)
     {
         /* the opening step goes into slot 0 so the common preload below applies it */
-        uint32_t v = g_live;
-        g_pfmTable[0].per = (uint16_t)(v >> 16);
-        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
-        {
-            g_pfmTable[0].cmp[ch] = (uint16_t)(v & 0xFFFFU);
-        }
+        g_pfmTable[0] = g_liveBuf[g_liveIdx];
         g_ringHead = 1U;
         g_genDone  = 1U;
         g_liveStop = 0U;

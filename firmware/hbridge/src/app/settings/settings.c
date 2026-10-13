@@ -53,12 +53,12 @@ void Settings_Capture(settings_snapshot_t *s)
     s->adcSampleX10  = Control_GetSampleTimeX10();
     s->slewPerTick   = Control_GetSlewPerTick();
     s->maxVolts      = Control_GetMaxVolts();
-    s->fbChannel     = Control_GetFeedbackChannel();
-    s->fbScale       = Control_GetFeedbackScale();
-    s->fbOffsetV     = Control_GetFeedbackOffset();
+    s->fbChannel     = Control_GetFeedbackChannel(0U);
+    s->fbScale       = Control_GetFeedbackScale(0U);
+    s->fbOffsetV     = Control_GetFeedbackOffset(0U);
     s->fbFilterHz    = Control_GetFeedbackFilterHz();
     s->fbClipMs      = Control_GetClipMs();
-    s->loopMode      = Control_GetLoopMode();
+    s->loopMode      = Control_GetLoopMode(0U);
     s->clHvpsDuty    = Control_GetHvpsDuty();
     s->clLimiterFreq = Control_GetLimiterFreq();
     s->clResonanceHz = Control_GetHvpsResonance();
@@ -91,16 +91,41 @@ void Settings_Capture(settings_snapshot_t *s)
 
     for (uint8_t p = 0U; p < SET_PLANT_COUNT; p++)
     {
-        Control_GetGainsFor(p, &s->plant[p].kp, &s->plant[p].ki, &s->plant[p].kd);
+        Control_GetGainsFor(0U, p, &s->plant[p].kp, &s->plant[p].ki, &s->plant[p].kd);
         MarkPresent(s, SETF_KP, p);
         MarkPresent(s, SETF_KI, p);
         MarkPresent(s, SETF_KD, p);
+    }
+
+    /* loops 2 and 3 */
+    for (uint8_t x = 0U; x < SET_XLOOPS; x++)
+    {
+        uint8_t loop = (uint8_t)(x + 1U);
+
+        s->xloop[x].loopMode  = Control_GetLoopMode(loop);
+        s->xloop[x].fbChannel = Control_GetFeedbackChannel(loop);
+        s->xloop[x].fbScale   = Control_GetFeedbackScale(loop);
+        s->xloop[x].fbOffsetV = Control_GetFeedbackOffset(loop);
+        MarkPresent(s, SETF_X_LOOP_MODE, x);
+        MarkPresent(s, SETF_X_FB_CHANNEL, x);
+        MarkPresent(s, SETF_X_FB_SCALE, x);
+        MarkPresent(s, SETF_X_FB_OFFSET_V, x);
+        for (uint8_t p = 0U; p < SET_PLANT_COUNT; p++)
+        {
+            uint8_t c = (uint8_t)(x * SET_PLANT_COUNT + p);
+
+            Control_GetGainsFor(loop, p, &s->xplant[c].kp, &s->xplant[c].ki, &s->xplant[c].kd);
+            MarkPresent(s, SETF_X_KP, c);
+            MarkPresent(s, SETF_X_KI, c);
+            MarkPresent(s, SETF_X_KD, c);
+        }
     }
 }
 
 static void Record(settings_apply_result_t *r, uint8_t ok, const char *name, uint8_t ch)
 {
     static const char *const plant[SET_PLANT_COUNT] = { "hvps", "lim" };
+    /* ch: SET_CHANNEL_SYSTEM, a plant (0..1), or 0x80 | extra-loop index for a loop 2/3 value (0x40 | plant + 2 x loop for gains) */
 
     if (ok != 0U)
     {
@@ -116,6 +141,17 @@ static void Record(settings_apply_result_t *r, uint8_t ok, const char *name, uin
         if (ch == SET_CHANNEL_SYSTEM)
         {
             n = (size_t)snprintf(item, sizeof(item), "%s", name);
+        }
+        else if ((ch & 0x80U) != 0U)
+        {
+            n = (size_t)snprintf(item, sizeof(item), "loop%u.%s", (unsigned)((ch & 0x7FU) + 2U), name);
+        }
+        else if ((ch & 0x40U) != 0U)
+        {
+            uint8_t c = (uint8_t)(ch & 0x3FU);
+
+            n = (size_t)snprintf(item, sizeof(item), "loop%u.%s.%s", (unsigned)(c / SET_PLANT_COUNT + 2U),
+                                 plant[c % SET_PLANT_COUNT], name);
         }
         else
         {
@@ -196,15 +232,15 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
     }
     if (Present(s, SETF_FB_CHANNEL, 0U) != 0U)
     {
-        Record(r, OK(Control_SetFeedbackChannel(s->fbChannel)), "FEEDback:CHANnel", SET_CHANNEL_SYSTEM);
+        Record(r, OK(Control_SetFeedbackChannel(0U, s->fbChannel)), "FEEDback:CHANnel", SET_CHANNEL_SYSTEM);
     }
     if (Present(s, SETF_FB_SCALE, 0U) != 0U)
     {
-        Record(r, OK(Control_SetFeedbackScale(s->fbScale)), "FEEDback:SCALE", SET_CHANNEL_SYSTEM);
+        Record(r, OK(Control_SetFeedbackScale(0U, s->fbScale)), "FEEDback:SCALE", SET_CHANNEL_SYSTEM);
     }
     if (Present(s, SETF_FB_OFFSET_V, 0U) != 0U)
     {
-        Record(r, OK(Control_SetFeedbackOffset(s->fbOffsetV)), "FEEDback:OFFSet", SET_CHANNEL_SYSTEM);
+        Record(r, OK(Control_SetFeedbackOffset(0U, s->fbOffsetV)), "FEEDback:OFFSet", SET_CHANNEL_SYSTEM);
     }
     if (Present(s, SETF_FB_FILTER_HZ, 0U) != 0U)       /* after PIDRate: the cutoff is checked against it */
     {
@@ -242,13 +278,48 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
     {
         if (Present(s, SETF_KP, p) != 0U && Present(s, SETF_KI, p) != 0U && Present(s, SETF_KD, p) != 0U)
         {
-            Record(r, OK(Control_SetGainsFor(p, s->plant[p].kp, s->plant[p].ki, s->plant[p].kd)), "Gains", p);
+            Record(r, OK(Control_SetGainsFor(0U, p, s->plant[p].kp, s->plant[p].ki, s->plant[p].kd)), "Gains", p);
         }
     }
     if (Present(s, SETF_LOOP_MODE, 0U) != 0U)
     {
-        Control_SetLoopMode(s->loopMode);
+        Control_SetLoopMode(0U, s->loopMode);
         Record(r, 1U, "LOOPMODE", SET_CHANNEL_SYSTEM);
+    }
+
+    /* loops 2 and 3, from the saves that have them */
+    for (uint8_t x = 0U; x < SET_XLOOPS; x++)
+    {
+        uint8_t loop = (uint8_t)(x + 1U);
+        uint8_t tag = (uint8_t)(0x80U | x);
+
+        if (Present(s, SETF_X_FB_CHANNEL, x) != 0U)
+        {
+            Record(r, OK(Control_SetFeedbackChannel(loop, s->xloop[x].fbChannel)), "FEEDback:CHANnel", tag);
+        }
+        if (Present(s, SETF_X_FB_SCALE, x) != 0U)
+        {
+            Record(r, OK(Control_SetFeedbackScale(loop, s->xloop[x].fbScale)), "FEEDback:SCALE", tag);
+        }
+        if (Present(s, SETF_X_FB_OFFSET_V, x) != 0U)
+        {
+            Record(r, OK(Control_SetFeedbackOffset(loop, s->xloop[x].fbOffsetV)), "FEEDback:OFFSet", tag);
+        }
+        for (uint8_t p = 0U; p < SET_PLANT_COUNT; p++)
+        {
+            uint8_t c = (uint8_t)(x * SET_PLANT_COUNT + p);
+
+            if (Present(s, SETF_X_KP, c) != 0U && Present(s, SETF_X_KI, c) != 0U && Present(s, SETF_X_KD, c) != 0U)
+            {
+                Record(r, OK(Control_SetGainsFor(loop, p, s->xplant[c].kp, s->xplant[c].ki, s->xplant[c].kd)), "Gains",
+                       (uint8_t)(0x40U | c));
+            }
+        }
+        if (Present(s, SETF_X_LOOP_MODE, x) != 0U)
+        {
+            Control_SetLoopMode(loop, s->xloop[x].loopMode);
+            Record(r, 1U, "LOOPMODE", tag);
+        }
     }
 }
 
@@ -256,21 +327,47 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
 
 enum { TBL_SHOT = 0, TBL_TARGET, TBL_CURVE, TBL_COUNT };
 
+/* Each table has up to two wire formats. Format 0 is the original (one duty / voltage for every phase); format 1
+   carries one per phase and is written only when the phases differ, so an ordinary profile is saved byte for byte as
+   before. A recall accepts either. */
+#define TBL_FORMATS  (2U)
+
 typedef struct
 {
-    uint8_t  countId;
-    uint8_t  pointsId;
-    uint8_t  pointBytes;
-    uint8_t  chunkPoints;
+    uint8_t  countId[TBL_FORMATS];
+    uint8_t  pointsId[TBL_FORMATS];
+    uint8_t  pointBytes[TBL_FORMATS];
+    uint8_t  chunkPoints[TBL_FORMATS];
+    uint8_t  formats;
     const char *name;
 } table_spec_t;
 
 static const table_spec_t kTable[TBL_COUNT] =
 {
-    { SETF_SHOT_COUNT,   SETF_SHOT_POINTS,   SET_SHOT_POINT_BYTES,   SET_SHOT_CHUNK_POINTS,   "SHOT"   },
-    { SETF_TARGET_COUNT, SETF_TARGET_POINTS, SET_TARGET_POINT_BYTES, SET_TARGET_CHUNK_POINTS, "TARGET" },
-    { SETF_CURVE_COUNT,  SETF_CURVE_POINTS,  SET_CURVE_POINT_BYTES,  SET_CURVE_CHUNK_POINTS,  "CURVE"  }
+    { { SETF_SHOT_COUNT,   SETF_SHOT3_COUNT   }, { SETF_SHOT_POINTS,   SETF_SHOT3_POINTS   },
+      { SET_SHOT_POINT_BYTES,   SET_SHOT3_POINT_BYTES   }, { SET_SHOT_CHUNK_POINTS,   SET_SHOT3_CHUNK_POINTS   }, 2U, "SHOT"   },
+    { { SETF_TARGET_COUNT, SETF_TARGET3_COUNT }, { SETF_TARGET_POINTS, SETF_TARGET3_POINTS },
+      { SET_TARGET_POINT_BYTES, SET_TARGET3_POINT_BYTES }, { SET_TARGET_CHUNK_POINTS, SET_TARGET3_CHUNK_POINTS }, 2U, "TARGET" },
+    { { SETF_CURVE_COUNT,  0U                 }, { SETF_CURVE_POINTS,  0U                  },
+      { SET_CURVE_POINT_BYTES,  0U                      }, { SET_CURVE_CHUNK_POINTS,  0U                       }, 1U, "CURVE"  }
 };
+
+#define MAX_POINT_BYTES  (16U)       /* the largest of the formats' points */
+typedef char settings_point_bytes_check[((SET_SHOT3_POINT_BYTES <= MAX_POINT_BYTES) && (SET_TARGET3_POINT_BYTES <= MAX_POINT_BYTES)) ? 1 : -1];
+
+/* The format a save of the live table would use. */
+static uint8_t FormatFor(uint8_t t)
+{
+    if (t == TBL_SHOT)
+    {
+        return (ShotProfile_IsUniform() != 0U) ? 0U : 1U;
+    }
+    if (t == TBL_TARGET)
+    {
+        return (Target_IsUniform() != 0U) ? 0U : 1U;
+    }
+    return 0U;
+}
 
 static void PackFloat(uint8_t *p, float v)
 {
@@ -289,7 +386,7 @@ static float UnpackFloat(const uint8_t *p)
     return v;
 }
 
-/* The live table's point count, and point i packed into out (pointBytes long). */
+/* The live table's point count, and point i packed into out (pointBytes of the format long). */
 static uint16_t LiveCount(uint8_t t)
 {
     switch (t)
@@ -300,9 +397,9 @@ static uint16_t LiveCount(uint8_t t)
     }
 }
 
-static void LivePack(uint8_t t, uint16_t i, uint8_t *out)
+static void LivePack(uint8_t t, uint8_t fmt, uint16_t i, uint8_t *out)
 {
-    memset(out, 0, kTable[t].pointBytes);
+    memset(out, 0, kTable[t].pointBytes[fmt]);
     if (t == TBL_SHOT)
     {
         shot_setpoint_t sp;
@@ -311,7 +408,10 @@ static void LivePack(uint8_t t, uint16_t i, uint8_t *out)
         {
             SettingsCodec_Put32(&out[0], sp.tUs);
             SettingsCodec_Put32(&out[4], sp.freqMilliHz);
-            SettingsCodec_Put16(&out[8], sp.dutyHundredths);
+            for (uint8_t ch = 0U; ch < ((fmt == 0U) ? 1U : HRTIM_NUM_CHANNELS); ch++)
+            {
+                SettingsCodec_Put16(&out[8U + 2U * ch], sp.dutyHundredths[ch]);
+            }
         }
     }
     else if (t == TBL_TARGET)
@@ -321,7 +421,10 @@ static void LivePack(uint8_t t, uint16_t i, uint8_t *out)
         if (Target_Get(i, &sp) != 0U)
         {
             SettingsCodec_Put32(&out[0], sp.tUs);
-            SettingsCodec_Put32(&out[4], (uint32_t)sp.milliVolts);
+            for (uint8_t ch = 0U; ch < ((fmt == 0U) ? 1U : HRTIM_NUM_CHANNELS); ch++)
+            {
+                SettingsCodec_Put32(&out[4U + 4U * ch], (uint32_t)sp.milliVolts[ch]);
+            }
         }
     }
     else
@@ -340,6 +443,7 @@ static void LivePack(uint8_t t, uint16_t i, uint8_t *out)
 static uint8_t EmitTable(settings_sink_fn sink, void *ctx, uint8_t t)
 {
     const table_spec_t *sp = &kTable[t];
+    uint8_t fmt = FormatFor(t);
     uint16_t count = LiveCount(t);
     uint8_t cnt[2];
     uint8_t chunk[255];
@@ -347,7 +451,7 @@ static uint8_t EmitTable(settings_sink_fn sink, void *ctx, uint8_t t)
     uint8_t ci = 0U;
 
     SettingsCodec_Put16(cnt, count);
-    if (SettingsCodec_EmitRecord(sink, ctx, sp->countId, SET_CHANNEL_SYSTEM, cnt, 2U) == 0U)
+    if (SettingsCodec_EmitRecord(sink, ctx, sp->countId[fmt], SET_CHANNEL_SYSTEM, cnt, 2U) == 0U)
     {
         return 0U;
     }
@@ -355,13 +459,13 @@ static uint8_t EmitTable(settings_sink_fn sink, void *ctx, uint8_t t)
     {
         uint8_t n = 0U;
 
-        while (n < sp->chunkPoints && i < count)
+        while (n < sp->chunkPoints[fmt] && i < count)
         {
-            LivePack(t, i, &chunk[(uint16_t)n * sp->pointBytes]);
+            LivePack(t, fmt, i, &chunk[(uint16_t)n * sp->pointBytes[fmt]]);
             n++;
             i++;
         }
-        if (SettingsCodec_EmitRecord(sink, ctx, sp->pointsId, ci, chunk, (uint8_t)(n * sp->pointBytes)) == 0U)
+        if (SettingsCodec_EmitRecord(sink, ctx, sp->pointsId[fmt], ci, chunk, (uint8_t)(n * sp->pointBytes[fmt])) == 0U)
         {
             return 0U;
         }
@@ -382,14 +486,15 @@ void Settings_LiveTables(settings_tables_t *t)
 
     for (uint8_t k = 0U; k < TBL_COUNT; k++)
     {
-        uint8_t pt[SET_SHOT_POINT_BYTES];
+        uint8_t pt[MAX_POINT_BYTES];
+        uint8_t fmt = FormatFor(k);
 
         out[k]->count = LiveCount(k);
         out[k]->crc = 0U;
         for (uint16_t i = 0U; i < out[k]->count; i++)
         {
-            LivePack(k, i, pt);
-            out[k]->crc = SettingsCodec_Crc32(out[k]->crc, pt, kTable[k].pointBytes);
+            LivePack(k, fmt, i, pt);
+            out[k]->crc = SettingsCodec_Crc32(out[k]->crc, pt, kTable[k].pointBytes[fmt]);
         }
     }
 }
@@ -491,13 +596,16 @@ profile_status_t Settings_Inspect(uint8_t slot, settings_snapshot_t *s, settings
         }
         for (uint8_t k = 0U; k < TBL_COUNT; k++)
         {
-            if (rec.id == kTable[k].countId && rec.len == 2U)
+            for (uint8_t f = 0U; f < kTable[k].formats; f++)
             {
-                sums[k]->count = SettingsCodec_Get16(rec.value);
-            }
-            else if (rec.id == kTable[k].pointsId)
-            {
-                sums[k]->crc = SettingsCodec_Crc32(sums[k]->crc, rec.value, rec.len);
+                if (rec.id == kTable[k].countId[f] && rec.len == 2U)
+                {
+                    sums[k]->count = SettingsCodec_Get16(rec.value);
+                }
+                else if (rec.id == kTable[k].pointsId[f])
+                {
+                    sums[k]->crc = SettingsCodec_Crc32(sums[k]->crc, rec.value, rec.len);
+                }
             }
         }
     }
@@ -519,6 +627,7 @@ typedef struct
     uint16_t expect;          /* from the COUNT record */
     uint16_t got;
     uint8_t  seen;            /* the COUNT record was there */
+    uint8_t  fmt;             /* the wire format its COUNT record announced */
     uint8_t  failed;
 } table_state_t;
 
@@ -571,17 +680,43 @@ static void FinishTable(uint8_t t, table_state_t *ts, settings_apply_result_t *r
     }
 }
 
-static uint8_t ApplyPoint(uint8_t t, const uint8_t *p)
+static uint8_t ApplyPoint(uint8_t t, uint8_t fmt, const uint8_t *p)
 {
     if (t == TBL_SHOT)
     {
-        return (uint8_t)(ShotProfile_Append(SettingsCodec_Get32(&p[0]), SettingsCodec_Get32(&p[4]),
-                                            SettingsCodec_Get16(&p[8])) == SHOT_APPEND_OK);
+        if (fmt == 0U)
+        {
+            return (uint8_t)(ShotProfile_AppendUniform(SettingsCodec_Get32(&p[0]), SettingsCodec_Get32(&p[4]),
+                                                       SettingsCodec_Get16(&p[8])) == SHOT_APPEND_OK);
+        }
+        {
+            uint16_t d[HRTIM_NUM_CHANNELS];
+
+            for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+            {
+                d[ch] = SettingsCodec_Get16(&p[8U + 2U * ch]);
+            }
+            return (uint8_t)(ShotProfile_Append(SettingsCodec_Get32(&p[0]), SettingsCodec_Get32(&p[4]), d) == SHOT_APPEND_OK);
+        }
     }
     if (t == TBL_TARGET)
     {
-        return (uint8_t)(Target_Append(SettingsCodec_Get32(&p[0]), (int32_t)SettingsCodec_Get32(&p[4]),
-                                       (int32_t)(Control_GetMaxVolts() * 1000.0f)) == TARGET_APPEND_OK);
+        int32_t limit = (int32_t)(Control_GetMaxVolts() * 1000.0f);
+
+        if (fmt == 0U)
+        {
+            return (uint8_t)(Target_AppendUniform(SettingsCodec_Get32(&p[0]), (int32_t)SettingsCodec_Get32(&p[4]), limit) ==
+                             TARGET_APPEND_OK);
+        }
+        {
+            int32_t v[HRTIM_NUM_CHANNELS];
+
+            for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+            {
+                v[ch] = (int32_t)SettingsCodec_Get32(&p[4U + 4U * ch]);
+            }
+            return (uint8_t)(Target_Append(SettingsCodec_Get32(&p[0]), v, limit) == TARGET_APPEND_OK);
+        }
     }
     return (uint8_t)(HvpsCurve_Append(&g_curveStage, UnpackFloat(&p[0]), UnpackFloat(&p[4])) == HVPS_CURVE_OK);
 }
@@ -630,33 +765,38 @@ profile_status_t Settings_Recall(uint8_t slot, settings_recall_result_t *res)
     {
         for (uint8_t k = 0U; k < TBL_COUNT; k++)
         {
-            if (rec.id == kTable[k].countId && rec.len == 2U)
+            for (uint8_t f = 0U; f < kTable[k].formats; f++)
             {
-                ts[k].expect = SettingsCodec_Get16(rec.value);
-                ts[k].seen = 1U;
-                ts[k].got = 0U;
-                ts[k].failed = 0U;
-                if (k == TBL_SHOT) { ShotProfile_Clear(); }
-                else if (k == TBL_TARGET) { Target_Clear(); }
-                else { HvpsCurve_Clear(&g_curveStage); }
-            }
-            else if (rec.id == kTable[k].pointsId && ts[k].seen != 0U && ts[k].failed == 0U)
-            {
-                uint8_t n = (uint8_t)(rec.len / kTable[k].pointBytes);
-
-                if ((rec.len % kTable[k].pointBytes) != 0U)
+                if (rec.id == kTable[k].countId[f] && rec.len == 2U)
                 {
-                    ts[k].failed = 1U;
-                    continue;
+                    ts[k].expect = SettingsCodec_Get16(rec.value);
+                    ts[k].seen = 1U;
+                    ts[k].got = 0U;
+                    ts[k].failed = 0U;
+                    ts[k].fmt = f;
+                    if (k == TBL_SHOT) { ShotProfile_Clear(); }
+                    else if (k == TBL_TARGET) { Target_Clear(); }
+                    else { HvpsCurve_Clear(&g_curveStage); }
                 }
-                for (uint8_t i = 0U; i < n; i++)
+                else if (rec.id == kTable[k].pointsId[f] && ts[k].seen != 0U && ts[k].failed == 0U && ts[k].fmt == f)
                 {
-                    if (ApplyPoint(k, &rec.value[(uint16_t)i * kTable[k].pointBytes]) == 0U)
+                    uint8_t pb = kTable[k].pointBytes[f];
+                    uint8_t n = (uint8_t)(rec.len / pb);
+
+                    if ((rec.len % pb) != 0U)
                     {
                         ts[k].failed = 1U;
-                        break;
+                        continue;
                     }
-                    ts[k].got++;
+                    for (uint8_t i = 0U; i < n; i++)
+                    {
+                        if (ApplyPoint(k, f, &rec.value[(uint16_t)i * pb]) == 0U)
+                        {
+                            ts[k].failed = 1U;
+                            break;
+                        }
+                        ts[k].got++;
+                    }
                 }
             }
         }

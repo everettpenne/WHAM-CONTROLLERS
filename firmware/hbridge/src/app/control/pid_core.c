@@ -3,6 +3,12 @@
  */
 #include "pid_core.h"
 
+/* Float logic run by the control interrupt once per tick per loop: compiled at -O2 whatever the project's level
+   (see closed_loop.c). Host-tested identically. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize ("O2")
+#endif
+
 void Pid_Init(pid_core_t *p, float dt, float outMin, float outMax)
 {
     p->kp = 0.0f;

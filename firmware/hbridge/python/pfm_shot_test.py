@@ -144,6 +144,23 @@ def generate_profile(setpoints, mode, periods_per_entry=1):
     return np.array(per, dtype=int), np.array(cmp_, dtype=int)
 
 
+def generate_profile_channels(setpoints, mode, periods_per_entry=1):
+    """The same generator for a shot with one duty per phase (the firmware's per-channel shot, 2026-10-13):
+    setpoints = [(t_us, freq_mHz, [duty_hundredths for U, V, W]), ...]. Returns (per, cmp) with cmp an
+    array of shape (entries, 3). Each channel is exactly what generate_profile() gives for that channel's
+    duties (the C test checks the same equality)."""
+    n_ch = len(setpoints[0][2])
+    per = None
+    cols = []
+    for ch in range(n_ch):
+        sp = [(t, f, d[ch]) for (t, f, d) in setpoints]
+        p, c = generate_profile(sp, mode, periods_per_entry)
+        per = p if per is None else per
+        assert (per == p).all()
+        cols.append(c)
+    return per, np.stack(cols, axis=1)
+
+
 # --------------------------------------------------------------------------
 # analysis (pure functions -- exercised by --selftest)
 # --------------------------------------------------------------------------
@@ -523,6 +540,11 @@ def selftest():
     per2, cmp2 = generate_profile([(0, 20_000_000, 4000), (5000, 20_000_000, 6000)], "HVPS")
     check(len(per2) == 100 and abs(cmp2[0] / per2[0] - .4) < 2e-4 and abs(cmp2[-1] / per2[-1] - .6) < 3e-3, "duty ramp 40 -> 60 % at constant frequency")
     check(make_setpoints(20000, 15000, 40, 60, 10) == ramp, "the CLI's two setpoints")
+    print("one duty per phase (tests/test_shot_profile.c 'GOLDEN perch' lines):")
+    pc_sp = [(0, 125_000_000, [1000, 5000, 9000]), (6000, 100_000_000, [9000, 5000, 1000]), (10_000, 80_000_000, [2500, 7500, 9500])]
+    pper, pcmp = generate_profile_channels(pc_sp, "LIMITER")
+    check(len(pper) == 1036 and pper[0] == 1359 and list(pcmp[0]) == [136, 680, 1223], "per-channel shot: 1036 entries, entry 0 per 1359, cmp 136 680 1223")
+    check(pper[300] == 1483 and list(pcmp[300]) == [643, 742, 840], "per-channel shot: entry 300 per 1483, cmp 643 742 840")
     print("alignment and residual on a synthetic capture (U, V, W, UN; W one period further behind):")
     labels = ["U", "V", "W", "UN"]
     data = synthetic_capture(per, cmp_, labels, [2, 2, 3, 2], rng)

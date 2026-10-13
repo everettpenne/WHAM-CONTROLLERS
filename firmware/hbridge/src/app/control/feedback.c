@@ -3,6 +3,12 @@
  */
 #include "feedback.h"
 
+/* Float logic run by the control interrupt once per tick per loop: compiled at -O2 whatever the project's level
+   (see closed_loop.c). Host-tested identically. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize ("O2")
+#endif
+
 #define PI_F  (3.14159265f)
 
 void Feedback_Init(feedback_t *fb, float vrefV)

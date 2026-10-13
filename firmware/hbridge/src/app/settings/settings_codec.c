@@ -8,48 +8,71 @@
 
 #define SYS_OFF(member)  ((uint16_t)offsetof(settings_snapshot_t, member))
 #define PL_OFF(member)   ((uint16_t)offsetof(settings_plant_t, member))
+#define XL_OFF(member)   ((uint16_t)offsetof(settings_xloop_t, member))
 
 /* Order here is only the display/encode order; ids are what identify a field. */
 const settings_field_t kSettingsFields[] =
 {
     { SETF_SUPPLY_MODE,     "MODE",             SETK_U8,  0U, SYS_OFF(supplyMode)    },
-    { SETF_PID_RATE_HZ,     "PIDRate",          SETK_U32, 0U, SYS_OFF(pidRateHz)     },
-    { SETF_ADC_SCANS,       "ADC:AVERage",      SETK_U32, 0U, SYS_OFF(adcScans)      },
-    { SETF_ADC_SAMPLE_X10,  "ADC:SAMPle_x10",   SETK_U32, 0U, SYS_OFF(adcSampleX10)  },
-    { SETF_SLEW_PER_TICK,   "SLEWRate",         SETK_F32, 0U, SYS_OFF(slewPerTick)   },
-    { SETF_MAX_VOLTS,       "MAXVolts",         SETK_F32, 0U, SYS_OFF(maxVolts)      },
+    { SETF_PID_RATE_HZ,     "PIDRate",          SETK_U32, SETS_SYSTEM, SYS_OFF(pidRateHz)     },
+    { SETF_ADC_SCANS,       "ADC:AVERage",      SETK_U32, SETS_SYSTEM, SYS_OFF(adcScans)      },
+    { SETF_ADC_SAMPLE_X10,  "ADC:SAMPle_x10",   SETK_U32, SETS_SYSTEM, SYS_OFF(adcSampleX10)  },
+    { SETF_SLEW_PER_TICK,   "SLEWRate",         SETK_F32, SETS_SYSTEM, SYS_OFF(slewPerTick)   },
+    { SETF_MAX_VOLTS,       "MAXVolts",         SETK_F32, SETS_SYSTEM, SYS_OFF(maxVolts)      },
     { SETF_FB_CHANNEL,      "FEEDback:CHANnel", SETK_U8,  0U, SYS_OFF(fbChannel)     },
-    { SETF_FB_SCALE,        "FEEDback:SCALE",   SETK_F32, 0U, SYS_OFF(fbScale)       },
-    { SETF_FB_OFFSET_V,     "FEEDback:OFFSet",  SETK_F32, 0U, SYS_OFF(fbOffsetV)     },
-    { SETF_FB_FILTER_HZ,    "FEEDback:FILTer",  SETK_F32, 0U, SYS_OFF(fbFilterHz)    },
-    { SETF_FB_CLIP_MS,      "FEEDback:CLIPTime", SETK_F32, 0U, SYS_OFF(fbClipMs)     },
+    { SETF_FB_SCALE,        "FEEDback:SCALE",   SETK_F32, SETS_SYSTEM, SYS_OFF(fbScale)       },
+    { SETF_FB_OFFSET_V,     "FEEDback:OFFSet",  SETK_F32, SETS_SYSTEM, SYS_OFF(fbOffsetV)     },
+    { SETF_FB_FILTER_HZ,    "FEEDback:FILTer",  SETK_F32, SETS_SYSTEM, SYS_OFF(fbFilterHz)    },
+    { SETF_FB_CLIP_MS,      "FEEDback:CLIPTime", SETK_F32, SETS_SYSTEM, SYS_OFF(fbClipMs)     },
     { SETF_LOOP_MODE,       "LOOPMODE",         SETK_U8,  0U, SYS_OFF(loopMode)      },
-    { SETF_CL_HVPS_DUTY,    "CLOSEDloop:DUTY",  SETK_F32, 0U, SYS_OFF(clHvpsDuty)    },
-    { SETF_CL_LIMITER_FREQ, "CLOSEDloop:FREQuency", SETK_F32, 0U, SYS_OFF(clLimiterFreq) },
-    { SETF_CL_RESONANCE_HZ, "CLOSEDloop:RESonance", SETK_F32, 0U, SYS_OFF(clResonanceHz) },
-    { SETF_CL_VPEAK,        "CLOSEDloop:VPEAK", SETK_F32, 0U, SYS_OFF(clVpeak)       },
-    { SETF_CL_VSCALE,       "CLOSEDloop:VSCALE", SETK_F32, 0U, SYS_OFF(clVscale)     },
-    { SETF_CL_BRANCH,       "CLOSEDloop:BRANCH", SETK_U8, 0U, SYS_OFF(clBranch)      },
+    { SETF_CL_HVPS_DUTY,    "CLOSEDloop:DUTY",  SETK_F32, SETS_SYSTEM, SYS_OFF(clHvpsDuty)    },
+    { SETF_CL_LIMITER_FREQ, "CLOSEDloop:FREQuency", SETK_F32, SETS_SYSTEM, SYS_OFF(clLimiterFreq) },
+    { SETF_CL_RESONANCE_HZ, "CLOSEDloop:RESonance", SETK_F32, SETS_SYSTEM, SYS_OFF(clResonanceHz) },
+    { SETF_CL_VPEAK,        "CLOSEDloop:VPEAK", SETK_F32, SETS_SYSTEM, SYS_OFF(clVpeak)       },
+    { SETF_CL_VSCALE,       "CLOSEDloop:VSCALE", SETK_F32, SETS_SYSTEM, SYS_OFF(clVscale)     },
+    { SETF_CL_BRANCH,       "CLOSEDloop:BRANCH", SETK_U8, SETS_SYSTEM, SYS_OFF(clBranch)      },
 
-    { SETF_KP,              "kp",               SETK_F32, 1U, PL_OFF(kp)             },
-    { SETF_KI,              "ki",               SETK_F32, 1U, PL_OFF(ki)             },
-    { SETF_KD,              "kd",               SETK_F32, 1U, PL_OFF(kd)             }
+    { SETF_KP,              "kp",               SETK_F32, SETS_PLANT, PL_OFF(kp)             },
+    { SETF_KI,              "ki",               SETK_F32, SETS_PLANT, PL_OFF(ki)             },
+    { SETF_KD,              "kd",               SETK_F32, SETS_PLANT, PL_OFF(kd)             },
+
+    { SETF_X_LOOP_MODE,     "LOOPMODE",         SETK_U8,  SETS_XLOOP, XL_OFF(loopMode)       },
+    { SETF_X_FB_CHANNEL,    "FEEDback:CHANnel", SETK_U8,  SETS_XLOOP, XL_OFF(fbChannel)      },
+    { SETF_X_FB_SCALE,      "FEEDback:SCALE",   SETK_F32, SETS_XLOOP, XL_OFF(fbScale)        },
+    { SETF_X_FB_OFFSET_V,   "FEEDback:OFFSet",  SETK_F32, SETS_XLOOP, XL_OFF(fbOffsetV)      },
+    { SETF_X_KP,            "kp",               SETK_F32, SETS_XLOOP_PLANT, PL_OFF(kp)       },
+    { SETF_X_KI,            "ki",               SETK_F32, SETS_XLOOP_PLANT, PL_OFF(ki)       },
+    { SETF_X_KD,            "kd",               SETK_F32, SETS_XLOOP_PLANT, PL_OFF(kd)       }
 };
 const uint8_t kSettingsFieldCount = (uint8_t)(sizeof(kSettingsFields) / sizeof(kSettingsFields[0]));
 
 static const char *const kPlantName[SET_PLANT_COUNT] = { "hvps", "lim" };
 
-/* The presence bitmap must be big enough for every (field, plant). */
+/* The presence bitmap must be big enough for every (field, instance). */
 typedef char settings_present_bits_check[(sizeof(kSettingsFields) / sizeof(kSettingsFields[0])
-                                          * SET_PLANT_COUNT <= SET_PRESENT_BITS) ? 1 : -1];
+                                          * SET_MAX_INSTANCES <= SET_PRESENT_BITS) ? 1 : -1];
+
+uint8_t SettingsCodec_Instances(uint8_t fieldIdx)
+{
+    switch (kSettingsFields[fieldIdx].scope)
+    {
+    case SETS_PLANT:       return (uint8_t)SET_PLANT_COUNT;
+    case SETS_XLOOP:       return (uint8_t)SET_XLOOPS;
+    case SETS_XLOOP_PLANT: return (uint8_t)SET_MAX_INSTANCES;
+    default:               return 1U;
+    }
+}
 
 static uint8_t *ValuePtr(settings_snapshot_t *s, const settings_field_t *f, uint8_t ch)
 {
     uint8_t *base = (uint8_t *)s;
 
-    if (f->perPlant != 0U)
+    switch (f->scope)
     {
-        base = (uint8_t *)&s->plant[ch];
+    case SETS_PLANT:       base = (uint8_t *)&s->plant[ch]; break;
+    case SETS_XLOOP:       base = (uint8_t *)&s->xloop[ch]; break;
+    case SETS_XLOOP_PLANT: base = (uint8_t *)&s->xplant[ch]; break;
+    default:               break;
     }
     return base + f->offset;
 }
@@ -61,7 +84,7 @@ static const uint8_t *ValuePtrC(const settings_snapshot_t *s, const settings_fie
 
 static uint16_t PresentBit(uint8_t fieldIdx, uint8_t ch)
 {
-    return (uint16_t)((uint16_t)fieldIdx * SET_PLANT_COUNT + ch);
+    return (uint16_t)((uint16_t)fieldIdx * SET_MAX_INSTANCES + ch);
 }
 
 static uint8_t ValueLen(const settings_field_t *f)
@@ -132,7 +155,7 @@ uint8_t SettingsCodec_EncodeScalars(const settings_snapshot_t *s, settings_sink_
     for (uint8_t fi = 0U; fi < kSettingsFieldCount; fi++)
     {
         const settings_field_t *f = &kSettingsFields[fi];
-        uint8_t count = (f->perPlant != 0U) ? (uint8_t)SET_PLANT_COUNT : 1U;
+        uint8_t count = SettingsCodec_Instances(fi);
 
         for (uint8_t c = 0U; c < count; c++)
         {
@@ -140,7 +163,7 @@ uint8_t SettingsCodec_EncodeScalars(const settings_snapshot_t *s, settings_sink_
             {
                 continue;
             }
-            if (SettingsCodec_EmitRecord(sink, ctx, f->id, (f->perPlant != 0U) ? c : SET_CHANNEL_SYSTEM,
+            if (SettingsCodec_EmitRecord(sink, ctx, f->id, (f->scope != SETS_SYSTEM) ? c : SET_CHANNEL_SYSTEM,
                                          ValuePtrC(s, f, c), ValueLen(f)) == 0U)
             {
                 return 0U;
@@ -204,7 +227,7 @@ settings_rec_status_t SettingsCodec_NextRecord(settings_read_fn rd, void *ctx, u
 
 uint8_t SettingsCodec_IsTableId(uint8_t id)
 {
-    return (uint8_t)((id >= SETF_SHOT_COUNT) && (id <= SETF_CURVE_POINTS));
+    return (uint8_t)((id >= SETF_SHOT_COUNT) && (id <= SETF_TARGET3_POINTS));
 }
 
 uint8_t SettingsCodec_StoreRecord(settings_snapshot_t *s, const settings_record_t *rec, settings_decode_info_t *info)
@@ -232,16 +255,16 @@ uint8_t SettingsCodec_StoreRecord(settings_snapshot_t *s, const settings_record_
         return 1U;
     }
     /* Known field: its shape must match exactly. */
-    if ((f->perPlant != 0U) == (rec->ch == SET_CHANNEL_SYSTEM) || rec->len != ValueLen(f))
+    if ((f->scope != SETS_SYSTEM) == (rec->ch == SET_CHANNEL_SYSTEM) || rec->len != ValueLen(f))
     {
         return 0U;
     }
-    if (f->perPlant != 0U && rec->ch >= SET_PLANT_COUNT)
+    if (f->scope != SETS_SYSTEM && rec->ch >= SettingsCodec_Instances(fi))
     {
         info->outOfRange++;
         return 1U;
     }
-    c = (f->perPlant != 0U) ? rec->ch : 0U;
+    c = (f->scope != SETS_SYSTEM) ? rec->ch : 0U;
     memcpy(ValuePtr(s, f, c), rec->value, rec->len);
     SettingsCodec_SetPresent(s, fi, c);
     info->records++;
@@ -291,7 +314,7 @@ void SettingsCodec_FormatValue(const settings_snapshot_t *s, uint8_t fieldIdx, u
                                char *out, size_t n)
 {
     const settings_field_t *f = &kSettingsFields[fieldIdx];
-    const uint8_t *p = ValuePtrC(s, f, (f->perPlant != 0U) ? ch : 0U);
+    const uint8_t *p = ValuePtrC(s, f, (f->scope != SETS_SYSTEM) ? ch : 0U);
 
     switch (f->kind)
     {
@@ -319,9 +342,17 @@ void SettingsCodec_FormatName(uint8_t fieldIdx, uint8_t ch, char *out, size_t n)
 {
     const settings_field_t *f = &kSettingsFields[fieldIdx];
 
-    if (f->perPlant != 0U)
+    if (f->scope == SETS_PLANT)
     {
         snprintf(out, n, "%s.%s", kPlantName[(ch < SET_PLANT_COUNT) ? ch : 0U], f->name);
+    }
+    else if (f->scope == SETS_XLOOP)
+    {
+        snprintf(out, n, "loop%u.%s", (unsigned)(ch + 2U), f->name);
+    }
+    else if (f->scope == SETS_XLOOP_PLANT)
+    {
+        snprintf(out, n, "loop%u.%s.%s", (unsigned)(ch / SET_PLANT_COUNT + 2U), kPlantName[ch % SET_PLANT_COUNT], f->name);
     }
     else
     {
@@ -333,7 +364,7 @@ uint8_t SettingsCodec_ValueEqual(const settings_snapshot_t *a, const settings_sn
                                  uint8_t fieldIdx, uint8_t ch)
 {
     const settings_field_t *f = &kSettingsFields[fieldIdx];
-    uint8_t c = (f->perPlant != 0U) ? ch : 0U;
+    uint8_t c = (f->scope != SETS_SYSTEM) ? ch : 0U;
 
     return (uint8_t)(memcmp(ValuePtrC(a, f, c), ValuePtrC(b, f, c), ValueLen(f)) == 0);
 }

@@ -4,6 +4,9 @@
  */
 #include "settings_codec.h"
 #include "test_util.h"
+
+/* every record a fully populated snapshot encodes: 18 system fields, loop 1's gains, and the extra loops' */
+#define ALL_RECORDS (18U + 3U * SET_PLANT_COUNT + SET_XLOOPS * (4U + 3U * SET_PLANT_COUNT))
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,9 +44,22 @@ static void FillAll(settings_snapshot_t *s)
     s->plant[SET_PLANT_LIMITER].kp = 0.167f;
     s->plant[SET_PLANT_LIMITER].ki = 6.667f;
     s->plant[SET_PLANT_LIMITER].kd = 0.0f;
+    for (uint8_t x = 0U; x < SET_XLOOPS; x++)
+    {
+        s->xloop[x].loopMode = (uint8_t)(x & 1U);
+        s->xloop[x].fbChannel = (uint8_t)(1U + 2U * x);
+        s->xloop[x].fbScale = 400.5f + (float)x * 10.0f;
+        s->xloop[x].fbOffsetV = 1.4f - 0.1f * (float)x;
+        for (uint8_t p = 0U; p < SET_PLANT_COUNT; p++)
+        {
+            s->xplant[x * SET_PLANT_COUNT + p].kp = 1.0f + (float)(x * 10U + p);
+            s->xplant[x * SET_PLANT_COUNT + p].ki = 2.0f + (float)(x * 10U + p);
+            s->xplant[x * SET_PLANT_COUNT + p].kd = 0.001f * (float)(x * 10U + p + 1U);
+        }
+    }
     for (uint8_t fi = 0U; fi < kSettingsFieldCount; fi++)
     {
-        for (uint8_t c = 0U; c < ((kSettingsFields[fi].perPlant != 0U) ? SET_PLANT_COUNT : 1U); c++)
+        for (uint8_t c = 0U; c < SettingsCodec_Instances(fi); c++)
         {
             SettingsCodec_SetPresent(s, fi, c);
         }
@@ -54,7 +70,7 @@ static int AllEqual(const settings_snapshot_t *a, const settings_snapshot_t *b)
 {
     for (uint8_t fi = 0U; fi < kSettingsFieldCount; fi++)
     {
-        for (uint8_t c = 0U; c < ((kSettingsFields[fi].perPlant != 0U) ? SET_PLANT_COUNT : 1U); c++)
+        for (uint8_t c = 0U; c < SettingsCodec_Instances(fi); c++)
         {
             if (SettingsCodec_IsPresent(a, fi, c) != SettingsCodec_IsPresent(b, fi, c))
             {
@@ -69,6 +85,15 @@ static int AllEqual(const settings_snapshot_t *a, const settings_snapshot_t *b)
     return 1;
 }
 
+static uint8_t IndexOf(uint8_t id)
+{
+    for (uint8_t i = 0U; i < kSettingsFieldCount; i++)
+    {
+        if (kSettingsFields[i].id == id) { return i; }
+    }
+    return 0xFFU;
+}
+
 static void TestFieldTable(void)
 {
     /* ids are a frozen contract: these numbers may never change (see the header) */
@@ -80,6 +105,11 @@ static void TestFieldTable(void)
     CHECK(SETF_KP == 32 && SETF_KI == 33 && SETF_KD == 34);
     CHECK(SETF_SHOT_COUNT == 64 && SETF_SHOT_POINTS == 65 && SETF_TARGET_COUNT == 66);
     CHECK(SETF_TARGET_POINTS == 67 && SETF_CURVE_COUNT == 68 && SETF_CURVE_POINTS == 69);
+    /* added 2026-10-13 with the three loops */
+    CHECK(SETF_X_LOOP_MODE == 19 && SETF_X_FB_CHANNEL == 20 && SETF_X_FB_SCALE == 21 && SETF_X_FB_OFFSET_V == 22);
+    CHECK(SETF_X_KP == 35 && SETF_X_KI == 36 && SETF_X_KD == 37);
+    CHECK(SETF_SHOT3_COUNT == 70 && SETF_SHOT3_POINTS == 71 && SETF_TARGET3_COUNT == 72 && SETF_TARGET3_POINTS == 73);
+    CHECK(SET_XLOOPS == 2U && SET_MAX_INSTANCES == 4U);
     CHECK(SET_PLANT_HVPS == 0U && SET_PLANT_LIMITER == 1U);
 
     /* every id is unique, none is a table id, every field has a name */
@@ -93,7 +123,17 @@ static void TestFieldTable(void)
         }
     }
     CHECK(SettingsCodec_IsTableId(63U) == 0U && SettingsCodec_IsTableId(64U) == 1U);
-    CHECK(SettingsCodec_IsTableId(69U) == 1U && SettingsCodec_IsTableId(70U) == 0U);
+    CHECK(SettingsCodec_IsTableId(69U) == 1U && SettingsCodec_IsTableId(70U) == 1U);
+    CHECK(SettingsCodec_IsTableId(73U) == 1U && SettingsCodec_IsTableId(74U) == 0U);
+
+    /* instances: one, per plant, per extra loop, per extra loop and plant */
+    for (uint8_t i = 0U; i < kSettingsFieldCount; i++)
+    {
+        uint8_t want = (kSettingsFields[i].scope == SETS_PLANT) ? SET_PLANT_COUNT :
+                       (kSettingsFields[i].scope == SETS_XLOOP) ? SET_XLOOPS :
+                       (kSettingsFields[i].scope == SETS_XLOOP_PLANT) ? SET_MAX_INSTANCES : 1U;
+        CHECK(SettingsCodec_Instances(i) == want);
+    }
 }
 
 static void TestRoundTrip(void)
@@ -108,7 +148,7 @@ static void TestRoundTrip(void)
     CHECK(n > 0U);
     CHECK(SettingsCodec_Decode(buf, n, &b, &info) == 1U);
     CHECK(info.unknown == 0U && info.outOfRange == 0U && info.tables == 0U);
-    CHECK(info.records == (uint16_t)(18U + 3U * SET_PLANT_COUNT));
+    CHECK(info.records == (uint16_t)ALL_RECORDS);
     CHECK(AllEqual(&a, &b));
     CHECK(b.pidRateHz == 8000U && b.supplyMode == 2U && b.clBranch == 0U);
     CHECK(b.plant[SET_PLANT_LIMITER].kp == 0.167f && b.plant[SET_PLANT_HVPS].ki == 200000.0f);
@@ -163,6 +203,36 @@ static void TestDecodeRules(void)
     }
 }
 
+/* An older save has no extra-loop records and recalls into loop 1 only; the extra loops' records have the
+   channel byte of their own scope and a malformed shape is refused. */
+static void TestExtraLoops(void)
+{
+    settings_snapshot_t s;
+    settings_decode_info_t info;
+
+    {
+        uint8_t ok[] = { SETF_X_FB_SCALE, 1U, 4U, 0x00U, 0x00U, 0x80U, 0x3FU,                 /* extra loop 1 (= loop 3), 1.0f */
+                         SETF_X_LOOP_MODE, 0U, 1U, 1U,                                         /* extra loop 0 (= loop 2) */
+                         SETF_X_KP, 3U, 4U, 0x00U, 0x00U, 0x00U, 0x40U };                      /* plant 1 of extra loop 1, 2.0f */
+        CHECK(SettingsCodec_Decode(ok, sizeof(ok), &s, &info) == 1U && info.records == 3U && info.outOfRange == 0U);
+        CHECK(s.xloop[1].fbScale == 1.0f && s.xloop[0].loopMode == 1U && s.xplant[3].kp == 2.0f);
+        CHECK(SettingsCodec_IsPresent(&s, IndexOf(SETF_X_FB_SCALE), 1U) == 1U);
+        CHECK(SettingsCodec_IsPresent(&s, IndexOf(SETF_X_FB_SCALE), 0U) == 0U);
+    }
+    {
+        uint8_t beyond[] = { SETF_X_LOOP_MODE, 2U, 1U, 1U };                                   /* there is no loop 4 */
+        CHECK(SettingsCodec_Decode(beyond, sizeof(beyond), &s, &info) == 1U && info.outOfRange == 1U && info.records == 0U);
+    }
+    {
+        uint8_t beyond[] = { SETF_X_KD, 4U, 4U, 0U, 0U, 0U, 0U };                              /* plant + 2 x loop = 4: past the end */
+        CHECK(SettingsCodec_Decode(beyond, sizeof(beyond), &s, &info) == 1U && info.outOfRange == 1U);
+    }
+    {
+        uint8_t bad[] = { SETF_X_LOOP_MODE, 0xFFU, 1U, 1U };                                   /* per-loop field as system */
+        CHECK(SettingsCodec_Decode(bad, sizeof(bad), &s, &info) == 0U);
+    }
+}
+
 /* the stream reader sees the same records as the buffered decoder, whatever the source's read pattern */
 typedef struct { const uint8_t *buf; uint16_t reads; uint16_t failAt; } src_t;
 
@@ -199,7 +269,7 @@ static void TestStreamReader(void)
         CHECK(SettingsCodec_StoreRecord(&b, &rec, &info) == 1U);
         records++;
     }
-    CHECK(st == SETREC_END && offset == n && records == (uint16_t)(18U + 3U * SET_PLANT_COUNT));
+    CHECK(st == SETREC_END && offset == n && records == (uint16_t)ALL_RECORDS);
     CHECK(AllEqual(&a, &b));
 
     /* a failed read, and a total shorter than the records, are SETREC_BAD */
@@ -248,10 +318,16 @@ static void TestSinkAndFormat(void)
 
     SettingsCodec_FormatName(1U, 0U, out, sizeof(out));
     CHECK_STR(out, "PIDRate");
-    SettingsCodec_FormatName((uint8_t)(kSettingsFieldCount - 3U), SET_PLANT_LIMITER, out, sizeof(out));
+    SettingsCodec_FormatName(IndexOf(SETF_KP), SET_PLANT_LIMITER, out, sizeof(out));
     CHECK_STR(out, "lim.kp");
-    SettingsCodec_FormatName((uint8_t)(kSettingsFieldCount - 1U), SET_PLANT_HVPS, out, sizeof(out));
+    SettingsCodec_FormatName(IndexOf(SETF_KD), SET_PLANT_HVPS, out, sizeof(out));
     CHECK_STR(out, "hvps.kd");
+    SettingsCodec_FormatName(IndexOf(SETF_X_FB_SCALE), 1U, out, sizeof(out));        /* the second extra loop = loop 3 */
+    CHECK_STR(out, "loop3.FEEDback:SCALE");
+    SettingsCodec_FormatName(IndexOf(SETF_X_KI), (uint8_t)(SET_PLANT_COUNT + SET_PLANT_LIMITER), out, sizeof(out));
+    CHECK_STR(out, "loop3.lim.ki");
+    SettingsCodec_FormatName(IndexOf(SETF_X_LOOP_MODE), 0U, out, sizeof(out));
+    CHECK_STR(out, "loop2.LOOPMODE");
     SettingsCodec_FormatValue(&a, 1U, 0U, out, sizeof(out));
     CHECK_STR(out, "8000");
     SettingsCodec_FormatValue(&a, 4U, 0U, out, sizeof(out));
@@ -279,6 +355,7 @@ int main(void)
     TestFieldTable();
     TestRoundTrip();
     TestDecodeRules();
+    TestExtraLoops();
     TestStreamReader();
     TestSinkAndFormat();
     TestCrcAndHelpers();

@@ -15,10 +15,11 @@ void Target_Clear(void)
     g_cursor = 0U;
 }
 
-target_append_result_t Target_Append(uint32_t tUs, int32_t milliVolts, int32_t maxAbsMilliVolts)
-{
-    int32_t mag = (milliVolts < 0) ? -milliVolts : milliVolts;
+static uint8_t g_badChannel = 0U;
 
+target_append_result_t Target_Append(uint32_t tUs, const int32_t milliVolts[HRTIM_NUM_CHANNELS],
+                                     int32_t maxAbsMilliVolts)
+{
     if (g_count >= TARGET_SETPOINT_MAX)
     {
         return TARGET_APPEND_FULL;
@@ -35,25 +36,69 @@ target_append_result_t Target_Append(uint32_t tUs, int32_t milliVolts, int32_t m
     {
         return TARGET_APPEND_TOO_LONG;
     }
-    if (mag > maxAbsMilliVolts)
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {
-        return TARGET_APPEND_TOO_HIGH;
+        int32_t mag = (milliVolts[ch] < 0) ? -milliVolts[ch] : milliVolts[ch];
+
+        if (mag > maxAbsMilliVolts)
+        {
+            g_badChannel = ch;
+            return TARGET_APPEND_TOO_HIGH;
+        }
     }
     g_sp[g_count].tUs = tUs;
-    g_sp[g_count].milliVolts = milliVolts;
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        g_sp[g_count].milliVolts[ch] = milliVolts[ch];
+    }
     g_count++;
     return TARGET_APPEND_OK;
 }
 
-int32_t Target_MinMilliVolts(void)
+target_append_result_t Target_AppendUniform(uint32_t tUs, int32_t milliVolts, int32_t maxAbsMilliVolts)
+{
+    int32_t v[HRTIM_NUM_CHANNELS];
+
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        v[ch] = milliVolts;
+    }
+    return Target_Append(tUs, v, maxAbsMilliVolts);
+}
+
+uint8_t Target_BadChannel(void)
+{
+    return g_badChannel;
+}
+
+uint8_t Target_IsUniform(void)
+{
+    for (uint16_t i = 0U; i < g_count; i++)
+    {
+        for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            if (g_sp[i].milliVolts[ch] != g_sp[i].milliVolts[0])
+            {
+                return 0U;
+            }
+        }
+    }
+    return 1U;
+}
+
+int32_t Target_MinMilliVolts(uint8_t ch)
 {
     int32_t lowest = 0;
 
+    if (ch >= HRTIM_NUM_CHANNELS)
+    {
+        return 0;
+    }
     for (uint16_t i = 0U; i < g_count; i++)
     {
-        if ((i == 0U) || (g_sp[i].milliVolts < lowest))
+        if ((i == 0U) || (g_sp[i].milliVolts[ch] < lowest))
         {
-            lowest = g_sp[i].milliVolts;
+            lowest = g_sp[i].milliVolts[ch];
         }
     }
     return lowest;
@@ -89,15 +134,19 @@ void Target_Rewind(void)
     g_cursor = 0U;
 }
 
-float Target_ValueAt(uint32_t tUs)
+float Target_ValueAt(uint8_t ch, uint32_t tUs)
 {
-    if (g_count == 0U)
+    if ((g_count == 0U) || (ch >= HRTIM_NUM_CHANNELS))
     {
         return 0.0f;
     }
     if (tUs >= g_sp[g_count - 1U].tUs)
     {
-        return (float)g_sp[g_count - 1U].milliVolts / 1000.0f;
+        return (float)g_sp[g_count - 1U].milliVolts[ch] / 1000.0f;
+    }
+    if (tUs < g_sp[g_cursor].tUs)
+    {
+        g_cursor = 0U;                 /* an earlier time than the cursor: search again from the start */
     }
     while (((g_cursor + 2U) < g_count) && (tUs >= g_sp[g_cursor + 1U].tUs))
     {
@@ -109,7 +158,7 @@ float Target_ValueAt(uint32_t tUs)
         float span = (float)(b->tUs - a->tUs);
         float frac = (float)(tUs - a->tUs) / span;
 
-        return ((float)a->milliVolts + ((float)(b->milliVolts - a->milliVolts) * frac)) / 1000.0f;
+        return ((float)a->milliVolts[ch] + ((float)(b->milliVolts[ch] - a->milliVolts[ch]) * frac)) / 1000.0f;
     }
 }
 

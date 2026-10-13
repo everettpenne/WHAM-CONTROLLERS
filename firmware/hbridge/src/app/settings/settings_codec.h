@@ -28,6 +28,13 @@
  *     (about 10 KB) so they are streamed to and from flash by settings.c, never
  *     held in a snapshot.
  *
+ * Three loops (2026-10-13, one per phase U, V, W): loop 1's values keep the ids and shape they always had (so an
+ * older save recalls into loop 1 and a newer save is still readable by older firmware: it just does not see loops
+ * 2 and 3). Loops 2 and 3 ("extra loops", index 0 and 1 in the channel byte) have their own ids: mode, feedback
+ * input, scale, offset (19-22) and gains (35-37, channel = plant + 2 x extra loop). The shot and target tables
+ * have a second, per-channel format (ids 70-73: one duty or voltage per phase in every point); a save uses it only
+ * when the phases differ, so an ordinary profile is saved, byte for byte, as it always was.
+ *
  * Deliberately NOT saved: the output/run state (ARM, FIRE, SOURce:RUN/SETpoint), which phases
  * are enabled (PHASe:ENAble -- a recall must never change which legs of the bridge are driven),
  * the DAC outputs, and every bench-simulation knob (CONFig:FEEDback:SOURce and
@@ -39,11 +46,14 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "ctrlr_config.h"
 
 #define SET_CHANNEL_SYSTEM   (0xFFU)
 #define SET_PLANT_COUNT      (2U)
 #define SET_PLANT_HVPS       (0U)
 #define SET_PLANT_LIMITER    (1U)
+#define SET_XLOOPS           (HRTIM_NUM_CHANNELS - 1U)               /* the loops after the first */
+#define SET_MAX_INSTANCES    (SET_XLOOPS * SET_PLANT_COUNT)          /* the most values one field has */
 
 /* Field ids -- frozen, see above. */
 typedef enum
@@ -67,41 +77,67 @@ typedef enum
     SETF_CL_VSCALE        = 17,
     SETF_CL_BRANCH        = 18,   /* 1 above resonance, 0 below */
 
-    SETF_KP               = 32,   /* per plant */
+    /* the extra loops (2 and 3): channel byte = loop - 2 */
+    SETF_X_LOOP_MODE      = 19,
+    SETF_X_FB_CHANNEL     = 20,
+    SETF_X_FB_SCALE       = 21,
+    SETF_X_FB_OFFSET_V    = 22,
+
+    SETF_KP               = 32,   /* per plant (loop 1) */
     SETF_KI               = 33,
     SETF_KD               = 34,
+    SETF_X_KP             = 35,   /* the extra loops' gains: channel = plant + SET_PLANT_COUNT x (loop - 2) */
+    SETF_X_KI             = 36,
+    SETF_X_KD             = 37,
 
     SETF_SHOT_COUNT       = 64,   /* tables: see above */
     SETF_SHOT_POINTS      = 65,
     SETF_TARGET_COUNT     = 66,
     SETF_TARGET_POINTS    = 67,
     SETF_CURVE_COUNT      = 68,
-    SETF_CURVE_POINTS     = 69
+    SETF_CURVE_POINTS     = 69,
+    SETF_SHOT3_COUNT      = 70,   /* the per-channel shot: a duty per phase in every point */
+    SETF_SHOT3_POINTS     = 71,
+    SETF_TARGET3_COUNT    = 72,   /* the per-channel target: a voltage per phase in every point */
+    SETF_TARGET3_POINTS   = 73
 } settings_field_id_t;
 
 /* A table's point records: bytes per point and points per chunk (<= 255 bytes per record). */
-#define SET_SHOT_POINT_BYTES    (10U)    /* t_us u32, freq_mHz u32, duty_hundredths u16 */
-#define SET_TARGET_POINT_BYTES  (8U)     /* t_us u32, millivolts i32 */
+#define SET_SHOT_POINT_BYTES    (10U)    /* t_us u32, freq_mHz u32, duty_hundredths u16 (every phase) */
+#define SET_TARGET_POINT_BYTES  (8U)     /* t_us u32, millivolts i32 (every phase) */
 #define SET_CURVE_POINT_BYTES   (8U)     /* hz f32, volts f32 */
+#define SET_SHOT3_POINT_BYTES   (8U + 2U * HRTIM_NUM_CHANNELS)    /* t_us u32, freq_mHz u32, a duty_hundredths u16 per phase */
+#define SET_TARGET3_POINT_BYTES (4U + 4U * HRTIM_NUM_CHANNELS)    /* t_us u32, a millivolts i32 per phase */
 #define SET_SHOT_CHUNK_POINTS   (24U)
 #define SET_TARGET_CHUNK_POINTS (30U)
 #define SET_CURVE_CHUNK_POINTS  (30U)
+#define SET_SHOT3_CHUNK_POINTS  (255U / SET_SHOT3_POINT_BYTES)
+#define SET_TARGET3_CHUNK_POINTS (255U / SET_TARGET3_POINT_BYTES)
 
 typedef enum { SETK_U8, SETK_U32, SETK_F32 } settings_kind_t;
+
+/* What a field has one value PER (the channel byte of its records is that index) */
+typedef enum
+{
+    SETS_SYSTEM = 0,         /* one value (channel byte 0xFF) */
+    SETS_PLANT,              /* per plant: HVPS, Limiter (loop 1's gains) */
+    SETS_XLOOP,              /* per extra loop (2, 3) */
+    SETS_XLOOP_PLANT         /* per extra loop and plant: channel = plant + SET_PLANT_COUNT x extra loop */
+} settings_scope_t;
 
 typedef struct
 {
     uint8_t         id;
-    const char     *name;        /* wire/preview name; per-plant fields print as "<plant>.<name>" */
+    const char     *name;        /* wire/preview name; per-plant fields print as "<plant>.<name>", extra loops' as "loopN.<name>" */
     settings_kind_t kind;
-    uint8_t         perPlant;    /* 1: one value per plant */
-    uint16_t        offset;      /* into settings_snapshot_t (system) or settings_plant_t */
+    uint8_t         scope;       /* settings_scope_t */
+    uint16_t        offset;      /* into settings_snapshot_t (system), settings_plant_t or settings_xloop_t */
 } settings_field_t;
 
 extern const settings_field_t kSettingsFields[];
 extern const uint8_t          kSettingsFieldCount;
 
-#define SET_PRESENT_BITS   (64U)    /* >= fieldCount * SET_PLANT_COUNT */
+#define SET_PRESENT_BITS   (128U)   /* >= fieldCount * SET_MAX_INSTANCES */
 
 typedef struct
 {
@@ -109,6 +145,15 @@ typedef struct
     float ki;
     float kd;
 } settings_plant_t;
+
+/* One of the loops after the first (loop 2, loop 3) */
+typedef struct
+{
+    uint8_t loopMode;
+    uint8_t fbChannel;
+    float   fbScale;
+    float   fbOffsetV;
+} settings_xloop_t;
 
 typedef struct
 {
@@ -131,9 +176,14 @@ typedef struct
     float    clVscale;
     uint8_t  clBranch;
     settings_plant_t plant[SET_PLANT_COUNT];
-    /* Which (field, plant) values hold real data. Absent values are neither encoded, compared nor applied. */
+    settings_xloop_t xloop[SET_XLOOPS];
+    settings_plant_t xplant[SET_MAX_INSTANCES];     /* [extra loop * SET_PLANT_COUNT + plant] */
+    /* Which (field, instance) values hold real data. Absent values are neither encoded, compared nor applied. */
     uint8_t  present[(SET_PRESENT_BITS + 7U) / 8U];
 } settings_snapshot_t;
+
+/* How many values a field has: 1, SET_PLANT_COUNT, SET_XLOOPS or SET_XLOOPS x SET_PLANT_COUNT (the channel index runs 0..n-1). */
+uint8_t SettingsCodec_Instances(uint8_t fieldIdx);
 
 void    SettingsCodec_Clear(settings_snapshot_t *s);
 uint8_t SettingsCodec_IsPresent(const settings_snapshot_t *s, uint8_t fieldIdx, uint8_t ch);
@@ -184,7 +234,7 @@ typedef enum { SETREC_OK = 0, SETREC_END, SETREC_BAD } settings_rec_status_t;
 settings_rec_status_t SettingsCodec_NextRecord(settings_read_fn rd, void *ctx, uint16_t total,
                                                uint16_t *offset, settings_record_t *rec);
 
-/* 1 if the id is one of the table ids (64..69). */
+/* 1 if the id is one of the table ids (64..73). */
 uint8_t SettingsCodec_IsTableId(uint8_t id);
 
 /* Stores a scalar record into the snapshot. Returns 1 if stored or deliberately skipped (unknown id, plant

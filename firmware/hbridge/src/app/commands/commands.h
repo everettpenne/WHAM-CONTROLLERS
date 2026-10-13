@@ -285,6 +285,8 @@ void cmd_pid_loopmode(uart_instance_t *inst, char *args);            /* PID:LOOP
 void cmd_pid_loopmode_query(uart_instance_t *inst, char *args);      /* PID:LOOPMODE? */
 void cmd_pid_gains(uart_instance_t *inst, char *args);            /* PID:GAINS */
 void cmd_pid_gains_query(uart_instance_t *inst, char *args);      /* PID:GAINS? */
+void cmd_pid_fault_query(uart_instance_t *inst, char *args);   /* PID:FAULT? -- OK <loop> <NONE|OVERVOLTAGE|CLIPPED|CLIPPED_LOW> */
+void cmd_pid_diag_query(uart_instance_t *inst, char *args);    /* PID:DIAG? -- OK <ticks> <longest> <mean> <period> (cycles) */
 void cmd_source_setpoint(uart_instance_t *inst, char *args);            /* SOURce:SETpoint */
 void cmd_source_setpoint_query(uart_instance_t *inst, char *args);      /* SOURce:SETpoint? */
 void cmd_source_run(uart_instance_t *inst, char *args);            /* SOURce:RUN */

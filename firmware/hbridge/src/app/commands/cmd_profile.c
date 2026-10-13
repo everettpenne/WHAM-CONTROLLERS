@@ -241,7 +241,7 @@ void cmd_profile_query(uart_instance_t *inst, char *args)
     uart_send(inst, buf);
     for (uint8_t fi = 0U; fi < kSettingsFieldCount; fi++)
     {
-        uint8_t chCount = (kSettingsFields[fi].perPlant != 0U) ? (uint8_t)SET_PLANT_COUNT : 1U;
+        uint8_t chCount = SettingsCodec_Instances(fi);
 
         for (uint8_t c = 0U; c < chCount; c++)
         {
@@ -312,7 +312,7 @@ void cmd_profile_diff(uart_instance_t *inst, char *args)
     uart_send(inst, "OK");
     for (uint8_t fi = 0U; fi < kSettingsFieldCount; fi++)
     {
-        uint8_t chCount = (kSettingsFields[fi].perPlant != 0U) ? (uint8_t)SET_PLANT_COUNT : 1U;
+        uint8_t chCount = SettingsCodec_Instances(fi);
 
         for (uint8_t c = 0U; c < chCount; c++)
         {

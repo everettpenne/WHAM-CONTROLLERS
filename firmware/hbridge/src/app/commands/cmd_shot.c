@@ -4,14 +4,17 @@
  *
  *   SHOT:BEGin                         start an upload (discards the previous shot)
  *   SHOT:STEP <t_us> <freq_hz> <duty_pct>
+ *   SHOT:STEP <t_us> <freq_hz> <duty_U> <duty_V> <duty_W>
  *                                      one setpoint; t_us is an integer number of
  *                                      microseconds, frequency in Hz (up to 3
- *                                      decimals), duty in percent (up to 2).
+ *                                      decimals), duty in percent (up to 2): one
+ *                                      for every phase, or one per phase U, V, W.
  *                                      The first must be t = 0; times increase.
  *   SHOT:END                           finish; at least two setpoints
  *   SHOT:CLEar                         discard the shot
  *   SHOT?                              OK <setpoints> <duration_us> <PROFILE|TABLE>
- *   SHOT:POINt? <i>                    OK <t_us> <freq_hz> <duty_pct> (i from 0)
+ *   SHOT:POINt? <i>                    OK <t_us> <freq_hz> <duty_pct> (i from 0), or
+ *                                      OK <t_us> <freq_hz> <duty_U> <duty_V> <duty_W> when the phases differ
  *
  * Every setpoint is checked against the selected supply mode (CONFig:MODE)
  * as it is uploaded. Error codes are shared with TABle:* (cmd_common.h):
@@ -70,6 +73,7 @@ void cmd_shot_begin(uart_instance_t *inst, char *args)
 
 static void SendLimitErr(uart_instance_t *inst, shot_append_result_t res)
 {
+    static const char kPhase[HRTIM_NUM_CHANNELS] = { 'U', 'V', 'W' };
     supply_limits_t lim;
     char msg[96];
     supply_mode_t mode = SupplyMode_Get();
@@ -83,7 +87,8 @@ static void SendLimitErr(uart_instance_t *inst, shot_append_result_t res)
     }
     else
     {
-        snprintf(msg, sizeof(msg), "duty is %s the %s range (%u-%u%%)",
+        snprintf(msg, sizeof(msg), "duty of phase %c is %s the %s range (%u-%u%%)",
+                 kPhase[ShotProfile_BadChannel() % HRTIM_NUM_CHANNELS],
                  (res == SHOT_APPEND_DUTY_LOW) ? "below" : "above", SupplyMode_Name(mode),
                  (unsigned)lim.dutyMinPct, (unsigned)lim.dutyMaxPct);
     }
@@ -92,13 +97,11 @@ static void SendLimitErr(uart_instance_t *inst, shot_append_result_t res)
 
 void cmd_shot_step(uart_instance_t *inst, char *args)
 {
-    char *tokT = NULL;
-    char *tokF = NULL;
-    char *tokD = NULL;
-    char *extra = NULL;
+    char *tok[2U + HRTIM_NUM_CHANNELS + 1U];      /* t, f, the duties, and one more to catch an extra */
+    uint8_t nTok = 0U;
     uint32_t tUs = 0U;
     uint32_t fMilli = 0U;
-    uint32_t dHund = 0U;
+    uint16_t duty[HRTIM_NUM_CHANNELS];
     shot_append_result_t res;
 
     if (g_shotUploadActive == 0U)
@@ -112,26 +115,46 @@ void cmd_shot_step(uart_instance_t *inst, char *args)
     }
     if (args != NULL)
     {
-        tokT  = strtok(args, " \r\n");
-        tokF  = (tokT != NULL) ? strtok(NULL, " \r\n") : NULL;
-        tokD  = (tokF != NULL) ? strtok(NULL, " \r\n") : NULL;
-        extra = (tokD != NULL) ? strtok(NULL, " \r\n") : NULL;
+        char *p = strtok(args, " \r\n");
+
+        while ((p != NULL) && (nTok < (uint8_t)(sizeof(tok) / sizeof(tok[0]))))
+        {
+            tok[nTok++] = p;
+            p = strtok(NULL, " \r\n");
+        }
+        if (p != NULL)
+        {
+            nTok = 0xFFU;                         /* more values than any form takes */
+        }
     }
-    if ((tokD == NULL) || (extra != NULL))
+    /* t, f and ONE duty for every phase, or t, f and one duty per phase */
+    if ((nTok != 3U) && (nTok != (uint8_t)(2U + HRTIM_NUM_CHANNELS)))
     {
-        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "SHOT:STEP needs exactly three values: t_us freq_hz duty_pct");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID,
+                     "SHOT:STEP needs t_us freq_hz duty_pct (every phase) or t_us freq_hz duty_U duty_V duty_W");
         return;
     }
-    if ((Scpi_ParseScaled(tokT, 0U, &tUs) == 0U) ||
-        (Scpi_ParseScaled(tokF, 3U, &fMilli) == 0U) ||
-        (Scpi_ParseScaled(tokD, 2U, &dHund) == 0U) || (dHund > 65535U))
+    if ((Scpi_ParseScaled(tok[0], 0U, &tUs) == 0U) || (Scpi_ParseScaled(tok[1], 3U, &fMilli) == 0U))
     {
         Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID,
                 "values must be non-negative decimals: t_us integer, freq_hz up to 3 decimals, duty_pct up to 2");
         return;
     }
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        uint32_t dHund = 0U;
+        const char *dTok = tok[(nTok == 3U) ? 2U : (2U + ch)];
 
-    res = ShotProfile_Append(tUs, fMilli, (uint16_t)dHund);
+        if ((Scpi_ParseScaled(dTok, 2U, &dHund) == 0U) || (dHund > 65535U))
+        {
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID,
+                    "values must be non-negative decimals: t_us integer, freq_hz up to 3 decimals, duty_pct up to 2");
+            return;
+        }
+        duty[ch] = (uint16_t)dHund;
+    }
+
+    res = ShotProfile_Append(tUs, fMilli, duty);
     switch (res)
     {
         case SHOT_APPEND_OK:
@@ -213,10 +236,11 @@ void cmd_shot_query(uart_instance_t *inst, char *args)
 
 void cmd_shot_point_query(uart_instance_t *inst, char *args)
 {
-    char buf[80];
+    char buf[112];
     char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     uint32_t index = 0U;
     shot_setpoint_t sp;
+    int len;
 
     if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &index) == 0U))
     {
@@ -228,8 +252,24 @@ void cmd_shot_point_query(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_ARGS, "No such setpoint");
         return;
     }
-    snprintf(buf, sizeof(buf), "OK %lu %lu.%03lu %u.%02u\r\n", (unsigned long)sp.tUs,
-             (unsigned long)(sp.freqMilliHz / 1000U), (unsigned long)(sp.freqMilliHz % 1000U),
-             (unsigned int)(sp.dutyHundredths / 100U), (unsigned int)(sp.dutyHundredths % 100U));
+    len = snprintf(buf, sizeof(buf), "OK %lu %lu.%03lu", (unsigned long)sp.tUs,
+                   (unsigned long)(sp.freqMilliHz / 1000U), (unsigned long)(sp.freqMilliHz % 1000U));
+    {
+        /* one duty when every phase has it (the form that predates per-phase duties), else one per phase */
+        uint8_t same = 1U;
+        uint8_t n;
+
+        for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            if (sp.dutyHundredths[ch] != sp.dutyHundredths[0]) { same = 0U; }
+        }
+        n = (same != 0U) ? 1U : HRTIM_NUM_CHANNELS;
+        for (uint8_t ch = 0U; ch < n; ch++)
+        {
+            len += snprintf(&buf[len], sizeof(buf) - (size_t)len, " %u.%02u",
+                            (unsigned int)(sp.dutyHundredths[ch] / 100U), (unsigned int)(sp.dutyHundredths[ch] % 100U));
+        }
+    }
+    snprintf(&buf[len], sizeof(buf) - (size_t)len, "\r\n");
     uart_send(inst, buf);
 }

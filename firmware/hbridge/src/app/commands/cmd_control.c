@@ -7,13 +7,15 @@
  *   SOURce:RUN / STOP                 closed-loop hold of SOURce:SETpoint, until stopped
  *   SOURce:SETpoint <ch> <volts> / ?  the hold target
  *   SOURce:STATus? <ch>               OK <running> <setpointV> <measuredV> <output Hz|%>
- *   TARGet:BEGin / STEP <t_us> <volts> / END / CLEar / ? / POINt? <i>   the target-voltage time series
+ *   TARGet:BEGin / STEP <t_us> <volts> [<volts> <volts>] / END / CLEar / ? / POINt? <i>   the target-voltage time series
  *   LOG:ARM <ch> <max> <decim> / LOG:DATA? <ch> [<start> [<count>]]
+ *   PID:FAULT? / PID:DIAG?            which loop stopped the last run and why / the control tick's timing
  *   CONFig:PIDRate, :SLEWRate, :MAXVolts, :FEEDback:*, :ADC:*, :CLOSEDloop:*, SIM:PLANT:*
  *
- * `<ch>` is the loop, 1 today (XREX's channel argument, kept so tooling written for XREX carries over
- * and a second loop later does not change the protocol); 0 where XREX allows it means "all loops".
- * FIRE plays the shot open- or closed-loop according to PID:LOOPMODE (cmd_table.c).
+ * `<ch>` is the loop: 1, 2, 3 = phase U, V, W (XREX's channel argument, kept so tooling written for XREX
+ * carries over); 0 where XREX allows it means "all loops". Where a command takes the loop OPTIONALLY
+ * (CONFig:FEEDback:CHANnel/SCALE/OFFSet/RANGE) leaving it out means loop 1, as before there were three.
+ * FIRE plays the shot open- or closed-loop according to each phase's PID:LOOPMODE (cmd_table.c).
  */
 #include "commands.h"
 #include "cmd_common.h"
@@ -57,16 +59,18 @@ static void ReplySet(uart_instance_t *inst, ctl_set_result_t r, const char *rang
     Scpi_ReplySet(inst, (int)r, rangeMsg, CTL_BUSY_MSG);
 }
 
-/* The loop argument: 1 (the only loop), or 0 for "all" where allowZero. Sends ERR 11 and returns 0 otherwise. */
-static uint8_t ParseLoop(uart_instance_t *inst, const char *tok, uint8_t allowZero)
+/* The loop argument: 1..3 (phase U, V, W), or 0 for "all" where allowZero. *loop gets the index 0..2, or
+   CTL_ALL_LOOPS for 0. Sends ERR 11 and returns 0 otherwise. */
+static uint8_t ParseLoop(uart_instance_t *inst, const char *tok, uint8_t allowZero, uint8_t *loop)
 {
     uint32_t v = 0U;
 
-    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &v) == 0U) || (v > 1U) || ((v == 0U) && (allowZero == 0U)))
+    if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &v) == 0U) || (v > CTL_LOOPS) || ((v == 0U) && (allowZero == 0U)))
     {
-        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid loop (1 is the only loop; 0 = all where accepted)");
+        Scpi_SendErr(inst, ERR_INVALID_CHANNEL, "Invalid loop (1-3 = phase U, V, W; 0 = all where accepted)");
         return 0U;
     }
+    *loop = (v == 0U) ? CTL_ALL_LOOPS : (uint8_t)(v - 1U);
     return 1U;
 }
 
@@ -102,11 +106,20 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
         case CTL_REF_BAD:
             Scpi_SendErr(inst, ERR_INVALID_STATE, "VREF+ is not at ANALOG_VREF_MV (check ADC:VREF?)");
             break;
+        case CTL_NO_SHOT:
+            Scpi_SendErr(inst, ERR_TABLE_EMPTY, "A phase is open loop (PID:LOOPMODE 0) and there is no shot for it to follow -- upload one (SHOT:BEGin/STEP/END), or close the loop on every enabled phase, or disable the phase (PHASe:ENAble)");
+            break;
+        case CTL_NEED_CLOSED:
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce:RUN holds every enabled phase at its setpoint: set PID:LOOPMODE 0 1 (every loop closed), or disable the open phases (PHASe:ENAble)");
+            break;
         case CTL_NO_METER:
             Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce LOOP needs Phase U enabled (PHASe:ENAble) and PFM_Input_01 free (no PFMIN capture running)");
             break;
-        default:
+        case CTL_BUSY:
             Scpi_SendErr(inst, ERR_INVALID_STATE, "A closed-loop run is already in progress");
+            break;
+        default:
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, "Closed-loop configuration unusable (nothing to close)");
             break;
     }
     return 1U;
@@ -114,12 +127,28 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
 
 /* ---- PID:* ---- */
 
+static void ReplyBits(uart_instance_t *inst, const uint8_t *vals, uint8_t n)
+{
+    char buf[32] = "OK";
+    size_t used = 2U;
+
+    for (uint8_t i = 0U; (i < n) && (used + 3U < sizeof(buf)); i++)
+    {
+        buf[used++] = ' ';
+        buf[used++] = (char)('0' + vals[i]);
+        buf[used] = '\0';
+    }
+    snprintf(&buf[used], sizeof(buf) - used, "\r\n");
+    uart_send(inst, buf);
+}
+
 void cmd_pid_loopmode(uart_instance_t *inst, char *args)
 {
     char *tokCh = (args != NULL) ? strtok(args, " \r\n") : NULL;
     char *tokV  = (tokCh != NULL) ? strtok(NULL, " \r\n") : NULL;
+    uint8_t loop = 0U;
 
-    if (ParseLoop(inst, tokCh, 1U) == 0U)
+    if (ParseLoop(inst, tokCh, 1U, &loop) == 0U)
     {
         return;
     }
@@ -132,32 +161,43 @@ void cmd_pid_loopmode(uart_instance_t *inst, char *args)
     {
         return;
     }
-    Control_SetLoopMode((uint8_t)(tokV[0] - '0'));
+    Control_SetLoopMode(loop, (uint8_t)(tokV[0] - '0'));
     Scpi_ReplyOk(inst);
 }
 
+/* PID:LOOPMODE? <ch>: OK <0|1>; with 0 every loop: OK <U> <V> <W> */
 void cmd_pid_loopmode_query(uart_instance_t *inst, char *args)
 {
     char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    uint8_t loop = 0U;
+    uint8_t modes[CTL_LOOPS];
 
-    if (ParseLoop(inst, tok, 0U) == 0U)
+    if (ParseLoop(inst, tok, 1U, &loop) == 0U)
     {
         return;
     }
-    uart_send(inst, (Control_GetLoopMode() != 0U) ? "OK 1\r\n" : "OK 0\r\n");
+    if (loop == CTL_ALL_LOOPS)
+    {
+        for (uint8_t i = 0U; i < CTL_LOOPS; i++) { modes[i] = Control_GetLoopMode(i); }
+        ReplyBits(inst, modes, CTL_LOOPS);
+        return;
+    }
+    modes[0] = Control_GetLoopMode(loop);
+    ReplyBits(inst, modes, 1U);
 }
 
 void cmd_pid_gains(uart_instance_t *inst, char *args)
 {
     char *t[4] = { NULL, NULL, NULL, NULL };
     float kp, ki, kd;
+    uint8_t loop = 0U;
 
     if (args != NULL)
     {
         t[0] = strtok(args, " \r\n");
         for (int i = 1; (i < 4) && (t[i - 1] != NULL); i++) { t[i] = strtok(NULL, " \r\n"); }
     }
-    if (ParseLoop(inst, t[0], 1U) == 0U)
+    if (ParseLoop(inst, t[0], 1U, &loop) == 0U)
     {
         return;
     }
@@ -172,7 +212,7 @@ void cmd_pid_gains(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_STATE, "No supply mode selected: the gains belong to the selected supply's loop");
         return;
     }
-    ReplySet(inst, Control_SetGains(kp, ki, kd), "gains must be non-negative");
+    ReplySet(inst, Control_SetGains(loop, kp, ki, kd), "gains must be non-negative");
 }
 
 void cmd_pid_gains_query(uart_instance_t *inst, char *args)
@@ -180,16 +220,46 @@ void cmd_pid_gains_query(uart_instance_t *inst, char *args)
     char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     float kp, ki, kd;
     char a[24], b[24], c[24], buf[96];
+    uint8_t loop = 0U;
 
-    if (ParseLoop(inst, tok, 0U) == 0U)
+    if (ParseLoop(inst, tok, 0U, &loop) == 0U)
     {
         return;
     }
-    Control_GetGains(&kp, &ki, &kd);
+    Control_GetGains(loop, &kp, &ki, &kd);
     Scpi_FormatFixed(a, sizeof(a), kp, 3U);
     Scpi_FormatFixed(b, sizeof(b), ki, 3U);
     Scpi_FormatFixed(c, sizeof(c), kd, 3U);
     snprintf(buf, sizeof(buf), "OK %s %s %s\r\n", a, b, c);
+    uart_send(inst, buf);
+}
+
+/* PID:FAULT? -> OK <loop 1-3, 0 = none> <NONE|OVERVOLTAGE|CLIPPED|CLIPPED_LOW>: which loop stopped the last run, and why.
+   (FAULT:SOURces? says that the closed loop did; this says which loop.) */
+void cmd_pid_fault_query(uart_instance_t *inst, char *args)
+{
+    static const char *const kKind[4] = { "NONE", "OVERVOLTAGE", "CLIPPED", "CLIPPED_LOW" };
+    char buf[48];
+    uint8_t loop, kind;
+    (void)args;
+
+    Control_GetFault(&loop, &kind);
+    snprintf(buf, sizeof(buf), "OK %u %s\r\n", (unsigned)loop, kKind[kind & 3U]);
+    uart_send(inst, buf);
+}
+
+/* PID:DIAG? -> OK <ticks> <longest tick, cycles> <mean tick, cycles> <cycles in one tick period>: the control tick's
+   cost over the closed-loop runs since boot (CPU cycles at 170 MHz). A longest tick near the period means the next
+   ADC block is late. */
+void cmd_pid_diag_query(uart_instance_t *inst, char *args)
+{
+    char buf[80];
+    uint32_t ticks, maxC, sumC, budget;
+    (void)args;
+
+    Control_GetDiag(&ticks, &maxC, &sumC, &budget);
+    snprintf(buf, sizeof(buf), "OK %lu %lu %lu %lu\r\n", (unsigned long)ticks, (unsigned long)maxC,
+             (unsigned long)((ticks != 0U) ? (sumC / ticks) : 0U), (unsigned long)budget);
     uart_send(inst, buf);
 }
 
@@ -209,9 +279,9 @@ void cmd_source_run(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
         return;
     }
-    if (Control_GetLoopMode() == 0U)
+    if (Control_ClosedRunWanted() == 0U)
     {
-        Scpi_SendErr(inst, ERR_INVALID_STATE, "PID:LOOPMODE is 0 (open loop): SOURce:RUN is a closed-loop hold");
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "No enabled phase is closed loop (PID:LOOPMODE): SOURce:RUN is a closed-loop hold");
         return;
     }
     if (Cmd_ReportCtlResult(inst, Control_Prepare(0U)) != 0U)
@@ -240,8 +310,9 @@ void cmd_source_setpoint(uart_instance_t *inst, char *args)
     char *tokCh = (args != NULL) ? strtok(args, " \r\n") : NULL;
     char *tokV  = (tokCh != NULL) ? strtok(NULL, " \r\n") : NULL;
     float v;
+    uint8_t loop = 0U;
 
-    if (ParseLoop(inst, tokCh, 1U) == 0U)
+    if (ParseLoop(inst, tokCh, 1U, &loop) == 0U)
     {
         return;
     }
@@ -255,19 +326,20 @@ void cmd_source_setpoint(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_ARGS, "Setpoint is beyond CONFig:MAXVolts");
         return;
     }
-    Control_SetHoldVolts(v);
+    Control_SetHoldVolts(loop, v);
     Scpi_ReplyOk(inst);
 }
 
 void cmd_source_setpoint_query(uart_instance_t *inst, char *args)
 {
     char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    uint8_t loop = 0U;
 
-    if (ParseLoop(inst, tok, 0U) == 0U)
+    if (ParseLoop(inst, tok, 0U, &loop) == 0U)
     {
         return;
     }
-    Scpi_ReplyFixed(inst, Control_GetHoldVolts(), 3U);
+    Scpi_ReplyFixed(inst, Control_GetHoldVolts(loop), 3U);
 }
 
 void cmd_source_status(uart_instance_t *inst, char *args)
@@ -275,12 +347,13 @@ void cmd_source_status(uart_instance_t *inst, char *args)
     char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     float sp, pv, out;
     char a[24], b[24], c[24], buf[96];
+    uint8_t loop = 0U;
 
-    if (ParseLoop(inst, tok, 0U) == 0U)
+    if (ParseLoop(inst, tok, 0U, &loop) == 0U)
     {
         return;
     }
-    Control_GetStatus(&sp, &pv, &out);
+    Control_GetStatus(loop, &sp, &pv, &out);
     Scpi_FormatFixed(a, sizeof(a), sp, 3U);
     Scpi_FormatFixed(b, sizeof(b), pv, 3U);
     Scpi_FormatFixed(c, sizeof(c), out, 2U);
@@ -312,9 +385,10 @@ void cmd_target_begin(uart_instance_t *inst, char *args)
 
 void cmd_target_step(uart_instance_t *inst, char *args)
 {
-    char *tokT = NULL, *tokV = NULL, *extra = NULL;
+    char *tok[1U + HRTIM_NUM_CHANNELS + 1U];      /* t, the voltages, and one more to catch an extra */
+    uint8_t nTok = 0U;
     uint32_t tUs = 0U;
-    int32_t mv = 0;
+    int32_t mv[HRTIM_NUM_CHANNELS];
     int32_t limit = (int32_t)(Control_GetMaxVolts() * 1000.0f);
 
     if (g_targetUploadActive == 0U)
@@ -328,24 +402,41 @@ void cmd_target_step(uart_instance_t *inst, char *args)
     }
     if (args != NULL)
     {
-        tokT = strtok(args, " \r\n");
-        tokV = (tokT != NULL) ? strtok(NULL, " \r\n") : NULL;
-        extra = (tokV != NULL) ? strtok(NULL, " \r\n") : NULL;
+        char *p = strtok(args, " \r\n");
+
+        while ((p != NULL) && (nTok < (uint8_t)(sizeof(tok) / sizeof(tok[0]))))
+        {
+            tok[nTok++] = p;
+            p = strtok(NULL, " \r\n");
+        }
+        if (p != NULL)
+        {
+            nTok = 0xFFU;
+        }
     }
-    if ((tokV == NULL) || (extra != NULL))
+    /* t and ONE voltage for every phase, or t and one voltage per phase */
+    if ((nTok != 2U) && (nTok != (uint8_t)(1U + HRTIM_NUM_CHANNELS)))
     {
-        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "TARGet:STEP needs exactly two values: t_us volts");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "TARGet:STEP needs t_us volts (every phase) or t_us volts_U volts_V volts_W");
         return;
     }
-    if ((Scpi_ParseScaled(tokT, 0U, &tUs) == 0U) || (Target_ParseMilliVolts(tokV, &mv) == 0U))
+    if (Scpi_ParseScaled(tok[0], 0U, &tUs) == 0U)
     {
         Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "t_us must be a non-negative integer, volts a signed decimal (3 places)");
         return;
     }
-    if ((mv < 0) && (SupplyMode_Get() == SUPPLY_MODE_HVPS))
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {
-        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "HVPS targets are power: not below 0 V");
-        return;
+        if (Target_ParseMilliVolts(tok[(nTok == 2U) ? 1U : (1U + ch)], &mv[ch]) == 0U)
+        {
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "t_us must be a non-negative integer, volts a signed decimal (3 places)");
+            return;
+        }
+        if ((mv[ch] < 0) && (SupplyMode_Get() == SUPPLY_MODE_HVPS))
+        {
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "HVPS targets are power: not below 0 V");
+            return;
+        }
     }
     switch (Target_Append(tUs, mv, limit))
     {
@@ -365,8 +456,14 @@ void cmd_target_step(uart_instance_t *inst, char *args)
             Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "Time is beyond the longest shot (SHOT_MAX_DURATION_US)");
             break;
         default:
-            Scpi_SendErr(inst, ERR_OUT_OF_MODE_LIMITS, "Target voltage is beyond CONFig:MAXVolts");
+        {
+            static const char kPhase[HRTIM_NUM_CHANNELS] = { 'U', 'V', 'W' };
+            char msg[64];
+
+            snprintf(msg, sizeof(msg), "Target voltage of phase %c is beyond CONFig:MAXVolts", kPhase[Target_BadChannel() % HRTIM_NUM_CHANNELS]);
+            Scpi_SendErr(inst, ERR_OUT_OF_MODE_LIMITS, msg);
             break;
+        }
     }
 }
 
@@ -410,12 +507,15 @@ void cmd_target_query(uart_instance_t *inst, char *args)
     uart_send(inst, buf);
 }
 
+/* TARGet:POINt? <i> -> OK <t_us> <volts>, or OK <t_us> <volts_U> <volts_V> <volts_W> when the phases differ */
 void cmd_target_point_query(uart_instance_t *inst, char *args)
 {
     char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     uint32_t i = 0U;
     target_setpoint_t sp;
-    char v[24], buf[64];
+    char v[24], buf[96];
+    int len;
+    uint8_t same = 1U;
 
     if ((tok == NULL) || (Scpi_ParseScaled(tok, 0U, &i) == 0U) || (i > 0xFFFFU))
     {
@@ -427,8 +527,17 @@ void cmd_target_point_query(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_ARGS, "No such setpoint");
         return;
     }
-    Scpi_FormatFixed(v, sizeof(v), (float)sp.milliVolts / 1000.0f, 3U);
-    snprintf(buf, sizeof(buf), "OK %lu %s\r\n", (unsigned long)sp.tUs, v);
+    len = snprintf(buf, sizeof(buf), "OK %lu", (unsigned long)sp.tUs);
+    for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        if (sp.milliVolts[ch] != sp.milliVolts[0]) { same = 0U; }
+    }
+    for (uint8_t ch = 0U; ch < ((same != 0U) ? 1U : HRTIM_NUM_CHANNELS); ch++)
+    {
+        Scpi_FormatFixed(v, sizeof(v), (float)sp.milliVolts[ch] / 1000.0f, 3U);
+        len += snprintf(&buf[len], sizeof(buf) - (size_t)len, " %s", v);
+    }
+    snprintf(&buf[len], sizeof(buf) - (size_t)len, "\r\n");
     uart_send(inst, buf);
 }
 
@@ -438,6 +547,7 @@ void cmd_log_arm(uart_instance_t *inst, char *args)
 {
     char *t[3] = { NULL, NULL, NULL };
     uint32_t max = 0U, decim = 0U;
+    uint8_t loop = 0U;
 
     if (args != NULL)
     {
@@ -445,23 +555,28 @@ void cmd_log_arm(uart_instance_t *inst, char *args)
         t[1] = (t[0] != NULL) ? strtok(NULL, " \r\n") : NULL;
         t[2] = (t[1] != NULL) ? strtok(NULL, " \r\n") : NULL;
     }
-    if (ParseLoop(inst, t[0], 1U) == 0U)
+    if (ParseLoop(inst, t[0], 1U, &loop) == 0U)
     {
         return;
     }
     if ((t[2] == NULL) || (Scpi_ParseScaled(t[1], 0U, &max) == 0U) || (Scpi_ParseScaled(t[2], 0U, &decim) == 0U) ||
-        (max < 1U) || (max > 1000U) || (decim < 1U) || (decim > 10000U))
+        (max < 1U) || (max > Control_LogMaxSamples(loop)) || (decim < 1U) || (decim > 10000U))
     {
-        Scpi_SendErr(inst, ERR_INVALID_ARGS, "LOG:ARM needs <ch> <maxSamples 1-1000> <decim 1-10000>");
+        char msg[160];
+
+        snprintf(msg, sizeof(msg), "LOG:ARM needs <ch> <maxSamples 1-%u> <decim 1-10000> (the cap is a third as big for ch 0 = every loop)",
+                 (unsigned)Control_LogMaxSamples(loop));
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, msg);
         return;
     }
-    Control_LogArm((uint16_t)max, (uint16_t)decim);
+    Control_LogArm(loop, (uint16_t)max, (uint16_t)decim);
     Scpi_ReplyOk(inst);
 }
 
 /* LOG:DATA? <ch> [<start> [<count>]] -- OK <count> <rateHz> SUM=<s> sp1 pv1 out1 sp2 ... (millivolts, millivolts,
-   milli-Hz or milli-percent). A page of at most 40 samples per reply: the ethernet serial bridge loses characters
-   in long replies, and SUM (the sum of the numbers mod 2^32) lets the host tell. */
+   milli-Hz or milli-percent) of loop <ch> (1-3; the loop that LOG:ARM <ch> armed, or any when it armed 0). A page of
+   at most 40 samples per reply: the ethernet serial bridge loses characters in long replies, and SUM (the sum of
+   the numbers mod 2^32) lets the host tell. */
 void cmd_log_data(uart_instance_t *inst, char *args)
 {
     char *t[3] = { NULL, NULL, NULL };
@@ -471,6 +586,7 @@ void cmd_log_data(uart_instance_t *inst, char *args)
     uint32_t sum = 0U;
     uint16_t last;
     int len;
+    uint8_t loop = 0U;
 
     if (args != NULL)
     {
@@ -478,7 +594,7 @@ void cmd_log_data(uart_instance_t *inst, char *args)
         t[1] = (t[0] != NULL) ? strtok(NULL, " \r\n") : NULL;
         t[2] = (t[1] != NULL) ? strtok(NULL, " \r\n") : NULL;
     }
-    if (ParseLoop(inst, t[0], 0U) == 0U)
+    if (ParseLoop(inst, t[0], 0U, &loop) == 0U)
     {
         return;
     }
@@ -490,17 +606,26 @@ void cmd_log_data(uart_instance_t *inst, char *args)
     }
     if (want > 40U) { want = 40U; }
     last = (uint16_t)(((start + want) > count) ? count : (start + want));
+    {
+        int32_t a, b, c;
+
+        if ((count != 0U) && (Control_LogGet(loop, 0U, &a, &b, &c) == 0U))
+        {
+            Scpi_SendErr(inst, ERR_INVALID_ARGS, "That loop was not logged (LOG:ARM <ch> armed another loop)");
+            return;
+        }
+    }
     for (uint16_t i = (uint16_t)start; i < last; i++)
     {
         int32_t a, b, c;
-        (void)Control_LogGet(i, &a, &b, &c);
+        (void)Control_LogGet(loop, i, &a, &b, &c);
         sum += (uint32_t)a + (uint32_t)b + (uint32_t)c;
     }
     len = snprintf(buf, sizeof(buf), "OK %u %lu SUM=%lu", (unsigned)count, (unsigned long)Control_LogRateHz(), (unsigned long)sum);
     for (uint16_t i = (uint16_t)start; i < last; i++)
     {
         int32_t a, b, c;
-        (void)Control_LogGet(i, &a, &b, &c);
+        (void)Control_LogGet(loop, i, &a, &b, &c);
         len += snprintf(&buf[len], sizeof(buf) - (size_t)len, " %ld %ld %ld", (long)a, (long)b, (long)c);
     }
     snprintf(&buf[len], sizeof(buf) - (size_t)len, "\r\n");
@@ -511,6 +636,42 @@ void cmd_log_data(uart_instance_t *inst, char *args)
 
 #define FLOAT_SETTING(FN, SETTER, GETTER, DEC, USAGE, RANGEMSG) \
     SCPI_FLOAT_SETTING(FN, SETTER, GETTER, DEC, USAGE, RANGEMSG, CTL_BUSY_MSG)
+
+/* A float setting that belongs to a loop: "<value>" sets loop 1 (what it did before there were three loops),
+   "<loop> <value>" sets that loop, loop 0 every loop; the query takes the loop the same way ("?" = loop 1). */
+#define LOOP_FLOAT_SETTING(FN, SETTER, GETTER, DEC, USAGE, RANGEMSG) \
+void FN(uart_instance_t *inst, char *args) \
+{ \
+    char *a_ = (args != NULL) ? strtok(args, " \r\n") : NULL; \
+    char *b_ = (a_ != NULL) ? strtok(NULL, " \r\n") : NULL; \
+    uint8_t loop_ = 0U; \
+    float v_; \
+    if ((a_ == NULL) || (strtok(NULL, " \r\n") != NULL)) \
+    { \
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, USAGE); \
+        return; \
+    } \
+    if ((b_ != NULL) && (ParseLoop(inst, a_, 1U, &loop_) == 0U)) \
+    { \
+        return; \
+    } \
+    if (Scpi_ParseUnsigned((b_ != NULL) ? b_ : a_, (DEC), &v_) == 0U) \
+    { \
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, USAGE); \
+        return; \
+    } \
+    ReplySet(inst, SETTER(loop_, v_), RANGEMSG); \
+} \
+void FN##_query(uart_instance_t *inst, char *args) \
+{ \
+    char *a_ = (args != NULL) ? strtok(args, " \r\n") : NULL; \
+    uint8_t loop_ = 0U; \
+    if ((a_ != NULL) && (ParseLoop(inst, a_, 0U, &loop_) == 0U)) \
+    { \
+        return; \
+    } \
+    Scpi_ReplyFixed(inst, GETTER(loop_), (DEC)); \
+}
 
 static ctl_set_result_t SetRate(float v)  { return Control_SetRateHz((uint32_t)(v + 0.5f)); }
 static float            GetRate(void)     { return (float)Control_GetRateHz(); }
@@ -529,11 +690,11 @@ FLOAT_SETTING(cmd_config_slew_rate,  Control_SetSlewPerTick, Control_GetSlewPerT
               "slew must be >= 0")
 FLOAT_SETTING(cmd_config_max_volts,  Control_SetMaxVolts, Control_GetMaxVolts, 3U, "CONFig:MAXVolts <volts>",
               "max volts must be > 0 and <= 10000")
-FLOAT_SETTING(cmd_config_fb_scale,   Control_SetFeedbackScale, Control_GetFeedbackScale, 4U, "CONFig:FEEDback:SCALE <process volts per ADC volt>",
+LOOP_FLOAT_SETTING(cmd_config_fb_scale,   Control_SetFeedbackScale, Control_GetFeedbackScale, 4U, "CONFig:FEEDback:SCALE [<loop 0-3>] <process volts per ADC volt>",
               "scale must be > 0")
-FLOAT_SETTING(cmd_config_fb_offset,  Control_SetFeedbackOffset, Control_GetFeedbackOffset, 4U, "CONFig:FEEDback:OFFSet <ADC volts that read as 0>",
+LOOP_FLOAT_SETTING(cmd_config_fb_offset,  Control_SetFeedbackOffset, Control_GetFeedbackOffset, 4U, "CONFig:FEEDback:OFFSet [<loop 0-3>] <ADC volts that read as 0>",
               "offset must be 0 to the ADC full scale")
-FLOAT_SETTING(cmd_config_fb_range,   Control_SetFeedbackRange, Control_GetFeedbackRange, 3U, "CONFig:FEEDback:RANGE <Vmax in process volts>",
+LOOP_FLOAT_SETTING(cmd_config_fb_range,   Control_SetFeedbackRange, Control_GetFeedbackRange, 3U, "CONFig:FEEDback:RANGE [<loop 0-3>] <Vmax in process volts>",
               "Vmax must be > 0 and <= 100000")
 FLOAT_SETTING(cmd_config_fb_dacratio, Control_SetDacRatio, Control_GetDacRatio, 4U, "CONFig:FEEDback:DACRatio <ADC volts per DAC volt>",
               "DAC ratio must be 0.05 to 2")
@@ -567,8 +728,8 @@ void cmd_config_cl_branch(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
         return;
     }
-    if (strcasecmp(tok, "ABOVE") == 0)       { Control_Loop()->cfg.hvpsAbove = 1U; }
-    else if (strcasecmp(tok, "BELOW") == 0)  { Control_Loop()->cfg.hvpsAbove = 0U; }
+    if (strcasecmp(tok, "ABOVE") == 0)       { (void)Control_SetHvpsAbove(1U); }
+    else if (strcasecmp(tok, "BELOW") == 0)  { (void)Control_SetHvpsAbove(0U); }
     else
     {
         Scpi_SendErr(inst, ERR_INVALID_ARGS, "branch must be ABOVE or BELOW resonance");
@@ -583,20 +744,30 @@ void cmd_config_cl_branch_query(uart_instance_t *inst, char *args)
     uart_send(inst, (Control_Loop()->cfg.hvpsAbove != 0U) ? "OK ABOVE\r\n" : "OK BELOW\r\n");
 }
 
-/* CONFig:FEEDback:CHANnel <1-6 | PA0 PA1 PC0 PB0 PC1 PB1> */
+/* CONFig:FEEDback:CHANnel [<loop 0-3>] <1-6 | PA0 PA1 PC0 PB0 PC1 PB1>
+   One argument sets loop 1 (as it did before there were three loops); with a loop first it sets that loop, 0 every loop.
+   The defaults are phase U on PA0, V on PA1 and W on PB0. */
 static const char *const kPinNames[ADC_NUM_CHANNELS] = { "PA0", "PA1", "PC0", "PB0", "PC1", "PB1" };
 
 void cmd_config_fb_channel(uart_instance_t *inst, char *args)
 {
-    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    char *a = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    char *b = (a != NULL) ? strtok(NULL, " \r\n") : NULL;
+    const char *tok;
     uint32_t n = 0U;
     int idx = -1;
+    uint8_t loop = 0U;
 
-    if (tok == NULL)
+    if ((a == NULL) || (strtok(NULL, " \r\n") != NULL))
     {
-        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:CHANnel <1-6 or PA0 PA1 PC0 PB0 PC1 PB1>");
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:FEEDback:CHANnel [<loop 0-3>] <1-6 or PA0 PA1 PC0 PB0 PC1 PB1>");
         return;
     }
+    if ((b != NULL) && (ParseLoop(inst, a, 1U, &loop) == 0U))
+    {
+        return;
+    }
+    tok = (b != NULL) ? b : a;
     if ((Scpi_ParseScaled(tok, 0U, &n) != 0U) && (n >= 1U) && (n <= ADC_NUM_CHANNELS))
     {
         idx = (int)n - 1;
@@ -613,15 +784,21 @@ void cmd_config_fb_channel(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_ARGS, "channel must be 1-6 or one of PA0 PA1 PC0 PB0 PC1 PB1");
         return;
     }
-    ReplySet(inst, Control_SetFeedbackChannel((uint8_t)idx), "bad channel");
+    ReplySet(inst, Control_SetFeedbackChannel(loop, (uint8_t)idx), "bad channel");
 }
 
 void cmd_config_fb_channel_query(uart_instance_t *inst, char *args)
 {
     char buf[32];
-    uint8_t c = Control_GetFeedbackChannel();
-    (void)args;
+    char *a = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    uint8_t loop = 0U;
+    uint8_t c;
 
+    if ((a != NULL) && (ParseLoop(inst, a, 0U, &loop) == 0U))
+    {
+        return;
+    }
+    c = Control_GetFeedbackChannel(loop);
     snprintf(buf, sizeof(buf), "OK %u %s\r\n", (unsigned)(c + 1U), kPinNames[c]);
     uart_send(inst, buf);
 }
@@ -805,17 +982,23 @@ void cmd_curve_point_query(uart_instance_t *inst, char *args)
 /* ---- SIM:PLANT:* : the simulated supply's parameters ---- */
 
 static ctl_set_result_t SimBusy(void) { return (Control_IsRunning() != 0U) ? CTL_SET_BUSY : CTL_SET_OK; }
-static ctl_set_result_t SetSimTau(float v)   { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v < 0.0001f) || (v > 10.0f)) { return CTL_SET_RANGE; } Control_SimPlant()->tau = v; return CTL_SET_OK; }
+#define SIM_ALL(field, value) do { for (uint8_t i_ = 0U; i_ < CTL_LOOPS; i_++) { Control_SimPlantN(i_)->field = (value); } } while (0)
+static ctl_set_result_t SetSimTau(float v)   { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v < 0.0001f) || (v > 10.0f)) { return CTL_SET_RANGE; } SIM_ALL(tau, v); return CTL_SET_OK; }
 static float            GetSimTau(void)      { return Control_SimPlant()->tau; }
-static ctl_set_result_t SetSimGain(float v)  { if (v > 10.0f) { return CTL_SET_RANGE; } Control_SimPlant()->gain = v; return CTL_SET_OK; }   /* live: a disturbance */
-static float            GetSimGain(void)     { return Control_SimPlant()->gain; }
-static ctl_set_result_t SetSimRes(float v)   { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v < 1000.0f) || (v > 100000.0f)) { return CTL_SET_RANGE; } Control_SimPlant()->resonance = v; return CTL_SET_OK; }
+static ctl_set_result_t SetSimGainFor(uint8_t loop, float v)   /* live: a disturbance; loop 0 (CTL_ALL_LOOPS) = every plant */
+{
+    if (v > 10.0f) { return CTL_SET_RANGE; }
+    if (loop == CTL_ALL_LOOPS) { SIM_ALL(gain, v); } else { Control_SimPlantN(loop)->gain = v; }
+    return CTL_SET_OK;
+}
+static float            GetSimGainFor(uint8_t loop) { return Control_SimPlantN(loop)->gain; }
+static ctl_set_result_t SetSimRes(float v)   { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v < 1000.0f) || (v > 100000.0f)) { return CTL_SET_RANGE; } SIM_ALL(resonance, v); return CTL_SET_OK; }
 static float            GetSimRes(void)      { return Control_SimPlant()->resonance; }
-static ctl_set_result_t SetSimWidth(float v) { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v < 10.0f) || (v > 100000.0f)) { return CTL_SET_RANGE; } Control_SimPlant()->width = v; return CTL_SET_OK; }
+static ctl_set_result_t SetSimWidth(float v) { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v < 10.0f) || (v > 100000.0f)) { return CTL_SET_RANGE; } SIM_ALL(width, v); return CTL_SET_OK; }
 static float            GetSimWidth(void)    { return Control_SimPlant()->width; }
-static ctl_set_result_t SetSimVpeak(float v) { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v <= 0.0f) || (v > 1000.0f)) { return CTL_SET_RANGE; } Control_SimPlant()->vpeak = v; return CTL_SET_OK; }
+static ctl_set_result_t SetSimVpeak(float v) { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v <= 0.0f) || (v > 1000.0f)) { return CTL_SET_RANGE; } SIM_ALL(vpeak, v); return CTL_SET_OK; }
 static float            GetSimVpeak(void)    { return Control_SimPlant()->vpeak; }
-static ctl_set_result_t SetSimVscale(float v) { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v <= 0.0f) || (v > 1000.0f)) { return CTL_SET_RANGE; } Control_SimPlant()->vscale = v; return CTL_SET_OK; }
+static ctl_set_result_t SetSimVscale(float v) { if (SimBusy() != CTL_SET_OK) { return CTL_SET_BUSY; } if ((v <= 0.0f) || (v > 1000.0f)) { return CTL_SET_RANGE; } SIM_ALL(vscale, v); return CTL_SET_OK; }
 static float            GetSimVscale(void)   { return Control_SimPlant()->vscale; }
 
 void cmd_sim_plant_shape(uart_instance_t *inst, char *args)
@@ -832,8 +1015,8 @@ void cmd_sim_plant_shape(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_STATE, "Not while a closed-loop run is in progress");
         return;
     }
-    if (strcasecmp(tok, "LINEAR") == 0)        { Control_SimPlant()->shape = SIM_SHAPE_LINEAR; }
-    else if (strcasecmp(tok, "LORENTZ") == 0)  { Control_SimPlant()->shape = SIM_SHAPE_LORENTZ; }
+    if (strcasecmp(tok, "LINEAR") == 0)        { SIM_ALL(shape, SIM_SHAPE_LINEAR); }
+    else if (strcasecmp(tok, "LORENTZ") == 0)  { SIM_ALL(shape, SIM_SHAPE_LORENTZ); }
     else
     {
         Scpi_SendErr(inst, ERR_INVALID_ARGS, "shape must be LINEAR or LORENTZ");
@@ -849,7 +1032,7 @@ void cmd_sim_plant_shape_query(uart_instance_t *inst, char *args)
 }
 
 FLOAT_SETTING(cmd_sim_plant_tau,    SetSimTau,    GetSimTau,    4U, "SIM:PLANT:TAU <seconds>", "tau must be 0.0001-10 s")
-FLOAT_SETTING(cmd_sim_plant_gain,   SetSimGain,   GetSimGain,   3U, "SIM:PLANT:GAIN <factor>", "gain must be 0-10")
+LOOP_FLOAT_SETTING(cmd_sim_plant_gain, SetSimGainFor, GetSimGainFor, 3U, "SIM:PLANT:GAIN [<loop 0-3>] <factor>   (one factor = loop 1; loop 0 = every plant)", "gain must be 0-10")
 FLOAT_SETTING(cmd_sim_plant_res,    SetSimRes,    GetSimRes,    0U, "SIM:PLANT:RESonance <Hz>", "resonance must be 1000-100000 Hz")
 FLOAT_SETTING(cmd_sim_plant_width,  SetSimWidth,  GetSimWidth,  0U, "SIM:PLANT:WIDTH <Hz>", "width must be 10-100000 Hz")
 FLOAT_SETTING(cmd_sim_plant_vpeak,  SetSimVpeak,  GetSimVpeak,  3U, "SIM:PLANT:VPEAK <volts>", "Vpeak must be > 0")

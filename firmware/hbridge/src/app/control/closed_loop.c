@@ -6,6 +6,13 @@
 #include "shot_profile.h"
 #include "target_profile.h"
 
+/* Pure float logic that the control interrupt runs once per tick per loop: compiled at -O2 whatever the
+   project's level (the project is built at -O0; three loops at -O0 would take a large share of a 100 us tick).
+   Host-tested identically. */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize ("O2")
+#endif
+
 static float Clamp(float x, float lo, float hi)
 {
     if (x < lo) { return lo; }
@@ -42,6 +49,8 @@ void Cl_Init(closed_loop_t *cl, uint32_t rateHz, float vrefV)
     c->limiterVscale = 1.0f;
 
     Feedback_Init(&cl->fb, vrefV);
+    cl->ch = 0U;
+    cl->autoFinish = 1U;
     cl->active = 0U;
     cl->plant = CL_PLANT_HVPS;
     cl->useProfile = 0U;
@@ -83,7 +92,7 @@ static float Feedforward(const closed_loop_t *cl, float volts)
 }
 
 /* {per, cmp} for actuator value u. */
-static void MakeStep(const closed_loop_t *cl, float u, uint16_t *per, uint16_t *cmp)
+void Cl_StepFor(const closed_loop_t *cl, float u, uint16_t *per, uint16_t *cmp)
 {
     const cl_config_t *c = &cl->cfg;
     uint32_t fMilli;
@@ -108,10 +117,10 @@ static float TargetNow(const closed_loop_t *cl, uint32_t tick)
     {
         return cl->holdVolts;
     }
-    return Target_ValueAt((uint32_t)(((uint64_t)tick * 1000000ULL) / cl->rateHz));
+    return Target_ValueAt(cl->ch, (uint32_t)(((uint64_t)tick * 1000000ULL) / cl->rateHz));
 }
 
-uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_t *per, uint16_t *cmp)
+uint8_t Cl_StartCore(closed_loop_t *cl, uint8_t useProfile, float holdVolts)
 {
     supply_limits_t lim;
     supply_mode_t mode = SupplyMode_Get();
@@ -141,7 +150,7 @@ uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_
         float res;
 
         /* HVPS output is power, never negative: a target below 0 V has no meaning */
-        if (((useProfile != 0U) && (Target_MinMilliVolts() < 0)) || ((useProfile == 0U) && (holdVolts < 0.0f)))
+        if (((useProfile != 0U) && (Target_MinMilliVolts(cl->ch) < 0)) || ((useProfile == 0U) && (holdVolts < 0.0f)))
         {
             return 0U;
         }
@@ -180,7 +189,6 @@ uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_
     cl->useProfile = useProfile;
     cl->holdVolts = holdVolts;
     cl->tick = 0U;
-    Target_Rewind();
     Feedback_Reset(&cl->fb);
 
     Pid_Init(&cl->pid, cl->dt, cl->uMin, cl->uMax);
@@ -195,12 +203,22 @@ uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_
     Pid_Reset(&cl->pid, start);
     cl->out = start;
     cl->pv = 0.0f;
-    MakeStep(cl, start, per, cmp);
     cl->active = 1U;
     return 1U;
 }
 
-cl_status_t Cl_Tick(closed_loop_t *cl, float meanCode, uint16_t *per, uint16_t *cmp)
+uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_t *per, uint16_t *cmp)
+{
+    Target_Rewind();
+    if (Cl_StartCore(cl, useProfile, holdVolts) == 0U)
+    {
+        return 0U;
+    }
+    Cl_StepFor(cl, cl->out, per, cmp);
+    return 1U;
+}
+
+cl_status_t Cl_TickCore(closed_loop_t *cl, float meanCode)
 {
     float pv;
     float sp;
@@ -231,7 +249,7 @@ cl_status_t Cl_Tick(closed_loop_t *cl, float meanCode, uint16_t *per, uint16_t *
         cl->active = 0U;
         return CL_FAULT_CLIPPED_LOW;
     }
-    if ((cl->useProfile != 0U) &&
+    if ((cl->autoFinish != 0U) && (cl->useProfile != 0U) &&
         ((((uint64_t)cl->tick * 1000000ULL) / cl->rateHz) >= Target_DurationUs()))
     {
         cl->active = 0U;
@@ -244,8 +262,18 @@ cl_status_t Cl_Tick(closed_loop_t *cl, float meanCode, uint16_t *per, uint16_t *
     /* the polarity flips the error's sign for a plant whose output falls as the actuator rises */
     u = Pid_Update(&cl->pid, sp * cl->polarity, pv * cl->polarity, base);
     cl->out = u;
-    MakeStep(cl, u, per, cmp);
     return CL_RUNNING;
+}
+
+cl_status_t Cl_Tick(closed_loop_t *cl, float meanCode, uint16_t *per, uint16_t *cmp)
+{
+    cl_status_t st = Cl_TickCore(cl, meanCode);
+
+    if (st == CL_RUNNING)
+    {
+        Cl_StepFor(cl, cl->out, per, cmp);
+    }
+    return st;
 }
 
 void Cl_SetHoldVolts(closed_loop_t *cl, float volts)

@@ -249,9 +249,10 @@ void cmd_fire(uart_instance_t *inst, char *args)
         return;
     }
 
-    if (Control_GetLoopMode() != 0U)
+    if (Control_ClosedRunWanted() != 0U)
     {
-        /* closed loop: the TARGet:* profile, played by the controller through the live source */
+        /* closed loop on at least one phase: the TARGet:* profile for the closed ones (and the SHOT:* profile for any
+           open ones), played by the controller through the live source */
         if (Cmd_ReportCtlResult(inst, Control_Prepare(1U)) != 0U)
         {
             return;

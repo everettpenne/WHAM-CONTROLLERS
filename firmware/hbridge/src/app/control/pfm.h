@@ -140,10 +140,11 @@ void PFM_SelectSource(PFM_Source_t source);
 PFM_Source_t PFM_GetSource(void);
 
 /* Closed loop (control_runtime.c). PFM_SOURCE_LIVE bypasses the ring: the per-period interrupt
-   applies the LAST {per, cmp} given to PFM_LiveSet() (one atomic 32-bit store, so the interrupt
-   never sees a half-updated pair; the same compare goes to every phase). PFM_LiveSet() before the
-   shot sets the opening step; during it, the controller calls it once per control tick. */
-void PFM_LiveSet(uint16_t per, uint16_t cmp);
+   applies the LAST {per, cmp[]} given to PFM_LiveSet(): the period and one compare per channel
+   (a double buffer published by one byte store, so the interrupt never sees a half-updated step).
+   PFM_LiveSet() before the shot sets the opening step; during it, the controller calls it once per
+   control tick. */
+void PFM_LiveSet(uint16_t per, const uint16_t cmp[HRTIM_NUM_CHANNELS]);
 
 /* Ends a live shot at the next period boundary, a coherent stop like the end of a table. */
 void PFM_LiveRequestStop(void);

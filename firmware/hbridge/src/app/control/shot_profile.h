@@ -3,7 +3,10 @@
  * the generator that turns it into per-period table entries. Added 2026-10-01.
  *
  * The operator uploads (SHOT:BEGin / SHOT:STEP / SHOT:END) up to
- * SHOT_SETPOINT_MAX setpoints, each {time, carrier frequency, duty}:
+ * SHOT_SETPOINT_MAX setpoints, each {time, carrier frequency, duty per channel}
+ * (since 2026-10-13 each phase U, V, W has its own duty; the time and the
+ * carrier frequency are shared, because the phases are locked to one master
+ * timer -- a setpoint given ONE duty gives every channel that duty):
  *   - the first setpoint must be at t = 0 -- the shot always starts at the
  *     frequency and duty of the first slot;
  *   - times strictly increase; the last setpoint's time is the shot's end
@@ -39,7 +42,7 @@ typedef struct
 {
     uint32_t tUs;        /* time since the start of the shot */
     uint32_t freqMilliHz;
-    uint16_t dutyHundredths;
+    uint16_t dutyHundredths[HRTIM_NUM_CHANNELS];   /* one per channel: U, V, W */
 } shot_setpoint_t;
 
 typedef enum
@@ -61,7 +64,14 @@ void ShotProfile_Clear(void);
 
 /* Appends a setpoint after checking it against the selected supply mode and
    the ordering rules above. Nothing is stored unless SHOT_APPEND_OK. */
-shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz, uint16_t dutyHundredths);
+shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz,
+                                        const uint16_t dutyHundredths[HRTIM_NUM_CHANNELS]);
+/* The same with one duty for every channel (the three-value SHOT:STEP). */
+shot_append_result_t ShotProfile_AppendUniform(uint32_t tUs, uint32_t freqMilliHz, uint16_t dutyHundredths);
+/* After a SHOT_APPEND_DUTY_LOW / _HIGH: the channel whose duty was refused. */
+uint8_t ShotProfile_BadChannel(void);
+/* 1 if every setpoint has the same duty on every channel (saved profiles keep the older, smaller format then). */
+uint8_t ShotProfile_IsUniform(void);
 
 uint16_t ShotProfile_Count(void);
 /* Time of the last setpoint = the shot's length; 0 with no setpoints. */
@@ -80,15 +90,30 @@ uint8_t  ShotProfile_IsComplete(void);
 uint8_t ShotGen_Start(uint8_t periodsPerEntry);
 
 /* Produces the next entry. Returns 0 when the shot is over (nothing written);
-   otherwise 1, with `*per`/`*cmp` set (the same compare for every channel),
+   otherwise 1, with `*per` and one compare per channel in `cmp[]` set,
    and `*last` = 1 if no entry follows this one. The values satisfy
    SupplyMode_CheckStep() by construction (clamped onto the mode's limits). */
-uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last);
+uint8_t ShotGen_Next(uint16_t *per, uint16_t cmp[HRTIM_NUM_CHANNELS], uint8_t *last);
 
 /* The {per, cmp} for one period at a carrier frequency (millihertz) and duty (hundredths
    of a percent), clamped onto the selected supply mode's limits exactly as the generator
    does -- the closed-loop controller (closed_loop.c) builds its steps with this. Returns 0
    (nothing written) with no mode selected or a zero frequency. */
 uint8_t ShotProfile_StepFor(uint32_t freqMilliHz, uint32_t dutyHundredths, uint16_t *per, uint16_t *cmp);
+
+/* The two halves of StepFor(), for a caller that gives each channel its own duty at one carrier:
+   the period for a frequency (clamped onto the mode's frequency limits; 0 and nothing written with
+   no mode or a zero frequency), and the compare for a period and a duty (clamped onto the mode's
+   duty limits). */
+uint8_t  ShotProfile_PeriodFor(uint32_t freqMilliHz, uint16_t *per);
+uint16_t ShotProfile_CompareFor(uint16_t per, uint32_t dutyHundredths);
+
+/* ---- the shot at a given time (mixed open/closed-loop runs) ---- */
+
+/* The shot's carrier frequency and per-channel duties at `tUs` into it: linear between setpoints, the
+   last setpoint's values beyond the end -- the same integer interpolation the generator uses. Call with
+   non-decreasing times after ShotEval_Rewind(). Returns 0 (nothing written) without a complete shot. */
+void    ShotEval_Rewind(void);
+uint8_t ShotEval_At(uint32_t tUs, uint32_t *freqMilliHz, uint16_t duty[HRTIM_NUM_CHANNELS]);
 
 #endif /* SHOT_PROFILE_H */

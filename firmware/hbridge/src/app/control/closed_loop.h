@@ -27,6 +27,13 @@
  *
  * Faults the tick reports (the caller stops the output): the feedback's magnitude above the hard
  * limit (OVERVOLTAGE), and the ADC sitting at full scale for too long (the loop is blind there).
+ *
+ * One closed_loop_t is ONE loop. The Limiter has three (one per phase, `ch` = 0, 1, 2 -- each
+ * with its own feedback input, calibration, gains and target series); the HVPS uses the first
+ * (its actuator, the frequency, is shared by every phase). A loop produces its actuator value
+ * (`out`: percent duty or Hz); Cl_StepFor() turns one value into a {per, cmp}, and the runtime
+ * (control_runtime.c) puts the three loops' duties together at one carrier. Cl_Start()/Cl_Tick()
+ * are the single-loop convenience that does both.
  */
 #ifndef CLOSED_LOOP_H
 #define CLOSED_LOOP_H
@@ -77,6 +84,10 @@ typedef struct
     feedback_t fb;
     pid_core_t pid;
 
+    uint8_t ch;                          /* which channel's target series this loop follows (0 = U) */
+    uint8_t autoFinish;                  /* 1 (default): Cl_Tick() reports CL_FINISHED at the end of the target
+                                            profile; 0: the caller decides when the run ends (a mixed run follows the shot) */
+
     uint32_t rateHz;                     /* ticks per second */
     float dt;
     uint32_t tick;                       /* ticks since Cl_Start() */
@@ -98,15 +109,25 @@ void Cl_Init(closed_loop_t *cl, uint32_t rateHz, float vrefV);
 /* Applies the tick rate (and the feedback filter that depends on it). Only between runs. */
 void Cl_SetRate(closed_loop_t *cl, uint32_t rateHz);
 
-/* Begins a run for the SELECTED SUPPLY MODE: picks the plant, resets the controller, and writes
-   the opening step (the feedforward for the target at t = 0, or for `holdVolts`) to *per / *cmp.
-   Returns 0 (nothing written) with no supply mode, no target profile when `useProfile` is set,
-   or an unusable HVPS band. */
-uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_t *per, uint16_t *cmp);
+/* Begins a run for the SELECTED SUPPLY MODE: picks the plant, resets the controller, and sets
+   cl->out to the opening actuator value (the feedforward for the target at t = 0, or for
+   `holdVolts`). Returns 0 (nothing changed) with no supply mode, no target profile when `useProfile`
+   is set, or an unusable HVPS band. Target_Rewind() is the caller's (several loops share the series). */
+uint8_t Cl_StartCore(closed_loop_t *cl, uint8_t useProfile, float holdVolts);
 
 /* One control tick: `meanCode` is the feedback input's ADC reading averaged over the tick's
-   samples. Writes the next step to *per / *cmp unless a fault or the end of the profile is reported
-   (then nothing is written and the caller stops the output). */
+   samples. On CL_RUNNING cl->out is the next actuator value; on a fault (or the end of the profile
+   with autoFinish) the loop has stopped and the caller stops the output. */
+cl_status_t Cl_TickCore(closed_loop_t *cl, float meanCode);
+
+/* The {per, cmp} for an actuator value of this loop's plant: HVPS u = Hz (the fixed duty), Limiter
+   u = percent duty at the loop's configured carrier. */
+void Cl_StepFor(const closed_loop_t *cl, float u, uint16_t *per, uint16_t *cmp);
+
+/* The single-loop forms: Cl_StartCore()/Cl_TickCore() and the step for the result (Target_Rewind()
+   included). Nothing is written to *per / *cmp when the start fails or the tick does not return
+   CL_RUNNING. */
+uint8_t Cl_Start(closed_loop_t *cl, uint8_t useProfile, float holdVolts, uint16_t *per, uint16_t *cmp);
 cl_status_t Cl_Tick(closed_loop_t *cl, float meanCode, uint16_t *per, uint16_t *cmp);
 
 /* Changes the hold setpoint of a running hold (not profile) run. */

@@ -104,6 +104,8 @@ static const scpi_command_t command_table[] = {
     { "PID:LOOPMODE?",                      cmd_pid_loopmode_query },
     { "PID:GAINS",                          cmd_pid_gains },
     { "PID:GAINS?",                         cmd_pid_gains_query },
+    { "PID:FAULT?",          cmd_pid_fault_query   },
+    { "PID:DIAG?",           cmd_pid_diag_query    },
     { "SOURce:SETpoint",                    cmd_source_setpoint },
     { "SOURce:SETpoint?",                   cmd_source_setpoint_query },
     { "SOURce:RUN",                         cmd_source_run },

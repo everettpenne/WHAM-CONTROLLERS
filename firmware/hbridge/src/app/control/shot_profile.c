@@ -26,7 +26,10 @@ void ShotProfile_Clear(void)
     g_count = 0U;
 }
 
-shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz, uint16_t dutyHundredths)
+static uint8_t g_badChannel = 0U;
+
+shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz,
+                                        const uint16_t dutyHundredths[HRTIM_NUM_CHANNELS])
 {
     supply_limits_t lim;
 
@@ -58,20 +61,58 @@ shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz, uint
     {
         return SHOT_APPEND_FREQ_HIGH;
     }
-    if (dutyHundredths < (uint16_t)(lim.dutyMinPct * 100U))
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {
-        return SHOT_APPEND_DUTY_LOW;
-    }
-    if (dutyHundredths > (uint16_t)(lim.dutyMaxPct * 100U))
-    {
-        return SHOT_APPEND_DUTY_HIGH;
+        g_badChannel = ch;
+        if (dutyHundredths[ch] < (uint16_t)(lim.dutyMinPct * 100U))
+        {
+            return SHOT_APPEND_DUTY_LOW;
+        }
+        if (dutyHundredths[ch] > (uint16_t)(lim.dutyMaxPct * 100U))
+        {
+            return SHOT_APPEND_DUTY_HIGH;
+        }
     }
 
-    g_sp[g_count].tUs            = tUs;
-    g_sp[g_count].freqMilliHz    = freqMilliHz;
-    g_sp[g_count].dutyHundredths = dutyHundredths;
+    g_sp[g_count].tUs         = tUs;
+    g_sp[g_count].freqMilliHz = freqMilliHz;
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        g_sp[g_count].dutyHundredths[ch] = dutyHundredths[ch];
+    }
     g_count++;
     return SHOT_APPEND_OK;
+}
+
+shot_append_result_t ShotProfile_AppendUniform(uint32_t tUs, uint32_t freqMilliHz, uint16_t dutyHundredths)
+{
+    uint16_t d[HRTIM_NUM_CHANNELS];
+
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        d[ch] = dutyHundredths;
+    }
+    return ShotProfile_Append(tUs, freqMilliHz, d);
+}
+
+uint8_t ShotProfile_BadChannel(void)
+{
+    return g_badChannel;
+}
+
+uint8_t ShotProfile_IsUniform(void)
+{
+    for (uint16_t i = 0U; i < g_count; i++)
+    {
+        for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            if (g_sp[i].dutyHundredths[ch] != g_sp[i].dutyHundredths[0])
+            {
+                return 0U;
+            }
+        }
+    }
+    return 1U;
 }
 
 uint16_t ShotProfile_Count(void)
@@ -141,14 +182,15 @@ typedef struct
 {
     uint8_t  active;
     uint8_t  periodsPerEntry;
+    uint8_t  uniform;        /* every channel has the same duty and slope in this segment: one compare serves all */
     uint16_t seg;            /* current segment = setpoints seg .. seg+1 */
     uint64_t tick;           /* start of the next entry, in HRTIM clocks since t = 0 */
     uint64_t segStart;       /* the segment's start and end, in clocks */
     uint64_t segEnd;
     uint32_t f0;             /* setpoint seg: millihertz and hundredths of a percent */
-    uint32_t d0;
+    uint32_t d0[HRTIM_NUM_CHANNELS];
     int64_t  slopeF;         /* per clock, Q32 */
-    int64_t  slopeD;
+    int64_t  slopeD[HRTIM_NUM_CHANNELS];
     /* limits of the selected mode, as period / compare bounds */
     uint32_t per1Min;        /* shortest period, in clocks (highest allowed frequency) */
     uint32_t per1Max;
@@ -156,48 +198,42 @@ typedef struct
     uint8_t  dutyMaxPct;
 } gen_t;
 
-static gen_t g;
+static gen_t g;      /* the generator (the refill interrupt) */
+static gen_t e;      /* the evaluator (ShotEval_At(), the control interrupt): its own state, the same math */
 
-static void LoadSegment(uint16_t seg)
+static void LoadSegment(gen_t *s, uint16_t seg)
 {
     const shot_setpoint_t *a = &g_sp[seg];
     const shot_setpoint_t *b = &g_sp[seg + 1U];
     int64_t dt;
 
-    g.seg      = seg;
-    g.segStart = (uint64_t)a->tUs * TICKS_PER_US;
-    g.segEnd   = (uint64_t)b->tUs * TICKS_PER_US;
-    g.f0       = a->freqMilliHz;
-    g.d0       = a->dutyHundredths;
-    dt         = (int64_t)(g.segEnd - g.segStart);
+    s->seg      = seg;
+    s->segStart = (uint64_t)a->tUs * TICKS_PER_US;
+    s->segEnd   = (uint64_t)b->tUs * TICKS_PER_US;
+    s->f0       = a->freqMilliHz;
+    dt          = (int64_t)(s->segEnd - s->segStart);
     /* slope = delta * 2^32 / dt, truncated toward zero (the host port does the same) */
-    g.slopeF   = ((int64_t)b->freqMilliHz - (int64_t)a->freqMilliHz) * 4294967296LL / dt;
-    g.slopeD   = ((int64_t)b->dutyHundredths - (int64_t)a->dutyHundredths) * 4294967296LL / dt;
+    s->slopeF   = ((int64_t)b->freqMilliHz - (int64_t)a->freqMilliHz) * 4294967296LL / dt;
+    s->uniform  = 1U;
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        s->d0[ch]     = a->dutyHundredths[ch];
+        s->slopeD[ch] = ((int64_t)b->dutyHundredths[ch] - (int64_t)a->dutyHundredths[ch]) * 4294967296LL / dt;
+        if ((s->d0[ch] != s->d0[0]) || (s->slopeD[ch] != s->slopeD[0]))
+        {
+            s->uniform = 0U;
+        }
+    }
 }
 
-/* {per, cmp} for a period in clocks and a duty in hundredths of a percent, clamped onto the
-   mode's limits: the period into [per1Min, per1Max], then the compare onto the mode's exact
-   integer duty limits (the relation SupplyMode_CheckStep() uses: cmp*100 against pct*per). */
-static void StepFromPeriod(uint32_t per1, uint32_t dutyHund, uint32_t per1Min, uint32_t per1Max,
-                           uint8_t dutyMinPct, uint8_t dutyMaxPct, uint32_t *perOut, uint32_t *cmpOut)
+/* The compare for a period (in clocks, minus one) and a duty in hundredths of a percent, clamped onto the
+   mode's exact integer duty limits (the relation SupplyMode_CheckStep() uses: cmp*100 against pct*per). */
+static uint32_t CompareFromPeriod(uint32_t perV, uint32_t dutyHund, uint8_t dutyMinPct, uint8_t dutyMaxPct)
 {
-    uint32_t perV;
-    uint32_t cmpV;
-    uint32_t cmpLo;
-    uint32_t cmpHi;
+    uint32_t cmpV  = (perV * dutyHund + 5000U) / 10000U;
+    uint32_t cmpLo = ((uint32_t)dutyMinPct * perV + 99U) / 100U;
+    uint32_t cmpHi = ((uint32_t)dutyMaxPct * perV) / 100U;
 
-    if (per1 < per1Min)
-    {
-        per1 = per1Min;
-    }
-    if (per1 > per1Max)
-    {
-        per1 = per1Max;
-    }
-    perV  = per1 - 1U;
-    cmpV  = (perV * dutyHund + 5000U) / 10000U;
-    cmpLo = ((uint32_t)dutyMinPct * perV + 99U) / 100U;
-    cmpHi = ((uint32_t)dutyMaxPct * perV) / 100U;
     if (cmpV < cmpLo)
     {
         cmpV = cmpLo;
@@ -206,14 +242,38 @@ static void StepFromPeriod(uint32_t per1, uint32_t dutyHund, uint32_t per1Min, u
     {
         cmpV = cmpHi;
     }
-    *perOut = perV;
-    *cmpOut = cmpV;
+    return cmpV;
+}
+
+/* The period (clocks minus one) for a period in clocks, clamped into [per1Min, per1Max]. */
+static uint32_t PeriodFromClocks(uint32_t per1, uint32_t per1Min, uint32_t per1Max)
+{
+    if (per1 < per1Min)
+    {
+        per1 = per1Min;
+    }
+    if (per1 > per1Max)
+    {
+        per1 = per1Max;
+    }
+    return per1 - 1U;
+}
+
+static void LoadLimits(gen_t *s, const supply_limits_t *lim)
+{
+    uint64_t clk = (uint64_t)HRTIM_TIMER_CLK_HZ;
+
+    /* f <= fmax  <=>  period >= CLK / fmax (round up);
+       f >= fmin  <=>  period <= CLK / fmin (round down). */
+    s->per1Min    = (uint32_t)((clk + lim->freqMaxHz - 1U) / lim->freqMaxHz);
+    s->per1Max    = (uint32_t)(clk / lim->freqMinHz);
+    s->dutyMinPct = lim->dutyMinPct;
+    s->dutyMaxPct = lim->dutyMaxPct;
 }
 
 uint8_t ShotGen_Start(uint8_t periodsPerEntry)
 {
     supply_limits_t lim;
-    uint64_t clk = (uint64_t)HRTIM_TIMER_CLK_HZ;
 
     g.active = 0U;
     if ((ShotProfile_IsComplete() == 0U) || (periodsPerEntry == 0U) ||
@@ -221,26 +281,19 @@ uint8_t ShotGen_Start(uint8_t periodsPerEntry)
     {
         return 0U;
     }
-    /* f <= fmax  <=>  period >= CLK / fmax (round up);
-       f >= fmin  <=>  period <= CLK / fmin (round down). */
-    g.per1Min    = (uint32_t)((clk + lim.freqMaxHz - 1U) / lim.freqMaxHz);
-    g.per1Max    = (uint32_t)(clk / lim.freqMinHz);
-    g.dutyMinPct = lim.dutyMinPct;
-    g.dutyMaxPct = lim.dutyMaxPct;
+    LoadLimits(&g, &lim);
     g.periodsPerEntry = periodsPerEntry;
     g.tick       = 0U;
-    LoadSegment(0U);
+    LoadSegment(&g, 0U);
     g.active     = 1U;
     return 1U;
 }
 
-uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
+uint8_t ShotGen_Next(uint16_t *per, uint16_t cmp[HRTIM_NUM_CHANNELS], uint8_t *last)
 {
     uint64_t elapsed;
     int64_t  f;
-    int64_t  d;
     uint32_t perV;
-    uint32_t cmpV;
     uint64_t end = (uint64_t)g_sp[g_count - 1U].tUs * TICKS_PER_US;
 
     if (g.active == 0U)
@@ -254,18 +307,35 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
     }
     while (g.tick >= g.segEnd)
     {
-        LoadSegment((uint16_t)(g.seg + 1U));   /* g.tick < end, so a next segment exists */
+        LoadSegment(&g, (uint16_t)(g.seg + 1U));   /* g.tick < end, so a next segment exists */
     }
 
     elapsed = g.tick - g.segStart;
     f = (int64_t)g.f0 + ((g.slopeF * (int64_t)elapsed) >> 32);   /* arithmetic shift: floor */
-    d = (int64_t)g.d0 + ((g.slopeD * (int64_t)elapsed) >> 32);
 
     /* period in clocks = round(CLK / f), f in millihertz */
-    StepFromPeriod(PeriodClocks((uint32_t)f), (uint32_t)d, g.per1Min, g.per1Max, g.dutyMinPct, g.dutyMaxPct, &perV, &cmpV);
-
+    perV = PeriodFromClocks(PeriodClocks((uint32_t)f), g.per1Min, g.per1Max);
     *per = (uint16_t)perV;
-    *cmp = (uint16_t)cmpV;
+    if (g.uniform != 0U)
+    {
+        /* the usual case, and what every shot cost before channels had their own duty: one compare for all */
+        int64_t  d = (int64_t)g.d0[0] + ((g.slopeD[0] * (int64_t)elapsed) >> 32);
+        uint16_t c = (uint16_t)CompareFromPeriod(perV, (uint32_t)d, g.dutyMinPct, g.dutyMaxPct);
+
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            cmp[ch] = c;
+        }
+    }
+    else
+    {
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            int64_t d = (int64_t)g.d0[ch] + ((g.slopeD[ch] * (int64_t)elapsed) >> 32);   /* arithmetic shift: floor */
+
+            cmp[ch] = (uint16_t)CompareFromPeriod(perV, (uint32_t)d, g.dutyMinPct, g.dutyMaxPct);
+        }
+    }
     g.tick += (uint64_t)(perV + 1U) * g.periodsPerEntry;   /* the CLAMPED period is what elapses */
     *last = (g.tick >= end) ? 1U : 0U;
     if (*last != 0U)
@@ -275,12 +345,10 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t *cmp, uint8_t *last)
     return 1U;
 }
 
-uint8_t ShotProfile_StepFor(uint32_t freqMilliHz, uint32_t dutyHundredths, uint16_t *per, uint16_t *cmp)
+uint8_t ShotProfile_PeriodFor(uint32_t freqMilliHz, uint16_t *per)
 {
     supply_limits_t lim;
     uint64_t clk = (uint64_t)HRTIM_TIMER_CLK_HZ;
-    uint32_t perV;
-    uint32_t cmpV;
 
     if ((freqMilliHz == 0U) || (SupplyMode_GetLimits(SupplyMode_Get(), &lim) == 0U))
     {
@@ -290,10 +358,74 @@ uint8_t ShotProfile_StepFor(uint32_t freqMilliHz, uint32_t dutyHundredths, uint1
     {
         freqMilliHz = (1UL << 27) - 1U;   /* PeriodClocks()'s input range; the mode's period clamp governs anyway */
     }
-    StepFromPeriod(PeriodClocks(freqMilliHz), dutyHundredths,
-                   (uint32_t)((clk + lim.freqMaxHz - 1U) / lim.freqMaxHz), (uint32_t)(clk / lim.freqMinHz),
-                   lim.dutyMinPct, lim.dutyMaxPct, &perV, &cmpV);
-    *per = (uint16_t)perV;
-    *cmp = (uint16_t)cmpV;
+    *per = (uint16_t)PeriodFromClocks(PeriodClocks(freqMilliHz),
+                                      (uint32_t)((clk + lim.freqMaxHz - 1U) / lim.freqMaxHz),
+                                      (uint32_t)(clk / lim.freqMinHz));
+    return 1U;
+}
+
+uint16_t ShotProfile_CompareFor(uint16_t per, uint32_t dutyHundredths)
+{
+    supply_limits_t lim;
+
+    if (SupplyMode_GetLimits(SupplyMode_Get(), &lim) == 0U)
+    {
+        return 0U;
+    }
+    return (uint16_t)CompareFromPeriod(per, dutyHundredths, lim.dutyMinPct, lim.dutyMaxPct);
+}
+
+uint8_t ShotProfile_StepFor(uint32_t freqMilliHz, uint32_t dutyHundredths, uint16_t *per, uint16_t *cmp)
+{
+    if (ShotProfile_PeriodFor(freqMilliHz, per) == 0U)
+    {
+        return 0U;
+    }
+    *cmp = ShotProfile_CompareFor(*per, dutyHundredths);
+    return 1U;
+}
+
+/* ---- the shot at a given time ---- */
+
+void ShotEval_Rewind(void)
+{
+    e.active = 0U;     /* LoadSegment() runs on the first call */
+}
+
+uint8_t ShotEval_At(uint32_t tUs, uint32_t *freqMilliHz, uint16_t duty[HRTIM_NUM_CHANNELS])
+{
+    uint64_t tick;
+    uint64_t elapsed;
+    supply_limits_t lim;
+
+    if ((ShotProfile_IsComplete() == 0U) || (SupplyMode_GetLimits(SupplyMode_Get(), &lim) == 0U))
+    {
+        return 0U;
+    }
+    tick = (uint64_t)tUs * TICKS_PER_US;
+    if (tick >= (uint64_t)g_sp[g_count - 1U].tUs * TICKS_PER_US)
+    {
+        *freqMilliHz = g_sp[g_count - 1U].freqMilliHz;
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            duty[ch] = g_sp[g_count - 1U].dutyHundredths[ch];
+        }
+        return 1U;
+    }
+    if (e.active == 0U)
+    {
+        LoadSegment(&e, 0U);
+        e.active = 1U;
+    }
+    while (tick >= e.segEnd)
+    {
+        LoadSegment(&e, (uint16_t)(e.seg + 1U));
+    }
+    elapsed = tick - e.segStart;
+    *freqMilliHz = (uint32_t)((int64_t)e.f0 + ((e.slopeF * (int64_t)elapsed) >> 32));
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        duty[ch] = (uint16_t)((int64_t)e.d0[ch] + ((e.slopeD[ch] * (int64_t)elapsed) >> 32));
+    }
     return 1U;
 }
