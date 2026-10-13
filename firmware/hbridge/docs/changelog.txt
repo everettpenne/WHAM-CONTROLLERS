@@ -21,7 +21,19 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
         ordinary profiles are saved byte for byte as before. Worst case (both series full, different on every phase, plus the HVPS curve): 15,656 of 16,336 bytes.
   Tests: host suite all green (shot 47,853 checks incl. per-channel equality with the one-duty reference and the evaluator; target 668; codec 570; settings 355 incl.
         per-phase round trip, old-format recall into every phase, the worst case). Firmware builds with no warnings: RAM +7 KB (bss 122,216; about 7 KB free), flash 104,248.
-  NOT yet verified on hardware: see the verification entry below if one has been added.
+  VERIFIED ON THE SIMULATOR BOARD (same day, real hardware through the tunnel): open loop -- each phase plays its own duty (programmed 20/50/80 %
+        measured 18.1/48.1/78.0 % from the PFM_Input edges, the same ~1.9-point dead-time offset on every phase; a ramp U up, V down, W flat measures as
+        programmed, correlation 0.99); closed loop against the firmware plants, a different target on each phase -- U to +594 V, V to -594 V, W holding 300 V,
+        rms error <= 0.6 V; a mixed run (U closed at 300 V, V 30 % and W 70 % open from the shot, carrier 100 -> 108 kHz) measured 64.8 / 28.0 / 68.0 %;
+        FIRE with an open phase and no shot -> ERR 5, SOURce:RUN with an open phase -> ERR 13; each loop alone on a dead real ADC input stops the run and
+        PID:FAULT? names it (3, 2, 1: CLIPPED_LOW); a closed loop on a disabled phase takes no part; the two profiles saved by the OLDER firmware recall with
+        0 failures, a per-phase profile saves and recalls identically through the real flash (CONFig:PROFile:DIFF? SAME). Control tick (PID:DIAG?): three
+        simulated loops at 125 kHz, longest 13,670 of 17,000 cycles (80 %), mean 12,718; the per-period interrupt uses 31 % of the CPU at 125 kHz (PFM:DIAG?).
+        Compiling BuildStep/OnBlock at -O2 changed nothing measurable and was dropped. NOT verified: loops on the real analog inputs -- every ADC input read
+        exactly 0 with the DAC at 0.5-2 V (VREF 2.906 V and the sampler were fine), i.e. the board's DAC-to-ADC path is not live at the moment.
+  BUG FOUND AND FIXED (shared SCPI layer, both products): Scpi_SendErr formatted into a 128-byte buffer, so an error message longer than ~118 characters lost its
+        CR LF and the next reply ran into it (several existing messages were that long; the new closed-loop ones made it visible). Now a long message is cut,
+        marked "..." and still ends its line; test_scpi_util 20,207 checks. XREX gets the same file.
 
 2026-10-07  —  Device identity, step 2: the persistent serial (SYS:SERial, SYS:LABel, SYS:ID:CLEar), host provisioning tool; flash unique-ID read fixed
 -----------------------------------------------------------------------

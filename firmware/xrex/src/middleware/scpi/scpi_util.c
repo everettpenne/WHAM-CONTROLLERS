@@ -3,6 +3,7 @@
  */
 #include "scpi_util.h"
 #include <stdio.h>
+#include <string.h>
 
 /* ---- replies ---- */
 
@@ -10,7 +11,12 @@ void Scpi_SendErr(uart_instance_t *inst, int code, const char *msg)
 {
     char buf[128];
 
-    snprintf(buf, sizeof(buf), "ERR %d %s\r\n", code, msg);
+    if (snprintf(buf, sizeof(buf), "ERR %d %s\r\n", code, msg) >= (int)sizeof(buf))
+    {
+        /* a message too long for one reply is cut and marked, but the line must still END: without its CR LF it would run
+           into the next reply (found 2026-10-13, when the longer closed-loop messages did exactly that) */
+        memcpy(&buf[sizeof(buf) - 6U], "...\r\n", 6U);
+    }
     uart_send(inst, buf);
 }
 

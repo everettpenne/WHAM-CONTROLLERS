@@ -107,10 +107,10 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
             Scpi_SendErr(inst, ERR_INVALID_STATE, "VREF+ is not at ANALOG_VREF_MV (check ADC:VREF?)");
             break;
         case CTL_NO_SHOT:
-            Scpi_SendErr(inst, ERR_TABLE_EMPTY, "A phase is open loop (PID:LOOPMODE 0) and there is no shot for it to follow -- upload one (SHOT:BEGin/STEP/END), or close the loop on every enabled phase, or disable the phase (PHASe:ENAble)");
+            Scpi_SendErr(inst, ERR_TABLE_EMPTY, "An open-loop phase has no shot: upload one (SHOT:*), close its loop (PID:LOOPMODE) or disable it (PHASe:ENAble)");
             break;
         case CTL_NEED_CLOSED:
-            Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce:RUN holds every enabled phase at its setpoint: set PID:LOOPMODE 0 1 (every loop closed), or disable the open phases (PHASe:ENAble)");
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce:RUN needs every enabled phase closed (PID:LOOPMODE 0 1) or the open ones disabled (PHASe:ENAble)");
             break;
         case CTL_NO_METER:
             Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce LOOP needs Phase U enabled (PHASe:ENAble) and PFM_Input_01 free (no PFMIN capture running)");

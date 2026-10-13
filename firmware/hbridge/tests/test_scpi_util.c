@@ -18,6 +18,27 @@ static void TestReplies(void)
 {
     fake_uart_clear(); Scpi_ReplyOk(inst);                    CHECK_STR(fake_uart_out, "OK\r\n");
     fake_uart_clear(); Scpi_SendErr(inst, 12, "bad");         CHECK_STR(fake_uart_out, "ERR 12 bad\r\n");
+    {
+        /* a message longer than the reply buffer is cut and marked, and the line still ends: one reply, one line */
+        char longMsg[300];
+        size_t n;
+
+        memset(longMsg, 'x', sizeof(longMsg) - 1U);
+        longMsg[sizeof(longMsg) - 1U] = '\0';
+        fake_uart_clear(); Scpi_SendErr(inst, 5, longMsg);
+        n = strlen(fake_uart_out);
+        CHECK(n > 100U && n < 128U);
+        CHECK(strncmp(fake_uart_out, "ERR 5 xxxx", 10U) == 0);
+        CHECK(strcmp(&fake_uart_out[n - 5U], "...\r\n") == 0);                   /* cut, marked, terminated */
+        CHECK(fake_uart_out[n - 2U] == '\r' && fake_uart_out[n - 1U] == '\n');
+        CHECK(strchr(fake_uart_out, '\n') == &fake_uart_out[n - 1U]);          /* exactly one line */
+        /* the longest message that still fits is not touched */
+        memset(longMsg, 'y', 119U);
+        longMsg[119U] = '\0';
+        fake_uart_clear(); Scpi_SendErr(inst, 5, longMsg);
+        n = strlen(fake_uart_out);
+        CHECK(n == 127U && strstr(fake_uart_out, "...") == NULL && fake_uart_out[n - 1U] == '\n');
+    }
     fake_uart_clear(); Scpi_ReplyFixed(inst, 1.5f, 3U);       CHECK_STR(fake_uart_out, "OK 1.500\r\n");
     fake_uart_clear(); Scpi_ReplyFixed(inst, -0.25f, 2U);     CHECK_STR(fake_uart_out, "OK -0.25\r\n");
     fake_uart_clear(); Scpi_ReplyFixed(inst, 7.0f, 0U);       CHECK_STR(fake_uart_out, "OK 7\r\n");

@@ -595,7 +595,7 @@ ends when its profile ends: the HRTIM outputs are disabled at a period boundary.
 < OK 1000 10000 SUM=... 3 0 50638 ...   count, tick rate, then target mV, measured mV, output (milli-Hz or milli-%)
 > SOURce:STATus? 1
 < OK 0 -0.003 0.228 65.02          running, target, measured, output (of that loop; an open phase shows its shot duty as the output)
-> PID:FAULT?                       OK 2 CLIPPED_LOW   which loop stopped the last run, and why (OK 0 NONE)
+> PID:FAULT?                       OK 2 CLIPPED_LOW   which loop stopped the last closed-loop run, and why (OK 0 NONE; cleared when the next closed-loop run starts)
 > PID:DIAG?                        OK <ticks> <longest tick> <mean tick> <cycles per tick period>   the control tick's cost in CPU cycles
 ```
 
@@ -603,6 +603,17 @@ ends when its profile ends: the HRTIM outputs are disabled at a period boundary.
 voltage beyond `CONFig:MAXVolts` (naming the phase). `TARGet:POINt? <i>` answers `OK <t_us> <volts>` when the
 phases agree, else `OK <t_us> <volts_U> <volts_V> <volts_W>`. Other target commands:
 `TARGet:CLEar`, `TARGet?`. `SOURce:RUN`, `SOURce:STOP`, `SOURce:SETpoint <ch> <volts>` (loop 0 = all).
+
+**Verified on the simulator board (2026-10-13):** per-phase open-loop duties measured on the three phases' edges
+(programmed 20/50/80 % reads 18.1/48.1/78.0 %: the same ~1.9-point offset on every phase, the known dead time; a ramp with U rising,
+V falling and W flat reads as programmed, correlation 0.99); three closed loops against the firmware plants with a different
+target each (U to +594 V, V to -594 V, W holding 300 V: rms error 0.6 V or less); a mixed run (U closed at 300 V, V 30 % and
+W 70 % from the shot, carrier ramping 100 -> 108 kHz); a loop's fault stops the run and names the loop (W, V and U each alone on a
+dead real ADC input: `PID:FAULT?` = 3, 2, 1, `CLIPPED_LOW`); a closed loop on a disabled phase takes no part; saved profiles from
+the older firmware recall, and a per-phase profile round-trips through the real flash. The control tick, three simulated loops
+at the fastest carrier (125 kHz): longest 13,670 of 17,000 CPU cycles (80 %) -- the per-period interrupt alone takes 31 % of the
+CPU there and preempts it, so the margin is real but not large (`PID:DIAG?`). NOT verified: loops on the real analog inputs (the
+DAC-to-ADC path of the board read 0 on every input when tried) -- the real-ADC tests wait for a live feedback signal.
 
 **Feedback input and calibration** (`CONFig:FEEDback:*`; defaults U = PA0, V = PA1, W = PB0). `CHANnel`, `SCALE`,
 `OFFSet` and `RANGE` belong to a loop: with one argument they set loop 1 (as before there were three loops), with a loop

@@ -1,6 +1,12 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-10-13  —  Shared SCPI layer: an over-long error message no longer swallows the line terminator
+-----------------------------------------------------------------------
+  Found on the HBRIDGE bench: Scpi_SendErr formatted "ERR <code> <msg>\r\n" into a 128-byte buffer, so a message longer than about 118 characters was cut
+  without its CR LF and the next reply ran into it. It is now cut, marked "..." and still terminated (src/middleware/scpi/scpi_util.c, byte-identical in both
+  products; test_scpi_util gains 6 checks). XREX messages are shorter than that today, so nothing visible changes; the XREX images are rebuilt.
+
 2026-10-07  —  Device identity, step 2: the persistent serial (SYS:SERial, SYS:LABel, SYS:ID:CLEar), host provisioning tool; flash unique-ID read fixed
 -----------------------------------------------------------------------
   Request: continue the device-identity plan (docs/device_identity_and_host_service.md, repository top level).

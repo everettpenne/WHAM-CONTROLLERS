@@ -77,7 +77,7 @@ float Control_GetHoldVolts(uint8_t loop);
 void Control_GetStatus(uint8_t loop, float *sp, float *pv, float *out);
 
 /* The loop that stopped the last run with a fault and what it was: kind 0 none, 1 overvoltage, 2 ADC full scale,
-   3 ADC at the bottom of the range. Cleared when a run starts. */
+   3 ADC at the bottom of the range. Cleared when a closed-loop run starts. */
 void Control_GetFault(uint8_t *loop, uint8_t *kind);
 
 /* Control-tick timing of the last runs, in CPU cycles: ticks counted, the longest tick and the total; and the cycles
