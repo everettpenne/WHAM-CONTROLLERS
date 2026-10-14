@@ -85,12 +85,12 @@ YAML (per instance): endpoint (host and port, or a serial device), `expect_seria
 refuses commands, which catches swapped cables), a name, the listen port, the log directory.
 
 - Identity is learned by handshake, never configured: a moved IP or a renamed serial port cannot silently talk to the wrong system.
-- Replies match commands by order (the protocol has no request IDs). Multi-line dumps (`LOG:DATA?`, `PFMIN:DATA?`) end according to a
-  small per-command table until the firmware frames them itself (pending telemetry phases).
+- The protocol has no request IDs, so the service sends one command at a time and gives each reply to the command's sender (section 5.1 has
+  the framing, including the two multi-line replies and the per-command timeouts).
 - Several operators may be connected to one controller at once (decision 2026-10-07: no write lease for now, so a bench computer can run
   tests and reflash in parallel with the operator's, with in-person guardrails for safety). To keep that safe in practice the service gives
   everyone visibility: joins and leaves are announced with the client's name and address, `!hub clients` lists who is connected, how long,
-  how recently they sent something and what, and every client sees other clients' commands. A real lease (one writer, many observers) stays
+  how recently they sent something and what, and every interactive client sees other clients' commands and replies (a quiet client sees only its own). A real lease (one writer, many observers) stays
   possible later without changing the clients.
 - Dangerous commands (`host/dangerous_commands.py`): the commands that start or enable output (`FIRE`, `SOURce:RUN`, `SHOT:STARt`, an enable or
   DAC output turned on, ...), `ARM`, switch a protection off or change how faults are read or limited, force or clear a fault, reflash or reset the
@@ -103,7 +103,7 @@ refuses commands, which catches swapped cables), a name, the listen port, the lo
 - Several instances can publish to a shared message broker (for example MQTT, `wham/<serial>/...`) for one stream across all
   devices, without a process in the middle. Optional, later.
 - The protocol has no authentication, so a service port must be reachable only from the host itself or an access-restricted lab
-  network; remote operators go through ssh or whatever the lab already trusts. This matters because the commands include ARM and
+  network (`allow_from`, `listen_host`, the firewall); remote operators go through ssh or whatever the lab already trusts. This matters because the commands include ARM and
   FIRE on a high-voltage supply. The ssh tunnel used from a laptop today is not part of this design; a service inside the lab
   network reaches the bridges directly.
 - On the server: with Linux, a systemd template unit `wham-hub@<name>.service` reading `/etc/wham/<name>.yaml`; containers (one per
@@ -111,26 +111,74 @@ refuses commands, which catches swapped cables), a name, the listen port, the lo
 
 ### 5.1 Service v1 as built
 
-`host/wham_hub.py` (stdlib only; `host/README.md`). Per instance: the controller's bridge address (fixed IP, from the lab) and a
-listen port; defaults written next to the script (`host/logs/<serial>/YYYY-MM-DD.jsonl`, `host/devices.csv`); no authentication and
-the default listen address is all interfaces, as agreed for now (set `listen_host: 127.0.0.1` to restrict later).
+`host/wham_hub.py` (stdlib only; `host/README.md`; every config key is in `host/config/example.yaml`). Per instance: the controller's
+bridge address (fixed IP, from the lab) and a listen port; defaults written next to the script (`host/logs/<serial>/YYYY-MM-DD.jsonl`,
+`host/devices.csv`).
 
-- Clients use the same raw protocol as `net_broker.py` (optional first line `@name x`, one command per line, controller output broadcast,
-  other clients' commands echoed as `[name] > cmd`), so the existing tools work through it; `!hub status` / `!hub identify` ask the
-  service itself. A firmware update, with its reboot, runs through it (checked on the simulator board).
-- Identity: `*IDN?` and `SYS:ID?` at connect and 0.6 s after each `!BOOT WHAM-...` line (a stray byte in front of the banner is
-  tolerated); the log key is the serial, or `UNSET-<last 8 of the MCU ID>` for a board with none. Records written before the first
-  handshake settles are held and written under the identity found. `expect_serial` mismatch, or the registry holding that serial
-  for different hardware, makes the service answer `ERR hub identity mismatch: ...` instead of forwarding.
-- Log record: `{t, ts, dev, serial, name, epoch, session, kind, line[, client][, truncated]}`; kinds `cmd`, `reply` (OK/ERR lines),
-  `event` (`!EVT`), `boot` (`!BOOT`), `data` (anything else), `hub`/`hub-cmd`/`hub-reply` (the service's own). `epoch` counts
-  `!BOOT` banners, `session` counts connections. Lines are cut at 400 characters; `FWUPdate:DATA` keeps only its first 24.
-- Visibility and dangerous commands: see the bullets in section 5 above; `!hub status` shows `who=` and `confirm=`.
-- Reconnects forever (3 s); commands sent while the controller is away get `--- hub: the controller is not connected ---`.
-- Replies are NOT matched to commands (they are broadcast and logged as they arrive), so multi-line dumps pass through unchanged;
-  matching and the per-command dump table belong with the later steps (a JSON API, an optional lease).
-- Deployment on Linux: `host/deploy/wham-hub@.service` (a systemd template: `systemctl enable --now wham-hub@<name>` reads
-  `host/config/<name>.yaml`); written but not yet run on Jack.
+**Access.** There is no authentication. The default listen address is all interfaces, as agreed for now. `allow_from` (a list of IPs
+and CIDRs) refuses every other source address, and each refusal is logged. With a non-loopback `listen_host` and no `allow_from` the
+service prints a warning at startup. `listen_host: 127.0.0.1` keeps it to the host itself. A deployed config lists each client
+machine by address (the LabVIEW PC, a bench laptop), never a whole subnet; the example allows only 127.0.0.1.
+
+**Clients and the controller.** Clients use the raw protocol of `net_broker.py` (optional first line `@name x`, one command per line), so
+`net_client.py`, `wham_console.py` and `fw_update.py` work through the service unchanged, including a firmware update with its reboot
+(`host/tests/test_hub_with_tools.py` runs the real tools). `!hub status` / `!hub identify` / `!hub clients` / `!hub quiet` ask the service
+itself; its answers start with `#`.
+
+- One command is in flight to the controller at a time, in arrival order across all clients. The service's own queries (the handshake, the
+  heartbeat) use the same queue and go first. Every command a client sends gets exactly one reply line, to that client:
+  the controller's line, or `ERR hub ...` when there is none: `timeout` (`command_timeout_s`, 5 s; `long_command_timeout_s`, 30 s for the
+  commands in `REPLY_TABLE`), `the controller restarted before it replied`, `the connection to the controller was lost`, `identity mismatch`,
+  `queue full` (`queue_max`), and for a quiet client also `the controller is not connected` and a dangerous command held for confirmation.
+  A blank line is passed on and not counted as a command, because the firmware ignores it. A client's line ends at CR, LF or CR LF, as in
+  the firmware, so `A\rB\r\n` is two commands with a reply each, and a client that ends lines with CR alone is served. A
+  line cut off before its end by the client closing the connection is not sent (the firmware would not run it either) and is logged as
+  `refused`.
+- Reply framing is the firmware's. Each non-blank command gets one `OK`/`ERR` line ending in CR LF; unsolicited lines start with `!`
+  (`!EVT`, `!BOOT`). While a command is in flight, the next line that does not start with `!` is its reply, even a garbled one (a byte lost on
+  the bridge turns `OK` into `O`; `fw_update.py` resynchronizes on that). `LOG:DATA?`, `PFMIN:DATA?`, `PFMIN:RAW?` and `PFM:GAPLOG?` are one long line. Two
+  replies span lines, and the queue is held until their last line arrives (or the long timeout passes): `SYS:EVLOG?` is `OK <n>` and
+  then n `!EVT` lines, which are also shown to every client as events; `CONFig:PROFile:CATalog?` ends its OK line short and follows it with
+  an `ERR` line when a slot cannot be read. A `!BOOT` banner ends the command in flight with an error reply (a dump under way is only cut
+  short, its sender already has its reply), answers each command still queued or held by a handshake with `ERR hub the controller restarted before it was sent`
+  instead of sending it to the board that came back, and holds new commands until the handshake after the banner is done. After a timeout the queue waits for a resync query (`*IDN?`, or `SYS:ID?` when the command that
+  timed out was `*IDN?`) whose reply cannot be mistaken for the late one, so every line before it, the late reply included, belongs to
+  nobody; no answer to it closes the connection and reconnects. The service's own queries take only their own reply (`*IDN?` an
+  `OK WHAM-...` line, `SYS:ID?` `OK serial=...` or `ERR`), so stray text is never taken for the identity. A garbled reply to one
+  of them counts as stray too: the heartbeat then reconnects, and a failed handshake leaves the board unidentified (refused when
+  `expect_serial` is set) and is retried every `heartbeat_s` until it succeeds; a banner, reconnect or `!hub identify` also retries it. A line that belongs to nobody is
+  logged and shown to the interactive clients only, never to a quiet one.
+- Interactive clients (the default) see everything: the controller's lines, their own replies bare, other clients' commands as
+  `[name] > cmd` and their replies as `[name] < reply`, joins and leaves, and hub notes (`--- hub: ... ---`). A quiet client (first line
+  `@quiet x`, or `!hub quiet on` at any time, answered `# hub: quiet on`; `!hub quiet off` ends it) gets no greeting, echoes or notes: only
+  the replies to its own commands, the unsolicited `!` lines (`!EVT`, `!BOOT`) and the `#` answers to its own `!hub`
+  commands. It learns of a dead link from `ERR hub` replies or from `!hub status` (`connected=`, `rx_age=`, `inflight=`, `queued=`).
+- Link liveness. The bridge socket has TCP keepalive (`keepalive_idle_s` 10, `keepalive_interval_s` 3, `keepalive_count` 3; the Linux
+  options, guarded by `hasattr`). When nothing has been received for `heartbeat_s` (15 s) the service sends `*IDN?` (answered by both
+  products); no answer within `heartbeat_timeout_s` (5 s) closes the connection, with a hub note, and reconnects. A board reset during
+  the query does not stop the heartbeat. A talkative link is never probed.
+- Output buffering. A client with more than `client_buffer_max` (1 MiB) bytes waiting to be written is disconnected with a hub note.
+
+**Identity.** `*IDN?` and `SYS:ID?` at connect and after each `!BOOT WHAM-...` line (a stray byte in front of the banner is tolerated);
+the log key is the serial, or `UNSET-<last 8 of the MCU ID>` for a board with none. Records written before the first handshake settles
+are held and written under the identity found. `expect_serial` mismatch, or the registry holding that serial for different hardware, makes
+the service answer `ERR hub identity mismatch: ...` instead of forwarding.
+
+**Log.** Record `{t, ts, dev, serial, name, epoch, session, kind, line[, client][, danger][, truncated]}`; kinds `cmd`, `reply` (`client` names
+the sender when the reply answers one of its commands), `event` (`!EVT`), `boot` (`!BOOT`), `data` (anything else), `refused`,
+`hub`/`hub-cmd`/`hub-reply` (the service's own, heartbeat included). `epoch` counts `!BOOT` banners, `session` counts connections. Lines are
+cut at 400 characters; `FWUPdate:DATA` keeps only its first 24. `log_keep_days` deletes day files older than that many days when a new
+day file opens (0 keeps everything).
+
+**Visibility and dangerous commands**: see the bullets in section 5 above; `!hub status` shows `who=` and `confirm=`. The echo and the
+announcement are sent when the command goes to the controller, so every observer sees them in the order the controller does.
+
+**Reconnect and deployment.** Reconnects forever (`reconnect_s`, 3 s). Commands sent while the controller is away, and commands queued
+when it goes, are answered `--- hub: the controller is not connected ---` (`ERR hub ...` to a quiet client).
+`host/deploy/wham-hub@.service` is a systemd template (`systemctl enable --now wham-hub@<name>` reads `host/config/<name>.yaml`). Its
+`User` and install path are placeholders to set for the server, and `log_dir` belongs outside the install tree (`StateDirectory=wham`
+provides `/var/lib/wham`). Written but not yet run on Jack. Flashing through the ROM bootloader (`net_flash.py`) is not a line protocol and
+needs the service stopped.
 
 ## 6. Build order
 

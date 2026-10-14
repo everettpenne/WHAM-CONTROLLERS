@@ -2,10 +2,35 @@
 name: magnet2              # shown in logs and to clients; also the service instance name
 host: 192.168.130.138      # the controller's serial-over-TCP bridge (fixed IP)
 port: 5000                 # the bridge's TCP port
-listen_host: 0.0.0.0       # where clients connect to this service (all interfaces: NO authentication; 127.0.0.1 to restrict)
+listen_host: 0.0.0.0       # where clients connect to this service (all interfaces; 127.0.0.1 for this host only)
 listen_port: 5101          # one distinct port per controller
 expect_serial: WB-0007-4   # optional: refuse commands if the board on the other end is a different one
-# log_dir: /var/log/wham   # default: host/logs next to this script
-# registry: /path/devices.csv   # default: host/devices.csv next to this script
-# reconnect_s: 3
-# confirm_dangerous: false   # true: hold dangerous commands until their sender types "!hub confirm" (stalls scripts and firmware updates)
+
+# There is NO authentication: anyone who can connect can send ARM and FIRE. With listen_host 0.0.0.0 and no allow_from the
+# service prints a warning at startup. allow_from lists the IPs and CIDRs that may connect (others are refused and logged).
+# List each client machine by its own address (the LabVIEW PC, a bench laptop), never a whole subnet; 127.0.0.1 covers
+# clients on this host and ssh tunnels ending here.
+allow_from: [127.0.0.1]
+
+# Paths (defaults are next to the scripts; on a server keep logs OUTSIDE the install tree)
+# log_dir: /var/lib/wham/logs     # default: host/logs
+# log_keep_days: 90               # delete day files older than this when a new one opens (default 0: keep everything)
+# registry: /path/devices.csv     # default: host/devices.csv
+
+# Connection to the controller
+# reconnect_s: 3                  # seconds between attempts to reach the bridge
+# keepalive_idle_s: 10            # TCP keepalive on the bridge and client sockets: first probe after this many idle seconds
+# keepalive_interval_s: 3         #   then one probe this often
+# keepalive_count: 3              #   and the link is dead after this many unanswered probes (idle_s 0 turns keepalive off)
+# heartbeat_s: 15                 # nothing received for this long: send *IDN? (0 = no heartbeat)
+# heartbeat_timeout_s: 5          # no answer to it within this long: close the connection and reconnect, with a hub note
+
+# Commands
+# command_timeout_s: 5            # one command in flight at a time; no reply within this long: the sender gets ERR hub timeout
+# long_command_timeout_s: 30      # the same for flash erase, verify and the data dumps (LOG:DATA?, SYS:EVLOG?, ...)
+# queue_max: 256                  # commands waiting for the controller; more are refused with ERR hub queue full
+# confirm_dangerous: false        # true: hold dangerous commands until their sender types "!hub confirm" (stalls scripts and firmware updates)
+# confirm_timeout_s: 15           # how long a held command can be confirmed
+
+# Clients
+# client_buffer_max: 1048576      # a client with this many bytes waiting unread is disconnected (a stuck program, a dead tunnel)
