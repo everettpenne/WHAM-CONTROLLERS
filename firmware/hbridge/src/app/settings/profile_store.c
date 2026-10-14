@@ -97,7 +97,7 @@ static profile_status_t ReadCopy(uint8_t slot, uint8_t copy, copy_t *out)
     crc = SettingsCodec_Crc32(0U, hdr, HDR_CRC_OFFSET);
     for (uint16_t off = 0U; off < len; off = (uint16_t)(off + sizeof(chunk)))
     {
-        uint16_t n = (uint16_t)(((len - off) < sizeof(chunk)) ? (len - off) : sizeof(chunk));
+        uint16_t n = (uint16_t)(((len - off) < (int)sizeof(chunk)) ? (len - off) : (int)sizeof(chunk));
 
         rc = Storage(NvStore_Read(addr + HDR_BYTES + off, chunk, n));
         if (rc != PROFILE_OK)
