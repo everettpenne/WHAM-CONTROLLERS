@@ -176,8 +176,8 @@ announcement are sent when the command goes to the controller, so every observer
 **Reconnect and deployment.** Reconnects forever (`reconnect_s`, 3 s). Commands sent while the controller is away, and commands queued
 when it goes, are answered `--- hub: the controller is not connected ---` (`ERR hub ...` to a quiet client).
 `host/deploy/wham-hub@.service` is a systemd template (`systemctl enable --now wham-hub@<name>` reads `host/config/<name>.yaml`). Its
-`User` and install path are placeholders to set for the server, and `log_dir` belongs outside the install tree (`StateDirectory=wham`
-provides `/var/lib/wham`). Written but not yet run on Jack. Flashing through the ROM bootloader (`net_flash.py`) is not a line protocol and
+`User` and install path are placeholders to set for the server, and `log_dir` belongs outside the install tree (`StateDirectory=wham/hub`
+provides `/var/lib/wham/hub`, leaving any other `/var/lib/wham` content alone). Written but not yet run on a server. Flashing through the ROM bootloader (`net_flash.py`) is not a line protocol and
 needs the service stopped.
 
 ## 6. Build order

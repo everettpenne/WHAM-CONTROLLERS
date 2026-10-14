@@ -2,8 +2,8 @@
 # BEFORE enabling, edit for the server:
 #   User              an account that exists on the server (this unit does not create one)
 #   WorkingDirectory, ExecStart   the path this repo is installed at, and the python3 to use
-#   log_dir (in the yaml)         outside the install tree, e.g. /var/lib/wham/logs; StateDirectory below creates
-#                                 /var/lib/wham owned by User, so no manual mkdir or chown is needed
+#   log_dir (in the yaml)         outside the install tree: /var/lib/wham/hub/logs; StateDirectory below creates
+#                                 /var/lib/wham/hub owned by User and leaves /var/lib/wham itself alone
 [Unit]
 Description=WHAM controller service (%i)
 After=network-online.target
@@ -12,7 +12,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=CHANGE-ME
-StateDirectory=wham
+StateDirectory=wham/hub
 WorkingDirectory=/opt/WHAM-CONTROLLERS/host
 ExecStart=/usr/bin/python3 /opt/WHAM-CONTROLLERS/host/wham_hub.py --config /opt/WHAM-CONTROLLERS/host/config/%i.yaml
 Restart=always

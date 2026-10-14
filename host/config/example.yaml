@@ -13,7 +13,7 @@ expect_serial: WB-0007-4   # optional: refuse commands if the board on the other
 allow_from: [127.0.0.1]
 
 # Paths (defaults are next to the scripts; on a server keep logs OUTSIDE the install tree)
-# log_dir: /var/lib/wham/logs     # default: host/logs
+# log_dir: /var/lib/wham/hub/logs # default: host/logs
 # log_keep_days: 90               # delete day files older than this when a new one opens (default 0: keep everything)
 # registry: /path/devices.csv     # default: host/devices.csv
 
