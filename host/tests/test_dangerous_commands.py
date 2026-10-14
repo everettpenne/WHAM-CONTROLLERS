@@ -1,4 +1,5 @@
 """dangerous_commands.py: matching rules, the argument rules, the real command tables, and the console's older list."""
+import importlib.util
 import os
 import re
 import sys
@@ -80,12 +81,10 @@ class RealTableTests(unittest.TestCase):
 
 
 class ConsoleListTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("serial"), "pyserial is not installed (wham_console imports it)")
     def test_superset_of_the_consoles_older_list(self):
         sys.path.insert(0, os.path.join(FIRMWARE, "xrex", "python"))
-        try:
-            import wham_console
-        except Exception as exc:                                    # pragma: no cover
-            self.skipTest(f"wham_console not importable: {exc!r}")
+        import wham_console
         corpus = ["FIRE", "BOOT", "SOURce:RUN", "sour:run", "SOUR:ENAble 1 1", "SOURce:ENAble 2 1", "SHOT:STARt", "shot:star",
                   "SOURce:ENAble 1 0", "STATE?", "ARM", "FAULT?", "SOURce:STOP", "PID:GAINS 1 1 1 1", "SHOT:TIMing 1 2"]
         for cmd in corpus:
