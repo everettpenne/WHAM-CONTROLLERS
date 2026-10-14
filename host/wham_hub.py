@@ -841,6 +841,7 @@ class Hub:
                     if text is None:
                         if lines.cut and not lines.cut.startswith(("!hub", "@")):     # only controller commands
                             self.record("refused", lines.cut, name)
+                        await self.answered(writer)      # done sending (printf | nc) but maybe still reading
                         break
                 if text.startswith("!hub"):
                     self.hub_command(name, writer, text)
@@ -862,6 +863,13 @@ class Hub:
                 self.record("hub", f"{name} left ({gone.cmds} commands, {gone.danger} dangerous)")
                 self.broadcast(f"--- {name} left ---", notice=True)
             writer.close()
+
+    async def answered(self, writer):
+        """Until every command this client sent has its answer; each is bounded by its timeout."""
+        while self.clients.get(writer) is not None and not writer.is_closing() and (
+                (self.inflight is not None and self.inflight.owner is writer)
+                or any(c.owner is writer for c in self.queue) or any(w is writer for w, _ in self.held)):
+            await asyncio.sleep(0.05)
 
     def hub_command(self, name, writer, text):
         cmd = text[4:].strip().lower()

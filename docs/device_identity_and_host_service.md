@@ -133,7 +133,8 @@ itself; its answers start with `#`.
   A blank line is passed on and not counted as a command, because the firmware ignores it. A client's line ends at CR, LF or CR LF, as in
   the firmware, so `A\rB\r\n` is two commands with a reply each, and a client that ends lines with CR alone is served. A
   line cut off before its end by the client closing the connection is not sent (the firmware would not run it either) and is logged as
-  `refused`.
+  `refused`. A complete line is a command issued: it runs even if its client disconnects first, and a client that only
+  stops sending (`printf ... | nc`) gets every reply before the service closes the connection.
 - Reply framing is the firmware's. Each non-blank command gets one `OK`/`ERR` line ending in CR LF; unsolicited lines start with `!`
   (`!EVT`, `!BOOT`). While a command is in flight, the next line that does not start with `!` is its reply, even a garbled one (a byte lost on
   the bridge turns `OK` into `O`; `fw_update.py` resynchronizes on that). `LOG:DATA?`, `PFMIN:DATA?`, `PFMIN:RAW?` and `PFM:GAPLOG?` are one long line. Two

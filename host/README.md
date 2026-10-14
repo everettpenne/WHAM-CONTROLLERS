@@ -53,6 +53,8 @@ the service answers `# hub: quiet on`), then one command per line ending in CR L
 `identity mismatch`, `queue full`, or a dangerous command held for confirmation. Two controller commands reply over several lines:
 `SYS:EVLOG?` (`OK <n>`, then n `!EVT` lines) and `CONFig:PROFile:CATalog?` when a slot cannot be read (a short `OK` line, then an `ERR` line).
 A restart (`!BOOT`) part way through such a reply ends it with no marker: count on fewer lines then (the service log notes how many were missing).
+A one-shot client may stop sending after its last command (`printf ... | nc`): it still gets every reply, then the service
+closes the connection. A complete line runs even if its client disconnects before the reply.
 A quiet client gets no notice when the link drops: it sees `ERR hub ...` for its next command, or `!hub status` (`connected=`, `rx_age=`).
 A reply that arrives after its command timed out never reaches a quiet client: the service holds the queue until a resync query shows
 the late line has passed, and reconnects when the controller stays silent. After `ERR hub timeout` the command may or may not have run.

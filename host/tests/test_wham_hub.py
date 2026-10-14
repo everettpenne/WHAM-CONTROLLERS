@@ -754,6 +754,20 @@ class PipelineTests(HubBase):
         refused = [r for r in self.log_records(hub) if r["kind"] == "refused"]
         self.assertEqual([(r["client"], r["line"]) for r in refused], [("lv", "ECHO frag")])
 
+    async def test_a_client_that_stops_sending_still_gets_its_replies(self):
+        hub = await self.start_hub()
+        self.ctl.delays["slow"] = 0.3
+        c = await self.raw(b"@quiet oneshot\r\nECHO slow\r\nSTATE?\r\n")
+        c.writer.write_eof()                                     # printf ... | nc: done sending, still reading
+        lines = []
+        while True:
+            line = await asyncio.wait_for(c.reader.readline(), 3)
+            if not line:
+                break                                            # the hub closes once every reply is out
+            lines.append(line.decode().strip())
+        self.assertEqual(lines, ["OK slow", "OK IDLE"])
+        self.assertEqual(hub.clients, {})
+
     async def test_a_cut_off_hub_command_is_not_logged_as_a_refused_controller_command(self):
         hub = await self.start_hub()
         c = await self.raw(b"@quiet lv\r\n!hub sta")
@@ -891,25 +905,27 @@ class PipelineTests(HubBase):
         await b.lines_until(lambda l: l == "OK IDLE", 3)
         self.assertGreaterEqual(self.times("rx", "STATE?")[0] - self.times("rx", "SYS:EVLOG? short")[0], 0.4)
 
-    async def test_commands_of_a_client_that_left_are_not_sent(self):
+    async def test_commands_a_client_sent_before_leaving_are_still_sent(self):
         hub, a, b = await self.two()
         self.ctl.delays["slow"] = 0.3
         await a.send("ECHO slow")
         await b.send("ECHO ghost")
         await asyncio.sleep(0.05)
-        b.writer.close()
+        b.writer.close()                                         # a whole line was sent: it was issued, as on a direct link
         await a.lines_until(lambda l: l == "OK slow")
         await asyncio.sleep(0.3)
-        self.assertNotIn("ECHO ghost", self.ctl.received)
+        self.assertIn("ECHO ghost", self.ctl.received)
+        await asyncio.sleep(0.3)
+        self.assertEqual([i.name for i in hub.clients.values()], ["alice"])
 
-    async def test_the_reply_to_a_client_that_left_is_not_shown_to_the_others(self):
+    async def test_the_reply_to_a_client_that_left_is_never_another_clients_reply(self):
         hub, a, b = await self.two()
         self.ctl.delays["slow"] = 0.3
         await b.send("ECHO slow")
         await asyncio.sleep(0.05)
         b.writer.close()
         await asyncio.sleep(0.6)
-        self.assertFalse([l for l in await a.quiet(0.2) if "OK slow" in l])
+        self.assertFalse([l for l in await a.quiet(0.2) if l == "OK slow"])     # at most marked "[bob] < OK slow"
         await a.send("STATE?")
         await a.lines_until(lambda l: l == "OK IDLE")
 
