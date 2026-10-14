@@ -1,6 +1,16 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-14  -  PFM:GAPLOG? streams its reply, so a long gap log no longer overruns RAM; shared tests build under gcc 13
+-----------------------------------------------------------------------
+  BUG: cmd_pfm_gaplog built "OK <count> <gap> ..." in a 2600-byte buffer sized for XREX's 200 entries, but HBRIDGE logs up to PFM_INPUT_MAX_PERIODS (3800)
+        gaps of about 5-6 digits each. Past about 450 entries snprintf truncated, the remaining size underflowed and later entries were written past the buffer
+        (RAM corruption), and the reply went out with no CR LF, so the next reply ran into it. The handler now sends the list through Scpi_ReplyU32List
+        (src/middleware/scpi/scpi_util.c, shared): one line of any length, sent in pieces from a 64-byte stack buffer; the 2600-byte static buffer is gone.
+  Shared: profile_store.c compared an int with sizeof, which gcc 13's -Wsign-compare rejects under -Werror, so the host tests did not build there.
+  Tests: host suite all green (test_scpi_util 20,211 checks, incl. a 300-value list checked against the reference string, one line). check_shared OK.
+  NOT DONE: the images in build/ are not rebuilt from this source (no arm-none-eabi toolchain on the machine that made the change); run python/wham_build.py.
+
 2026-10-13  —  Independent per-channel duty profiles and three closed loops (U on PA0, V on PA1, W on PB0)   (branch per-channel-profiles)
 -----------------------------------------------------------------------
   Request: each channel should be able to output its own PWM duty profile, in open loop and in closed loop with its own feedback: phase U on the ADC at PA0,

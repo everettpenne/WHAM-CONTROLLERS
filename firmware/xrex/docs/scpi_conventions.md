@@ -39,6 +39,8 @@ except where a command's own documentation says otherwise (paged replies, firmwa
 
 Numbers in a reply are plain decimal. How many decimals a value has is per command (a fixed count such as
 `OK 1.250`, or the shortest `%g` form such as `OK 0.001`), and is documented with the command. Booleans are `0`/`1`.
+A list of any length is still one line: `Scpi_ReplyU32List()` sends `OK <count> <v0> ... <v(count-1)>\r\n` in pieces from a
+small buffer, so a reply never depends on a buffer sized for the longest list.
 
 **Unsolicited lines** start with `!` so a host can never mistake them for a reply: `!BOOT ...` (three lines sent
 once per boot, after a reset or firmware swap), and in XREX `!EVT ...` telemetry events. Everything a host sends

@@ -334,30 +334,13 @@ void cmd_pfm_diag(uart_instance_t *inst, char *args)
     uart_send(inst, buf);
 }
 
-/* TEMPORARY debug command, 2026-09-09 (second round) -- see pfm.h's
-   own comment on PFM_GetDiagGapLog(). Sized like PFMIN:DATA?'s own
-   g_pfminDataBuf (commands.c) -- up to PFM_INPUT_MAX_PERIODS entries,
-   each up to " 4294967295" (11 chars), plus the "OK <count>" prefix
-   and CRLF. Remove once the RAMP/HOLD/RAMP real-hardware lag
-   investigation (docs/changelog.txt) is resolved and this diagnostic
-   is no longer needed. */
-static char g_pfmGapLogBuf[2600];
-
+/* TEMPORARY debug command (2026-09-09), see PFM_GetDiagGapLog() in pfm.h; remove once the RAMP/HOLD/RAMP
+   real-hardware lag investigation (docs/changelog.txt) is resolved. */
 void cmd_pfm_gaplog(uart_instance_t *inst, char *args)
 {
     uint16_t count;
     const uint32_t *log = PFM_GetDiagGapLog(&count);
-    int len = 0;
     (void)args;
 
-    len += snprintf(&g_pfmGapLogBuf[len], sizeof(g_pfmGapLogBuf) - (size_t)len,
-                     "OK %u", (unsigned int)count);
-    for (uint16_t i = 0U; i < count; i++)
-    {
-        len += snprintf(&g_pfmGapLogBuf[len], sizeof(g_pfmGapLogBuf) - (size_t)len,
-                         " %lu", (unsigned long)log[i]);
-    }
-    snprintf(&g_pfmGapLogBuf[len], sizeof(g_pfmGapLogBuf) - (size_t)len, "\r\n");
-
-    uart_send(inst, g_pfmGapLogBuf);
+    Scpi_ReplyU32List(inst, log, count);
 }

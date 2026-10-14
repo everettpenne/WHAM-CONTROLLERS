@@ -57,6 +57,29 @@ void Scpi_ReplyFloat3(uart_instance_t *inst, float a, float b, float c)
     uart_send(inst, buf);
 }
 
+void Scpi_ReplyU32List(uart_instance_t *inst, const uint32_t *values, uint16_t count)
+{
+    char buf[64];
+    int len = snprintf(buf, sizeof(buf), "OK %u", (unsigned int)count);
+
+    for (uint16_t i = 0U; i < count; i++)
+    {
+        if (len > (int)sizeof(buf) - 12)                 /* room for " 4294967295" and the NUL */
+        {
+            uart_send(inst, buf);
+            len = 0;
+        }
+        len += snprintf(&buf[len], sizeof(buf) - (size_t)len, " %lu", (unsigned long)values[i]);
+    }
+    if (len > (int)sizeof(buf) - 3)
+    {
+        uart_send(inst, buf);
+        len = 0;
+    }
+    snprintf(&buf[len], sizeof(buf) - (size_t)len, "\r\n");
+    uart_send(inst, buf);
+}
+
 void Scpi_ReplySet(uart_instance_t *inst, int result, const char *rangeMsg, const char *busyMsg)
 {
     if (result == SCPI_SET_OK)

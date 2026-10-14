@@ -1,6 +1,13 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-10-14  -  Shared SCPI layer: Scpi_ReplyU32List, one list reply of any length; PFM:GAPLOG? uses it; shared tests build under gcc 13
+-----------------------------------------------------------------------
+  HBRIDGE's PFM:GAPLOG? overran its 2600-byte reply buffer for a long gap log (up to 3800 entries there). XREX's copy of the handler is safe at
+  PFM_INPUT_MAX_PERIODS = 200 but had the same construction, so it now uses the shared Scpi_ReplyU32List too: one line of any length, sent in pieces from a
+  64-byte stack buffer (the 2600-byte static buffer is gone). profile_store.c (shared) no longer compares an int with sizeof, which gcc 13 rejects under -Werror. Host suite all green.
+  NOT DONE: the images in build/ are not rebuilt from this source (no arm-none-eabi toolchain on the machine that made the change); run python/wham_build.py.
+
 2026-10-13  —  Shared SCPI layer: an over-long error message no longer swallows the line terminator
 -----------------------------------------------------------------------
   Found on the HBRIDGE bench: Scpi_SendErr formatted "ERR <code> <msg>\r\n" into a 128-byte buffer, so a message longer than about 118 characters was cut

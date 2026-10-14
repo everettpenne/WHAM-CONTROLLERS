@@ -35,6 +35,9 @@ void Scpi_ReplyFixed(uart_instance_t *inst, float v, uint8_t decimals);
 void Scpi_ReplyFloat(uart_instance_t *inst, float a);
 void Scpi_ReplyFloat3(uart_instance_t *inst, float a, float b, float c);
 
+/* "OK <count> <v0> ... <v(count-1)>\r\n", one line of any length, sent in pieces from a small buffer. */
+void Scpi_ReplyU32List(uart_instance_t *inst, const uint32_t *values, uint16_t count);
+
 /* The outcome of a setter, as plain integers so any product's own result enum maps onto it. */
 #define SCPI_SET_OK     (0)
 #define SCPI_SET_RANGE  (1)     /* value outside the allowed range */

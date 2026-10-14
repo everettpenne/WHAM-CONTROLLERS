@@ -61,6 +61,29 @@ static void TestReplies(void)
     fake_uart_clear(); Scpi_ReplyBadNumber(inst, NULL);       CHECK_STR(fake_uart_out, "ERR 12 not a number: \r\n");
 }
 
+static void TestReplyU32List(void)
+{
+    static const uint32_t three[3] = { 0U, 7U, 4294967295U };
+    static uint32_t many[300];
+    char want[4096];
+    int len;
+
+    fake_uart_clear(); Scpi_ReplyU32List(inst, three, 0U);   CHECK_STR(fake_uart_out, "OK 0\r\n");
+    fake_uart_clear(); Scpi_ReplyU32List(inst, three, 3U);   CHECK_STR(fake_uart_out, "OK 3 0 7 4294967295\r\n");
+
+    /* far longer than any reply buffer: every value arrives, as one line */
+    len = snprintf(want, sizeof(want), "OK 300");
+    for (int i = 0; i < 300; i++)
+    {
+        many[i] = 4294967295U - (uint32_t)i;
+        len += snprintf(&want[len], sizeof(want) - (size_t)len, " %lu", (unsigned long)many[i]);
+    }
+    snprintf(&want[len], sizeof(want) - (size_t)len, "\r\n");
+    fake_uart_clear(); Scpi_ReplyU32List(inst, many, 300U);
+    CHECK_STR(fake_uart_out, want);
+    CHECK(strchr(fake_uart_out, '\n') == &fake_uart_out[strlen(fake_uart_out) - 1U]);
+}
+
 static void TestFormatFixed(void)
 {
     char out[24];
@@ -352,6 +375,7 @@ static void TestFormatFloat(void)
 int main(void)
 {
     TestReplies();
+    TestReplyU32List();
     TestFormatFixed();
     TestParseLong();
     TestParseFloat();
