@@ -1208,7 +1208,7 @@ class LinkLivenessTests(HubBase):
 
 class SlowClientTests(HubBase):
     async def test_a_client_that_stops_reading_is_disconnected_not_buffered(self):
-        hub = await self.start_hub(client_buffer_max=65536)
+        hub = await self.start_hub()                             # the default limit: loopback buffers are small on macOS
         a = await Client.connect(self.listen, "alice")
         await a.lines_until(lambda l: l.startswith("--- connected"))
         sock = socket.socket()
@@ -1256,7 +1256,7 @@ class SlowClientTests(HubBase):
         self.assertNotIn("ECHO second", self.ctl.received)
 
     async def test_a_reader_that_keeps_up_is_never_dropped(self):
-        hub = await self.start_hub(client_buffer_max=65536)
+        hub = await self.start_hub()                             # 3 MB through the default 1 MiB limit
         a = await Client.connect(self.listen, "alice")
         await a.lines_until(lambda l: l.startswith("--- connected"))
         await a.send("BIG 3000")
