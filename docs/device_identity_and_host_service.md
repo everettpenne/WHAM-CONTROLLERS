@@ -161,7 +161,7 @@ itself; its answers start with `#`.
 - Output buffering. A client with more than `client_buffer_max` (1 MiB) bytes waiting to be written is disconnected with a hub note.
 
 **Identity.** `*IDN?` and `SYS:ID?` at connect and after each `!BOOT WHAM-...` line (a stray byte in front of the banner is tolerated);
-the log key is the serial, or `UNSET-<last 8 of the MCU ID>` for a board with none. Records written before the first handshake settles
+the log key is the serial, or `UNSET-<the whole 24-digit MCU ID>` for a board with none (not just its last digits: those are the production lot number and are the same for chips from one batch, so two boards of one batch would have shared a log directory). Records written before the first handshake settles
 are held and written under the identity found. `expect_serial` mismatch, or the registry holding that serial for different hardware, makes
 the service answer `ERR hub identity mismatch: ...` instead of forwarding.
 

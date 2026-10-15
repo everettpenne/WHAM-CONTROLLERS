@@ -418,8 +418,19 @@ class HubTests(HubBase):
     async def test_unprovisioned_board_logs_under_its_hardware_id(self):
         self.ctl.serial, self.ctl.identity, self.ctl.verified = "UNSET", "unset", "0"
         hub = await self.start_hub()
-        self.assertEqual(hub.dev_key(), "UNSET-34203558".replace("34203558", "20343558"))
+        self.assertEqual(hub.dev_key(), "UNSET-0055002B4232500220343558")
         self.assertTrue(os.path.isdir(os.path.join(hub.cfg["log_dir"], hub.dev_key())))
+
+    async def test_two_unprovisioned_boards_of_one_batch_get_different_log_keys(self):
+        # the last 8 digits of the MCU ID are the production lot: boards from one batch share them
+        self.ctl.serial, self.ctl.identity, self.ctl.verified = "UNSET", "unset", "0"
+        hub = await self.start_hub()
+        first = hub.dev_key()
+        hub.identity["uid"] = "003A00274232500120343558"
+        second = hub.dev_key()
+        self.assertEqual(first[-8:], second[-8:])
+        self.assertNotEqual(first, second)
+        self.assertEqual(second, "UNSET-003A00274232500120343558")
 
     async def test_waits_for_the_controller_and_reconnects(self):
         await self.ctl.stop()

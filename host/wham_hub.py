@@ -10,7 +10,7 @@ everything with that identity. Run one instance per controller, as a service (ho
 
 What it does
   * connects to the bridge (host:port), reconnecting forever; on connect and after every !BOOT it asks the board
-    *IDN? and SYS:ID? and binds the session to the board's serial (or, for a board with none, UNSET-<last 8 of its MCU ID>);
+    *IDN? and SYS:ID? and binds the session to the board's serial (or, for a board with none, UNSET-<its whole MCU ID>);
   * notices a dead link: TCP keepalive on the bridge connection, and when nothing has arrived for heartbeat_s it asks
     *IDN?; no answer within heartbeat_timeout_s closes the connection and reconnects;
   * with `expect_serial` set, a different board on the other end is refused: client commands are NOT forwarded;
@@ -346,7 +346,7 @@ class Hub:
         if sn and sn != "UNSET":
             return sn
         uid = self.identity.get("uid")
-        return f"UNSET-{uid[-8:]}" if uid else f"unidentified-{self.cfg['name']}"
+        return f"UNSET-{uid}" if uid else f"unidentified-{self.cfg['name']}"
 
     def serial(self):
         sn = self.identity.get("serial")
