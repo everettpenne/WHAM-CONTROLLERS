@@ -1,6 +1,13 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-15  -  GDS:LAST? documented (docs only, no firmware change)
+-----------------------------------------------------------------------
+  GDS:LAST? existed in the command table and cmd_io.c (added while chasing the bench fault of 2026-10-13) but was in neither command_reference.md nor the
+        operator documents. It answers "OK <pins hex, %03X> <fault checks since boot>": the raw 12 GateDriverStatus levels (bit 0 = input 01 = PE0) when the
+        last gate-driver fault latched. Now in command_reference.md after GDS?, and in docs/labview_state_and_faults.md (section 4.4) at the top of the repository.
+        It is not cleared by FAULT:CLEAR, covers only the GateDriverStatus source, and cannot name a phase (no pin-to-phase map exists).
+
 2026-10-14  -  PFM:GAPLOG? streams its reply, so a long gap log no longer overruns RAM; shared tests build under gcc 13
 -----------------------------------------------------------------------
   BUG: cmd_pfm_gaplog built "OK <count> <gap> ..." in a 2600-byte buffer sized for XREX's 200 entries, but HBRIDGE logs up to PFM_INPUT_MAX_PERIODS (3800)

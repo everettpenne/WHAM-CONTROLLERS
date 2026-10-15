@@ -705,6 +705,36 @@ existing single-`OK <value>`-line response convention rather than the
 sibling PFM-STM32G474 project's multi-line/bitmask `GDS?` reply
 shapes.
 
+### `GDS:LAST?`
+
+Which gate-driver status input(s) were in their fault state when the **last GateDriverStatus fault latched**: a record kept in RAM by the
+fault check (`GateDriver_CheckFault()`, `gate_driver.c`), added to find which input tripped on the bench. `FAULT:SOURces?` says only that the
+`GATEDRV` source tripped; this says which of the 12 inputs. XREX has no equivalent (it reports the channel and category in `STATE?`).
+
+```
+> GDS:LAST?
+< OK 101 7
+```
+
+Reply: `OK <pins> <checks>`.
+
+- `<pins>`: the **raw levels of all 12 pins** at the instant the fault latched, as hex digits with no `0x` prefix and at least three digits
+  (`%03X`). Bit 0 is `GateDriverStatus_01` (`PE0`) and bit 11 is `GateDriverStatus_12` (`PE11`). A set bit is a pin that read HIGH, **not**
+  necessarily one in its fault state: which level is the fault is the build's `GDS_FAULT_POLARITY` (`ctrlr_config.h`), currently
+  `GDS_NORMALLY_LOW`, so under the current build a set bit **is** a faulted input. `101` above means inputs 01 (`PE0`) and 09 (`PE8`) were HIGH.
+- `<checks>`: how many times the fault check has run since boot (every edge interrupt on the 12 pins, plus the explicit calls at boot and from
+  `FAULT:CLEAR`), a rough measure of how active the pins have been.
+- A `<pins>` of `000` means no gate-driver fault has latched since boot (`OK 000 <checks>`). The value is **not** cleared by `FAULT:CLEAR`: it keeps the
+  record of the last latch until the next one overwrites it or the controller resets. If `FAULT:CLEAR` finds a pin still faulted and latches again,
+  the record is overwritten with the pins as they read then.
+- It reflects only the GateDriverStatus source. A fault from `PC10`, `TABLE`, `TEST`, `OVP` or `FB` (see `FAULT:SOURces?`) does not change it.
+- Read-only, any state. Compare with `GDS?`, which is the live levels, not the levels at the last latch.
+- The pin-to-phase wiring is not recorded anywhere in the firmware or in `docs/pin_mapping_v4.csv` (the pins are named only
+  `GateDriverStatus_01`..`_12`), so this identifies the input, not the phase or gate driver it belongs to.
+
+Typical use after `STATE?` reports `FAULT GENERAL` with `FAULT:SOURces?` showing `GATEDRV=1`: send `GDS:LAST?`, then read `<pins>` as a bit mask,
+lowest bit = input 01.
+
 ### `DIAGnostic:LEDs?`
 
 Which front-panel LEDs the firmware is driving lit (`led_indicators.h`; pins in `docs/pin_mapping_v4.csv`: `UART_TX_LED` PD2,
