@@ -353,6 +353,9 @@ PWM period, driven by the HRTIM1 master-repetition interrupt
 coherent period boundary, at the end of the shot. `ERR 5` when nothing has
 been uploaded.
 
+**A rising edge on PF15 starts the same shot** (`EXTernal:TRIGger`, below): both go through one routine, `ShotStart_Run()`, so the checks and the start
+are identical (since 2026-10-20).
+
 **Needs `ARMED`** (gated 2026-09-29; before that `FIRE` took effect
 immediately in any state). `FIRE` moves the state to `FIRING`; when the
 table ends the state returns to `IDLE`, so every shot needs its own `ARM`.
@@ -375,6 +378,54 @@ Checked in this order: `ERR 6` a fault is latched, `ERR 13` not `ARMED`,
 end of the table, or at once on any fault (including `GENERAL:TEST:FAULT`).
 The table can't be changed while `FIRING` (`TABLE:BEGIN`/`STEP` give
 `ERR 13`).
+
+### External shot trigger: `EXTernal:TRIGger`, `EXTernal:TRIGger?`, `EXTernal:TRIGger:INPut?`, `EXTernal:TRIGger:STATus?`
+
+Added 2026-10-20 (source: `src/app/control/shot_trigger.c`, `shot_start.c`; same command names and meaning as XREX's). A **rising edge on PF15**
+(`Fiber_Enable` in `docs/pin_mapping_v4.csv`) **while the controller is `ARMED`** starts the shot exactly as `FIRE` would: the same checks and the same
+start (`ShotStart_Run()`, which `FIRE` now also uses), open or closed loop alike. **On at every boot** (`SHOT_TRIGGER_DEFAULT_ENABLED`, `ctrlr_config.h`);
+`EXTernal:TRIGger 0` turns it off for a session. It is not stored in saved profiles.
+
+**It is handled by interrupts, not by polling.** PF15 is a digital input with a pull-down (an unwired or floating pin reads LOW) and an interrupt on the **rising
+edge only** (EXTI line 15, `board_io.c`). The edge interrupt (priority 1, the fault tier) does a few instructions: it counts the edge, ignores it unless the trigger
+is enabled, the state is `ARMED` and the pin **still reads HIGH** (a glitch shorter than the interrupt latency is rejected), and pends a software interrupt (the
+unused CORDIC's vector, priority 2). That one starts the shot. The start is not done in the edge interrupt itself because it takes a few hundred microseconds (it
+fills the ring of period entries and starts the HRTIM) and the EXTI vector is shared with the gate-driver fault inputs at the priority of the per-period interrupt;
+at priority 2 a fault stop and the first period of the shot can both preempt it.
+
+```
+> EXTernal:TRIGger?
+< OK 1
+> EXTernal:TRIGger:INPut?
+< OK 0                              the raw level of PF15 right now (whether or not the trigger is on)
+> ARM
+< OK
+  ... PF15 rises ...
+> STATE?
+< OK FIRING                         the shot is running; it ends by itself as after FIRE
+> EXTernal:TRIGger:STATus?
+< OK enabled=1 input=1 edges=1 started=1 ignored_disabled=0 ignored_state=0 ignored_glitch=0 refused=0 busy=0 last=STARTED
+```
+
+- **`EXTernal:TRIGger <0|1>`** -- `OK`; `ERR 12` for anything but `0` or `1`.
+- **`EXTernal:TRIGger?`** -- `OK <0|1>`.
+- **`EXTernal:TRIGger:INPut?`** -- `OK <0|1>`: the raw level of PF15.
+- **`EXTernal:TRIGger:STATus?`** -- `key=value` fields (parse by key): `enabled`, `input`, and counters since boot: `edges` (rising edges seen), `started` (shots
+  started by an edge), `ignored_disabled`, `ignored_state` (not `ARMED`: idle, a shot running, faulted), `ignored_glitch` (the pin was LOW again), `refused` (an
+  edge tried to start a shot and was refused) of which `busy`; and `last`, the result of the latest attempt: `NONE` (never tried), `STARTED`, `FAULT`, `NOT_ARMED`,
+  `NO_SHOT`, `CONTROL:<n>` (a closed-loop refusal, `n` the control-runtime result code), `BUSY`, `CHANGED`. This is the only record of *why* a trigger did not start a
+  shot, because nobody is waiting for a reply.
+
+**Rules.**
+- **Edge-triggered.** A level already HIGH when `ARM` is sent produces no edge and starts nothing. After a **refused** start (nothing uploaded, a latched fault, a
+  closed-loop refusal) the controller stays `ARMED` and a **new** rising edge is needed; the level staying HIGH is not one.
+- **Only from `ARMED`.** An edge in `IDLE`, `FIRING` or `FAULT` is counted and ignored.
+- **A `FIRE` and a trigger cannot start two shots.** A claim taken with interrupts masked lets only one start run; an edge that arrives while a `FIRE` command is
+  being processed is refused as `BUSY` (the `FIRE` is already starting the shot).
+- **Everything else is `FIRE`'s:** a latched fault, `ARM` first, a shot (or closed-loop target) uploaded, a usable supply mode; and the shot, and the state going back
+  to `IDLE` at its end, are the same.
+- **No interlock input.** Unlike XREX there is no external-*enable* input (PF13) in this firmware: the trigger is the only external input.
+- **Not yet verified with a real signal** (see `docs/changelog.txt`, 2026-10-20).
 
 ### Operating state: `ARM`, `DISARM`, `STATE?`, `GENERAL:TEST:FAULT`
 
@@ -512,9 +563,9 @@ PA4 (`AnalogOut_01`, DAC1 channel 1) and PA5 (`AnalogOut_02`, DAC1 channel 2) ar
 
 - Voltage in volts, up to 3 decimals; channel 1 or 2. The value is rounded to the
   nearest of 4096 steps (0.8 mV at 3.3 V).
-- Full scale is `ANALOG_VREF_MV` (`ctrlr_config.h`, 2.500 V): the voltage the
+- Full scale is `ANALOG_VREF_MV` (`ctrlr_config.h`; 2.900 V in the current build, earlier builds 2.500 V): the voltage the
   internal reference buffer puts on VREF+ (see "Analog reference" below). The
-  default range is therefore 0 to 2.500 V, not 3.3 V.
+  default range is therefore 0 to `ANALOG_VREF_MV` (2.900 V now), not 3.3 V.
 - The last field of the query is read back from the DAC hardware; it equals the
   commanded code once the DAC has taken the value.
 

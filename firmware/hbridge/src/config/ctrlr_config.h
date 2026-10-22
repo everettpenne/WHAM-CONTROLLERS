@@ -198,6 +198,10 @@
  * holds it. Filling the ring takes ~240 cycles per entry with interrupts masked
  * inside FIRE.
  * -------------------------------------------------------------------------- */
+/* External shot trigger: a rising edge on PF15 ("Fiber_Enable") while ARMED starts the shot exactly as FIRE would
+   (EXTernal:TRIGger). 1 = on at every boot, like XREX; EXTernal:TRIGger 0 turns it off for a session. */
+#define SHOT_TRIGGER_DEFAULT_ENABLED  (1U)
+
 #define SHOT_SETPOINT_MAX        (500U)
 #define SHOT_MAX_DURATION_US     (1000000UL)
 #define PFM_TABLE_SIZE           (100U)

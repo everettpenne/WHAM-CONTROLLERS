@@ -38,7 +38,7 @@ extern "C" {
  *   cmd_adc.c      ADC:* (the four analog inputs, PA0/PA1/PC0/PB0)
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, GENERAL:TEST:FAULT
- *   cmd_io.c       GDS?, DIAGnostic:LEDs?
+ *   cmd_io.c       GDS?, GDS:LAST?, DIAGnostic:LEDs?, EXTernal:TRIGger*
  *   cmd_pfmin.c    PFMIN:*
  *   cmd_phase.c    PHASe:ENAble/SELect (which of U, V, W drive their gate drivers)
  * Shared reply/precondition helpers live in cmd_common.c/.h.
@@ -304,6 +304,11 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r);   /* ERR for
 void CmdTarget_Discard(void);                                      /* drops the target profile */
 
 void cmd_gds_last_query(uart_instance_t *inst, char *args);       /* GDS:LAST? -- pins at the last latched fault */
+/* External shot trigger (a rising edge on PF15 while ARMED starts the shot; shot_trigger.h) */
+void cmd_ext_trigger(uart_instance_t *inst, char *args);              /* EXTernal:TRIGger <0|1> */
+void cmd_ext_trigger_query(uart_instance_t *inst, char *args);        /* EXTernal:TRIGger? -- OK <0|1> */
+void cmd_ext_trigger_input_query(uart_instance_t *inst, char *args);  /* EXTernal:TRIGger:INPut? -- OK <0|1>, the raw PF15 level */
+void cmd_ext_trigger_status_query(uart_instance_t *inst, char *args); /* EXTernal:TRIGger:STATus? -- counters and the last result */
 
 /* Analog inputs (adc.h), see cmd_adc.c */
 void cmd_adc_input_query(uart_instance_t *inst, char *args);      /* ADC:INPut? <1-4> -- OK <volts> <code> */

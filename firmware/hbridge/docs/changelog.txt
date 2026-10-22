@@ -1,6 +1,47 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-20  -  External shot trigger: a rising edge on PF15 while ARMED starts the shot (interrupt-driven)  [FLASHED to the bench board; command layer verified; NOT YET TESTED WITH A REAL EDGE]
+-----------------------------------------------------------------------
+  Request: the HBRIDGE should fire on a rising edge at PF15 like the XREX; handled as an interrupt, not polled; "assuming all shot conditions are met".
+  Design (src/app/control/shot_trigger.c, shot_start.c; board_io.c, mcu.c, Core/Src/stm32g4xx_it.c):
+    - PF15 (Fiber_Enable): input, pull-down (floating reads LOW), interrupt on the RISING edge only, EXTI line 15 on the EXTI15_10 vector shared with
+      the gate-driver inputs PE10/PE11 (priority 1). The handler clears the line and calls ShotTrigger_OnEdge(): count the edge, ignore it unless the trigger
+      is enabled, the state is ARMED and the pin still reads HIGH (rejects a glitch shorter than the interrupt latency), then pend a software interrupt.
+    - The start runs in that software interrupt (the unused CORDIC's vector, priority 2, Mcu_StartIrqInit/Pend), NOT in the edge handler: the start fills
+      the ring of period entries (~200 us) and starts the HRTIM, and the EXTI vector is at the priority of the per-period interrupt, so doing it there would
+      hold up a gate-driver fault stop and the first period of the shot. At priority 2 both preempt it.
+    - cmd_fire()'s body moved to ShotStart_Run() (shot_start.c) so FIRE and the trigger run the SAME checks and start: a latched fault, ARMED, closed loop
+      (Control_Prepare / SM_Fire / Control_Go) or the open-loop shot (PFM_RestoreOpenSource / PFM_ShotReady / SM_Fire). A claim flag taken with interrupts masked
+      lets only one start run: a trigger arriving while a FIRE command is being processed is refused as BUSY. AnyFaultLatched() is now ShotStart_FaultLatched().
+    - EXTernal:TRIGger <0|1>, EXTernal:TRIGger?, EXTernal:TRIGger:INPut? (raw PF15), and EXTernal:TRIGger:STATus? (counters and the last result: the only
+      record of why a trigger did not start a shot). On at every boot (SHOT_TRIGGER_DEFAULT_ENABLED = 1, ctrlr_config.h), as on XREX; not stored in profiles.
+    - Not ported: the external ENABLE interlock (PF13). XREX is unchanged (it still POLLS PF15 in its 1 kHz control tick).
+  Tests: tests/test_shot_trigger.c (50 checks): the order and results of ShotStart_Run, closed loop and its rollback, one start at a time (a nested start is BUSY), an edge
+        starts nothing itself (the software interrupt does), disabled / not ARMED / glitch edges ignored, a refused start leaves it ARMED and needs a new edge, a trigger
+        during FIRE is BUSY. All host tests pass; wham_build.py clean (the image is 106,048 bytes, was 104,684).
+  Flashed 2026-10-20 to the bench board (the simulator board running HBRIDGE) through the hub with fw_update.py, user-confirmed bench check first: CRC verified, bank 2,
+        back in 0.16 s, bb7f3af5-dirty. Verified on it: EXTernal:TRIGger? = 1 at boot; :INPut? = 0 with nothing connected; :STATus? all zero and last=NONE (no spurious edge at boot);
+        EXTernal:TRIGger 0/1 and the short form EXT:TRIG:STAT?; ERR 12 for a bad or missing argument. The old image is still in bank 1 (python/fw_update.py --rollback).
+  NOT DONE: a test with a real rising edge on PF15 (needs a source: a wire from a 3.3 V output, or the fibre receiver's signal); the memory report; the commit.
+
+2026-10-20  -  LabVIEW interface guide and operator's guide (documentation only, no firmware change)
+-----------------------------------------------------------------------
+  New: docs/labview_interface.md (the front-end contract for this controller, the HBRIDGE counterpart of XREX's file of the same name) and docs/operators_guide.md
+        (architecture, safety model, procedures, fault response, verification status; site-specific tables left to fill in).
+  Corrected in docs/command_reference.md: the analog full scale is ANALOG_VREF_MV, 2.9 V in the current build (the DAC/ADC section still said 2.500 V).
+  New: docs/examples/limiter_per_phase_duty_shot/ -- a worked example for operators: a Limiter shot with a different duty profile on each phase, run through the hub on the simulator
+        board (script, plot, measured data, client transcript and the hub's own log). Measured duty reads ~2 points below programmed on every phase (the known dead-time offset), constant across
+        the shot, spread 0.02-0.04 points. One cycle of phase V (cycle 222, ~2.2 ms) has a 20 us period (a missing edge): not understood, flagged in the data, no fault raised.
+  Found while writing: ARM does not check the supply mode (cmd_arm refuses on a latched fault, not IDLE, or no phase enabled); with no mode there is no shot, so FIRE answers ERR 5.
+
+2026-10-15  -  net_client.py asks the host service to timestamp every line (host tools only, no firmware change)
+-----------------------------------------------------------------------
+  python/net_client.py (identical in both products) now sends "!hub timestamps on" after its "@name" line in interactive mode, so a person typing at it sees
+        [HH:MM:SS.mmm] before every line when it is connected to host/wham_hub.py (--no-timestamps for net_broker.py, which does not know the command; one-shot
+        --send mode is never stamped). The service side, in host/wham_hub.py, is per connection and off by default so fw_update.py, wham_console.py and
+        LabVIEW still get bare lines.
+
 2026-10-15  -  GDS:LAST? documented (docs only, no firmware change)
 -----------------------------------------------------------------------
   GDS:LAST? existed in the command table and cmd_io.c (added while chasing the bench fault of 2026-10-13) but was in neither command_reference.md nor the

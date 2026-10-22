@@ -7,6 +7,7 @@
  */
 #include "commands.h"
 #include "cmd_common.h"
+#include "shot_start.h"
 #include "ctrlr_config.h"
 #include "pfm.h"
 #include "hrtim.h"
@@ -235,53 +236,37 @@ void cmd_table_query(uart_instance_t *inst, char *args)
 
 void cmd_fire(uart_instance_t *inst, char *args)
 {
+    shot_start_result_t r;
+
     (void)args;
 
-    if (AnyFaultLatched() != 0U)
+    /* The whole start, and the checks before it, are ShotStart_Run() (shot_start.c): the same routine the external
+       trigger (PF15, shot_trigger.c) runs, so a FIRE and a trigger can never disagree about what is allowed. */
+    r = ShotStart_Run();
+    switch (r.code)
     {
-        Scpi_SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
-        return;
+        case SHOT_START_OK:
+            Scpi_ReplyOk(inst);
+            break;
+        case SHOT_START_FAULT:
+            Scpi_SendErr(inst, ERR_FAULT_LATCHED, "Fault latched -- send FAULT:CLEAR first");
+            break;
+        case SHOT_START_NOT_ARMED:
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
+            break;
+        case SHOT_START_CONTROL:
+            (void)Cmd_ReportCtlResult(inst, r.ctl);
+            break;
+        case SHOT_START_NO_SHOT:
+            Scpi_SendErr(inst, ERR_TABLE_EMPTY, "Nothing to fire -- upload a shot first (SHOT:BEGin/STEP/END)");
+            break;
+        case SHOT_START_BUSY:
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- a shot start is already in progress");
+            break;
+        default:
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");   /* narrow race only */
+            break;
     }
-
-    if (SM_GetState() != SM_STATE_ARMED)
-    {
-        Scpi_SendErr(inst, ERR_INVALID_STATE, "Not ARMED -- send ARM first");
-        return;
-    }
-
-    if (Control_ClosedRunWanted() != 0U)
-    {
-        /* closed loop on at least one phase: the TARGet:* profile for the closed ones (and the SHOT:* profile for any
-           open ones), played by the controller through the live source */
-        if (Cmd_ReportCtlResult(inst, Control_Prepare(1U)) != 0U)
-        {
-            return;
-        }
-        if (SM_Fire() == 0U)
-        {
-            Control_Stop();
-            Scpi_SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");
-            return;
-        }
-        Control_Go();
-        Scpi_ReplyOk(inst);
-        return;
-    }
-    PFM_RestoreOpenSource();        /* an open-loop shot after a closed-loop run plays the uploaded shot again */
-
-    if (PFM_ShotReady() == 0U)
-    {
-        Scpi_SendErr(inst, ERR_TABLE_EMPTY, "Nothing to fire -- upload a shot first (SHOT:BEGin/STEP/END)");
-        return;
-    }
-
-    if (SM_Fire() == 0U)
-    {
-        Scpi_SendErr(inst, ERR_INVALID_STATE, "FIRE refused -- state changed");   /* narrow race only */
-        return;
-    }
-
-    Scpi_ReplyOk(inst);
 }
 
 /* --------------------------------------------------------------------------

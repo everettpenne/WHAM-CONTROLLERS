@@ -37,8 +37,10 @@ extern "C" {
  *   state stays FAULT. Otherwise IDLE -- never straight back to ARMED.
  *
  * Not ported from XREX (not part of this product, or deferred): the PID
- * ramp-downs, per-channel fault types, the external enable/trigger inputs
- * (PF13/PF15), DEBUG:FAULT:BYPASS and telemetry events.
+ * ramp-downs, per-channel fault types, the external ENABLE interlock (PF13),
+ * DEBUG:FAULT:BYPASS and telemetry events. (The external TRIGGER, PF15, was
+ * ported 2026-10-20 as shot_trigger.c, interrupt-driven; it starts the shot
+ * through ShotStart_Run(), shot_start.c, the same routine FIRE uses.)
  */
 
 typedef enum

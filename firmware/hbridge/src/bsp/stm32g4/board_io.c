@@ -76,6 +76,29 @@ void BoardIo_Init(void)
       HAL_NVIC_SetPriority(EXTI15_10_IRQn, 1U, 0U);
       HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
   }
+
+  /* External shot trigger: PF15, rising edge only, pull-down (an unwired or floating pin reads LOW, never a
+     spurious HIGH). EXTI line 15 is routed to port F by SYSCFG_EXTICR4 (HAL_GPIO_Init does it); no other pin
+     uses line 15 (PE15 is QUADSPI, an alternate function). Its vector, EXTI15_10, is already enabled above at
+     priority (1,0) for PE10/PE11: the handler only clears the pending bit and calls ShotTrigger_OnEdge(), which
+     pends a lower-priority software interrupt for the real work (shot_trigger.c), so the safety tier is never
+     held up by a shot start. Any edge before the application has started is ignored: nothing is ARMED then. */
+  {
+      GPIO_InitTypeDef trigInit = {0};
+
+      __HAL_RCC_GPIOF_CLK_ENABLE();
+      __HAL_RCC_SYSCFG_CLK_ENABLE();
+      trigInit.Pin  = GPIO_PIN_15;
+      trigInit.Mode = GPIO_MODE_IT_RISING;
+      trigInit.Pull = GPIO_PULLDOWN;
+      HAL_GPIO_Init(GPIOF, &trigInit);
+      __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_15);          /* an edge that came while the pin was being configured */
+  }
+}
+
+uint8_t BoardIo_ReadExtTrigger(void)
+{
+    return ((GPIOF->IDR & GPIO_PIN_15) != 0U) ? 1U : 0U;
 }
 
 uint16_t BoardIo_ReadGateDriverStatus(void)

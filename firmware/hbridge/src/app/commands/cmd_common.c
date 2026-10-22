@@ -3,6 +3,7 @@
  * cmd_common.h.
  */
 #include "cmd_common.h"
+#include "shot_start.h"
 #include "hrtim.h"
 #include "gate_driver.h"
 #include "pfm.h"
@@ -16,6 +17,5 @@
    fault state at the command layer. */
 uint8_t AnyFaultLatched(void)
 {
-    return (HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) || (PFM_UnderrunLatched() != 0U) ||
-           ((SM_GetFaultSources() & (SM_FAULT_SRC_OVERVOLT | SM_FAULT_SRC_FEEDBACK)) != 0U);
+    return ShotStart_FaultLatched();
 }

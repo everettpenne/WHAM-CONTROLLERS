@@ -41,6 +41,14 @@ void Mcu_SetSysTickHighestPriority(void);
 void Mcu_RefillIrqInit(void);
 void Mcu_RefillIrqPend(void);
 
+/* A second software-triggered interrupt, for the external shot trigger (shot_trigger.c): the PF15 edge interrupt
+   (priority 1) pends it and the shot is started from it, at priority 2 -- below the per-period interrupt and the
+   fault/EXTI tier (1), so a shot start can never delay a fault stop or the first period of the shot it is starting.
+   The handler is Core/Src/stm32g4xx_it.c's CORDIC_IRQHandler() (the CORDIC is not used), which calls
+   ShotTrigger_RunPending(). Init once; Pend may be called from any interrupt or thread. */
+void Mcu_StartIrqInit(void);
+void Mcu_StartIrqPend(void);
+
 /* Boot-related option bits (DIAGnostic:OPTBytes?). */
 typedef struct
 {

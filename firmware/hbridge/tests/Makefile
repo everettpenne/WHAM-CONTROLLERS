@@ -17,7 +17,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
 SCPI_UTIL := $(ROOT)/src/middleware/scpi/scpi_util.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_settings $(OUT)/test_closed_loop
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_settings $(OUT)/test_closed_loop $(OUT)/test_shot_trigger
 
 .PHONY: all run clean
 all: run
@@ -44,6 +44,10 @@ $(OUT)/test_command_table: test_command_table.c known_short_collisions.inc $(OUT
 $(OUT)/test_state_machine: test_state_machine.c $(ROOT)/src/app/control/state_machine.c \
                            $(ROOT)/src/app/control/state_machine.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -o $@ test_state_machine.c $(ROOT)/src/app/control/state_machine.c
+
+$(OUT)/test_shot_trigger: test_shot_trigger.c $(ROOT)/src/app/control/shot_start.c $(ROOT)/src/app/control/shot_trigger.c \
+                          $(ROOT)/src/app/control/shot_start.h $(ROOT)/src/app/control/shot_trigger.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(ROOT)/src/app/sim -o $@ test_shot_trigger.c $(ROOT)/src/app/control/shot_start.c $(ROOT)/src/app/control/shot_trigger.c
 
 $(OUT)/test_supply_mode: test_supply_mode.c $(ROOT)/src/app/control/supply_mode.c \
                          $(ROOT)/src/app/control/supply_mode.h test_util.h | $(OUT)

@@ -121,6 +121,10 @@ static const scpi_command_t command_table[] = {
     { "LOG:DATA?",                          cmd_log_data },
 
     { "GDS:LAST?",           cmd_gds_last_query   },
+    { "EXTernal:TRIGger",        cmd_ext_trigger              },
+    { "EXTernal:TRIGger?",       cmd_ext_trigger_query        },
+    { "EXTernal:TRIGger:INPut?", cmd_ext_trigger_input_query  },
+    { "EXTernal:TRIGger:STATus?", cmd_ext_trigger_status_query },
 
     /* The analog inputs -- see cmd_adc.c. */
     { "ADC:INPut?",          cmd_adc_input_query  },

@@ -93,8 +93,10 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
   (ERR 13 while FIRING), `BOOT` (ERR 13 while ARMED/FIRING), `FWUPdate:*`
   (ERR 13 unless IDLE). Host-tested (`tests/test_state_machine.c`, fakes
   for the PFM engine, HRTIM fault flag, gate-driver latch and IRQ masking).
-  Not ported yet: external enable/trigger (PF13/PF15), DEBUG:FAULT:BYPASS,
-  telemetry events (Phase 5).
+  The external SHOT TRIGGER (a rising edge on PF15 while ARMED starts the shot, `EXTernal:TRIGger`, added 2026-10-20) IS ported, and is
+  interrupt-driven rather than polled as in XREX: `src/app/control/shot_trigger.c` (edge handler, priority 1, pends a software interrupt)
+  and `shot_start.c` (the one start routine FIRE and the trigger share; host-tested in `tests/test_shot_trigger.c`). Not ported yet:
+  the external ENABLE interlock (PF13), DEBUG:FAULT:BYPASS, telemetry events (Phase 5).
 - **Firmware update, boot diagnostics, `!BOOT` banner** (added
   2026-09-29, Phase 2 of the port from WHAM-XREX-PFMG474; `flash_bank.c`,
   `boot_diag.c`, `cmd_fwupdate.c`, `cmd_system.c`): `FWUPdate:*`
@@ -961,6 +963,9 @@ for the current standard to match.
 | Doc | Contents |
 |---|---|
 | `docs/command_reference.md` | Every serial command, SCPI matching rules, error codes |
+| `docs/labview_interface.md` | The LabVIEW front-end contract for this controller (framing through the hub, supply mode, phases, open and closed loop, polling, faults, logging, worked sequences). Counterpart of XREX's file of the same name; the hub, state and command guides it builds on are `docs/labview_*.md` at the repository top. |
+| `docs/examples/limiter_per_phase_duty_shot/` | A worked, real example for operators: one Limiter shot with a different duty profile on each phase, run through the hub, with the script, the plot, the measured data and the full transcript. See its README. |
+| `docs/operators_guide.md` | For operators: the system architecture, safety model, step-by-step procedures, fault response, and what has and has not been verified. Has site-specific tables to fill in. |
 | `docs/serial_reflash_guide.md` | How to use `wham_serial_flash.py`, the BOOT mechanism, the VTOR/MEMRMP fix, troubleshooting |
 | `docs/changelog.txt` | Running change log, dated entries, root causes for fixes |
 | `docs/memory_history.csv` + `docs/memory_report.html` | Flash/RAM footprint, tracked per commit since project start -- see `python/memory_report.py`'s entry above for how/when to regenerate |

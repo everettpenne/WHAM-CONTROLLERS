@@ -87,6 +87,17 @@ void Mcu_RefillIrqPend(void)
     NVIC_SetPendingIRQ(FMAC_IRQn);
 }
 
+void Mcu_StartIrqInit(void)
+{
+    HAL_NVIC_SetPriority(CORDIC_IRQn, 2U, 0U);
+    HAL_NVIC_EnableIRQ(CORDIC_IRQn);
+}
+
+void Mcu_StartIrqPend(void)
+{
+    NVIC_SetPendingIRQ(CORDIC_IRQn);
+}
+
 void Mcu_ReadOptionBytes(mcu_option_bytes_t *ob)
 {
     uint32_t optr = FLASH->OPTR;

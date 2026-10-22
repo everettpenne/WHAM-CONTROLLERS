@@ -26,6 +26,7 @@
 #include "hrtim_hw.h"
 #include "pfm.h"
 #include "gate_driver.h"
+#include "shot_trigger.h"
 #include "pfm_input_hw.h"
 #include "adc_hw.h"
 #include "boot_diag.h"
@@ -233,6 +234,13 @@ void FMAC_IRQHandler(void)
     PFM_RefillHandler();
 }
 
+/* Software-triggered start of the shot by the external trigger (mcu.h, shot_trigger.c). The CORDIC peripheral is
+   not used either; its vector is a second free software interrupt, at priority 2 like the refill. */
+void CORDIC_IRQHandler(void)
+{
+    ShotTrigger_RunPending();
+}
+
 /**
   * @brief  Rx Transfer completed callback.
   *
@@ -378,10 +386,10 @@ void EXTI15_10_IRQHandler(void)
     uint16_t pin;
     uint8_t  fired = 0U;
 
-    /* Only PE10/PE11 belong to GateDriverStatus -- lines 12..15 are
-       not checked/cleared here (nothing else in this project uses
-       them, and PE12 is unconnected on this board, see
-       docs/pin_mapping_v4.csv). */
+    /* Only PE10/PE11 belong to GateDriverStatus here; line 15 is the
+       external shot trigger (PF15), handled below. Lines 12..14 are
+       not checked/cleared (nothing uses them, and PE12 is unconnected
+       on this board, see docs/pin_mapping_v4.csv). */
     for (pin = GPIO_PIN_10; pin <= GPIO_PIN_11; pin <<= 1U)
     {
         if (__HAL_GPIO_EXTI_GET_IT(pin) != 0U)
@@ -394,6 +402,14 @@ void EXTI15_10_IRQHandler(void)
     if (fired != 0U)
     {
         GateDriver_CheckFault();
+    }
+
+    /* PF15, the external shot trigger (rising edge only, board_io.c): clear the line and hand the edge to
+       ShotTrigger_OnEdge(), which does a few instructions and pends the software interrupt below. */
+    if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_15) != 0U)
+    {
+        __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_15);
+        ShotTrigger_OnEdge();
     }
 }
 
