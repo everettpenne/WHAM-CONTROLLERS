@@ -271,6 +271,7 @@ A line beginning `!hub` is answered by the hub, not sent to the controller. The 
 | `!hub clients` | `# hub clients: <n>` followed by one `#` line per client: name, address, how long connected, how long idle, how many commands and dangerous commands sent, and whether quiet |
 | `!hub identify` | makes the hub ask the controller who it is again, and refreshes the fields in `!hub status` |
 | `!hub quiet on` / `off` | switches quiet mode (`# hub: quiet on`) |
+| `!hub timestamps on` / `off` | makes **every** line the hub sends you start with `[HH:MM:SS.mmm] ` (the hub's local time). Meant for a person at a terminal; **do not turn it on in a program**, unless you strip the prefix before classifying lines (section 4) |
 | `!hub confirm` / `!hub cancel` | releases or discards **your own** held dangerous command (section 8) |
 
 Parse `!hub status` by splitting on spaces and then at the first `=`; do not rely on field order, because fields can be added. Fields

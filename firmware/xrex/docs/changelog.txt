@@ -1,6 +1,19 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-10-20  -  Operator's guide; LabVIEW interface note about the hub (documentation only, no firmware change)
+-----------------------------------------------------------------------
+  New: docs/operators_guide.md (the system architecture from the Transrex upgrade plan, the safety model, step-by-step shot procedures, fault response, what is verified).
+  docs/labview_interface.md: a note at the top that LabVIEW now connects through the hub and to ignore the serial parameters; points at the three LabVIEW guides at the repository top.
+  Observed: docs/command_reference.md says the log holds 1000 samples; PID_LOG_MAX_SAMPLES in pid.h is 1750 (the LabVIEW file was right).
+
+2026-10-15  -  net_client.py asks the host service to timestamp every line (host tools only, no firmware change)
+-----------------------------------------------------------------------
+  python/net_client.py (identical in both products) now sends "!hub timestamps on" after its "@name" line in interactive mode, so a person typing at it sees
+        [HH:MM:SS.mmm] before every line when it is connected to host/wham_hub.py (--no-timestamps for net_broker.py, which does not know the command; one-shot
+        --send mode is never stamped). The service side, in host/wham_hub.py, is per connection and off by default so fw_update.py, wham_console.py and
+        LabVIEW still get bare lines.
+
 2026-10-14  -  Shared SCPI layer: Scpi_ReplyU32List, one list reply of any length; PFM:GAPLOG? uses it; shared tests build under gcc 13
 -----------------------------------------------------------------------
   HBRIDGE's PFM:GAPLOG? overran its 2600-byte reply buffer for a long gap log (up to 3800 entries there). XREX's copy of the handler is safe at

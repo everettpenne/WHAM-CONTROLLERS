@@ -1,5 +1,11 @@
 # WHAM-XREX-PFMG474 — LabVIEW Interface Command Reference
 
+> **Note (2026-10):** a LabVIEW program now talks to the controller **through the hub**, not over a serial port: connect over TCP and send
+> `@quiet <name>` first. Ignore the baud-rate, parity and VISA parts of section 1; everything else (commands, replies, error codes, the `!EVT`
+> stream) applies unchanged. The connection, the operating states and faults, and the command sets are described in `docs/labview_hub_guide.md`,
+> `docs/labview_state_and_faults.md` and `docs/labview_commands.md` at the top of the repository, and an operator's view is in `operators_guide.md`.
+> The waveform log holds up to 1750 samples; check `SYS:TELEM?` for the event-format version rather than assuming one.
+
 This document is the complete serial-command contract a LabVIEW programmer
 needs to build a control front-end for the **WHAM-XREX-PFMG474** (the
 closed-loop PID controller driving four Transrex ISR-2126 magnet power

@@ -1,0 +1,81 @@
+{
+  "shot": {
+    "mode": "LIMITER",
+    "carrier_hz": 100000,
+    "duration_us": 10000,
+    "setpoints": 3,
+    "duties_pct_per_phase": {
+      "U": [
+        20.0,
+        50.0,
+        80.0
+      ],
+      "V": [
+        80.0,
+        50.0,
+        20.0
+      ],
+      "W": [
+        50.0,
+        90.0,
+        50.0
+      ]
+    }
+  },
+  "measurement": {
+    "U": {
+      "cycles": 999,
+      "cycles_flagged": 1,
+      "flagged_cycles": [
+        {
+          "cycle": 0,
+          "time_us": 0.0,
+          "period_us": 15.7,
+          "why": "startup"
+        }
+      ],
+      "mean_error_pct_points": -1.96,
+      "std_error_pct_points": 0.02,
+      "max_abs_deviation_from_mean_pct_points": 0.08,
+      "mean_carrier_hz": 100058.8
+    },
+    "V": {
+      "cycles": 999,
+      "cycles_flagged": 2,
+      "flagged_cycles": [
+        {
+          "cycle": 0,
+          "time_us": -3.3,
+          "period_us": 9.882,
+          "why": "startup"
+        },
+        {
+          "cycle": 222,
+          "time_us": 2215.3,
+          "period_us": 19.988,
+          "why": "odd period"
+        }
+      ],
+      "mean_error_pct_points": -1.88,
+      "std_error_pct_points": 0.03,
+      "max_abs_deviation_from_mean_pct_points": 0.1,
+      "mean_carrier_hz": 100058.9
+    },
+    "W": {
+      "cycles": 999,
+      "cycles_flagged": 1,
+      "flagged_cycles": [
+        {
+          "cycle": 0,
+          "time_us": -6.7,
+          "period_us": 12.782,
+          "why": "startup"
+        }
+      ],
+      "mean_error_pct_points": -1.96,
+      "std_error_pct_points": 0.04,
+      "max_abs_deviation_from_mean_pct_points": 0.11,
+      "mean_carrier_hz": 100058.9
+    }
+  }
+}

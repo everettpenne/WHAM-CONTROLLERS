@@ -232,7 +232,8 @@ Consequences for the front-end:
 | Which of the twelve gate-driver status inputs were in fault when `GATEDRV` last latched? | `GDS:LAST?` (`OK <pins> <checks>`, see below) | HBRIDGE |
 | Raw levels of one channel's Water, Temperature, Enerpro and OCP inputs | `XREX:CHANnel:STATus? <ch>` (`OK WATER=HIGH TMP=LOW ENERPRO=LOW OCP=LOW`) | XREX |
 | Raw levels of the twelve gate-driver status inputs | `GDS?` (`OK 01=HIGH 02=LOW ...`) | both |
-| Interlock and trigger input levels | `EXTernal:INPut?`, `EXTernal:TRIGger:INPut?` | XREX |
+| Interlock and trigger input levels | `EXTernal:INPut?` (XREX only), `EXTernal:TRIGger:INPut?` (both products) | see the product |
+| Did the external trigger start the shot, or why not? | `EXTernal:TRIGger:STATus?` | HBRIDGE (XREX has the `!EVT ... TRIGGER FIRING` event) |
 | What happened, in order, since boot | `SYS:EVLOG?` | XREX |
 | Why did the controller last reset? | `DIAGnostic:RSTCause?` | both |
 
@@ -308,7 +309,7 @@ and is meant for the operator). Codes are stable across firmware versions; texts
 | `ERR 15 External enable interlock not satisfied ...` | the external-enable interlock is switched on (**it is ON by default**) and its input reads LOW. An unwired bench controller always does |
 | `ERR 13 Channel <n>'s ENA_OUT/CONTACT_OUT not both set ...` | an enabled channel's two "ready to energize" outputs are not both HIGH. Set `XREX:CHANnel:ENAOut` and `XREX:CHANnel:CONTactOut` first |
 | `ERR 6 ...` (HBRIDGE) | a fault is latched |
-| `ERR 13 ...` (HBRIDGE) | not `IDLE`, or no phase is enabled (`PHASe:ENAble`), or no supply mode is selected |
+| `ERR 13 ...` (HBRIDGE) | not `IDLE`, or no phase is enabled (`PHASe:ENAble`) (`ARM` does not check the supply mode; with none selected there is no shot, so `FIRE` answers `ERR 5`) |
 
 Only the **first** failing precondition is reported. Fix it and send `ARM` again to learn whether another remains.
 
@@ -324,16 +325,16 @@ XREX: `SHOT:STARt` (profiled, ends by itself) and `SOURce:RUN` (continuous, ends
 | `ERR 15 ...` | the external-enable interlock input is LOW (XREX; also checked again at the instant of firing) |
 | `ERR 12 SHOT:TIMing must be set before SHOT:STARt` | XREX: no shot timing has been set since boot |
 | `ERR 5` | HBRIDGE: nothing uploaded to play, or a phase that needs a shot (open loop) has none |
-| `ERR 13` | HBRIDGE: `SOURce:RUN` needs every enabled phase in closed loop; or the supply mode/phases are not set |
+| `ERR 13` | HBRIDGE: `SOURce:RUN` needs every enabled phase in closed loop (`ERR 13` also when none is) |
 
 Re-checking the interlock **again at the instant of firing** means a condition that was fine at `ARM` can still refuse the start. Read
 the reply to the start command. Never assume that a successful `ARM` guarantees a successful start.
 
 ---
 
-## 6. External interlocks and trigger (XREX)
+## 6. External interlocks and trigger
 
-Two physical inputs affect state and are worth explaining to operators:
+Two physical inputs affect state and are worth explaining to operators. The **trigger is in both products**; the **external enable is XREX only**.
 
 - **External enable** (`EXTernal:ENAble`, input read back by `EXTernal:INPut?`): a permissive from the facility. **On by default.** When on: `ARM`
   refuses unless the input is HIGH; the start command re-checks it; and while `FIRING` losing it causes `FAULT EXTERNAL_ENABLE`. While merely
@@ -342,7 +343,9 @@ Two physical inputs affect state and are worth explaining to operators:
   live system without knowing why it is not satisfied. The hub logs and announces that command as dangerous.
 - **External trigger** (`EXTernal:TRIGger`): when on, a rising edge on a separate input, while `ARMED`, starts a shot exactly as `SHOT:STARt` would,
   including the interlock re-check. A `!EVT <tick_ms> TRIGGER FIRING` line (XREX) tells you it happened. Your display must handle the state
-  changing from `ARMED` to `FIRING` **without** any command from your program.
+  changing from `ARMED` to `FIRING` **without** any command from your program. **HBRIDGE has it too (since 2026-10-20), with the same name and meaning, but it
+  has no external enable and no `!EVT` stream**: a rising edge on PF15 while `ARMED` starts the shot as `FIRE` does, from an interrupt, with the same refusals
+  as `FIRE`; `EXTernal:TRIGger:STATus?` records the edges and the reason when one did not start a shot. The XREX trigger is polled about once a millisecond; HBRIDGE's is interrupt-driven.
 
 ---
 

@@ -8,6 +8,9 @@ that first.
 
 - [`command_reference.md`](command_reference.md) — every serial command, SCPI
   matching rules, error codes.
+- [`operators_guide.md`](operators_guide.md) — for operators: the system architecture (Transrex supplies, fiber, controller, hub),
+  the safety model, step-by-step shot procedures, fault response, and what has and has not been verified.
+- [`labview_interface.md`](labview_interface.md) — the LabVIEW front-end command contract (see its note about the hub).
 - [`serial_reflash_guide.md`](serial_reflash_guide.md) — the `BOOT`/`stm32flash`
   reflash mechanism, the VTOR/MEMRMP fix, troubleshooting.
 - [`test_protocol.md`](test_protocol.md) — numbered bench test protocol (T0–T4).

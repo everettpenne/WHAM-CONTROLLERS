@@ -234,6 +234,7 @@ CONFig:MODE HVPS ... upload ... ARM -> OK -> FIRE -> OK        (FIRE plays the u
 
 | Command | Reply | Notes |
 |---|---|---|
+| `EXTernal:TRIGger <0\|1>` / `?`, `EXTernal:TRIGger:INPut?`, `EXTernal:TRIGger:STATus?` | `OK` / `OK <0\|1>` / `OK <0\|1>` / `OK enabled=... last=...` | a rising edge on PF15 while `ARMED` **starts the shot like `FIRE`**, from an interrupt (on by default). The state can go `ARMED` to `FIRING` with no command from you. `...STATus?` has the counters and why a trigger did not start a shot. HBRIDGE has no `EXTernal:ENAble` |
 | `FIRE` **DANGEROUS** | `OK` | plays the open-loop shot (and runs any closed phases). Needs `ARMED`. Refusals in order: `ERR 6` fault latched, `ERR 13` not armed, `ERR 5` nothing to play. The state goes `FIRING` and returns to `IDLE` at the end of the shot. **There is no stop-in-the-middle for a shot except a fault or `SOURce:STOP`** |
 | `SOURce:RUN` **DANGEROUS** | `OK` | closed-loop run holding each loop's `SOURce:SETpoint`; every enabled phase must be closed loop (`ERR 13` otherwise) |
 | `SOURce:STOP` | `OK` | |
@@ -279,7 +280,7 @@ and the overvoltage limit (`CONFig:MAXVolts`) are commissioning settings: set on
 | Command | Reply | Notes |
 |---|---|---|
 | `ADC:INPut? <1-4>` | `OK <volts> <code>` | analog inputs 1-4 (PA0, PA1, PC0, PB0), 12-bit, averaged. An unconnected input reads near 0 V |
-| `ADC:VREF?` | `OK <volts> <code> <factory code>` | measured reference; full scale of both the ADC and the DAC (nominally 2.5 V, not 3.3 V) |
+| `ADC:VREF?` | `OK <volts> <code> <factory code>` | measured reference; full scale of both the ADC and the DAC (set in the firmware build by `ANALOG_VREF_MV`: 2.9 V in the current build, not 3.3 V; read it with this command) |
 | `ADC:STATus?` | `OK <running> <tickHz> <scansPerTick> <sampleX10> <scanUs> <blocks>` | the analog sampler's state: whether it is running, the control-tick rate, and its timing and block count. Diagnostic |
 | `DAC:OUTPut <1\|2> <volts>` **DANGEROUS if volts > 0** | `OK` | the two analog outputs (0 to full scale); independent of the state machine, faults and `FIRE`. Up to 3 decimals |
 | `DAC:OUTPut? <1\|2>` | `OK <volts> <code commanded> <code in the DAC>` | |
@@ -327,7 +328,7 @@ Codes are the same in both products and never renumbered. Show the text to the o
 | 10 | a frequency or duty is outside the supply mode's limits (HBRIDGE); a carrier above the maximum (XREX legacy) | fix the value |
 | 11 | invalid channel or loop number | a programming error |
 | 12 | wrong number of arguments, not a number, or out of range, or a precondition such as `SHOT:TIMing` not set | the text says which |
-| 13 | **not allowed in the current state** (`ARM` when not `IDLE`, a start when not `ARMED`, settings while running, no mode selected, an enabled channel's outputs not ready) | read `STATE?`; do not retry |
+| 13 | **not allowed in the current state** (`ARM` when not `IDLE`, a start when not `ARMED`, settings while running, an upload with no supply mode selected, an enabled channel's outputs not ready) | read `STATE?`; do not retry |
 | 14 | XREX: invalid nickname | fix the name |
 | 15 | XREX: the external-enable interlock is on and its input is LOW | satisfy the interlock, or the operator decides |
 | 17 | firmware update failed | not a front-end concern |
