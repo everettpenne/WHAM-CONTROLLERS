@@ -29,6 +29,7 @@ RULES = [
     ("FIRE",                    ANY, "output"),
     ("SOURce:RUN",              ANY, "output"),
     ("SHOT:STARt",              ANY, "output"),
+    ("EXTernal:TRIGger",        ON,  "output"),     # a rising edge on PF15 then starts the shot while ARMED (both products)
     ("SOURce:ENAble",           ON,  "output"),     # XREX: SOURce:ENAble <ch> <0|1>
     ("XREX:CHANnel:ENAOut",     ON,  "output"),     # XREX: a Transrex unit's enable line
     ("XREX:CHANnel:CONTactOut", ON,  "output"),     # XREX: its contactor

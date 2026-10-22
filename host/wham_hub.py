@@ -26,7 +26,12 @@ What it does
   * every line, in both directions, is appended to <log_dir>/<serial>/YYYY-MM-DD.jsonl with a host timestamp, the
     serial, the boot epoch (counts !BOOT lines) and the session (counts connections); log_keep_days prunes old days;
   * a client line starting "!hub" is answered by the service itself:  !hub status | !hub clients (who is connected, from
-    where, how long, what they last sent) | !hub identify | !hub quiet [on|off] | !hub confirm | !hub cancel;
+    where, how long, what they last sent) | !hub identify | !hub quiet [on|off] | !hub timestamps [on|off] | !hub confirm |
+    !hub cancel;
+  * !hub timestamps on makes EVERY line sent to that client start with the time, "[HH:MM:SS.mmm] " in the service's local
+    time (the same clock as the log), for a person reading a terminal. It is per connection and OFF by default, because
+    tools that parse replies (fw_update.py, wham_console.py, LabVIEW) must see them bare; net_client.py turns it on for
+    a person typing at it;
   * several operators may be connected to one controller at once (no lease yet): everyone sees who joins and leaves, and a
     DANGEROUS command (dangerous_commands.py: starts output, arms, weakens a protection, forces/clears a fault, reflashes,
     resets, erases the identity) is announced to all the other clients and logged with its category. With confirm_dangerous
@@ -176,8 +181,9 @@ def build_config(args):
 class ClientInfo:
     """Who is connected: what the service knows about one client."""
 
-    def __init__(self, name, addr, quiet=False):
+    def __init__(self, name, addr, quiet=False, stamp=False):
         self.name, self.addr, self.quiet = name, addr, quiet
+        self.stamp = stamp           # every line sent to this client starts with the time (!hub timestamps)
         self.since = time.time()
         self.last_t = None
         self.last_cmd = ""
@@ -230,6 +236,13 @@ class LineReader:
                 data = data[1:]
             self.after_cr = False
             self.buf += data
+
+
+def stamped(text):
+    """`text` (one or more lines joined by CR LF) with every line starting `[HH:MM:SS.mmm] ` in the service's local time."""
+    now = datetime.datetime.now()
+    prefix = now.strftime("[%H:%M:%S.") + f"{now.microsecond // 1000:03d}] "
+    return "\r\n".join(prefix + line for line in text.split("\r\n"))
 
 
 def hms(seconds):
@@ -391,6 +404,8 @@ class Hub:
         info = self.clients.get(w)
         if info is not None and info.dropped:
             return
+        if info is not None and info.stamp:
+            text = stamped(text)
         data = (text + "\r\n").encode()
         try:
             waiting = w.transport.get_write_buffer_size()
@@ -907,9 +922,13 @@ class Hub:
             if cmd != "quiet":
                 info.quiet = cmd.endswith("on")
             self.write_to(writer, f"# hub: quiet {'on' if info.quiet else 'off'}")
+        elif cmd.split()[:1] == ["timestamps"] and cmd.split()[1:] in ([], ["on"], ["off"]) and info:
+            if cmd != "timestamps":
+                info.stamp = cmd.endswith("on")
+            self.write_to(writer, f"# hub: timestamps {'on' if info.stamp else 'off'}")
         else:
             self.write_to(writer, "# hub: commands are  !hub status  |  !hub clients  |  !hub identify  |  !hub quiet [on|off]  |  "
-                                  "!hub confirm  |  !hub cancel")
+                                  "!hub timestamps [on|off]  |  !hub confirm  |  !hub cancel")
 
     async def run(self):
         server = await asyncio.start_server(self.handle_client, self.cfg["listen_host"], self.cfg["listen_port"])

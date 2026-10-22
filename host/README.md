@@ -10,7 +10,9 @@ Python 3.8+, standard library only (PyYAML is used for configs if installed, but
   each reply to the client that sent the command; a command that gets no reply is answered `ERR hub ...` after a timeout.
   It notices a dead link (TCP keepalive, and an `*IDN?` heartbeat when the controller is silent), reconnects, and disconnects a
   client that stops reading. With `expect_serial` set it refuses to forward commands to a different board.
-  `!hub status`, `!hub clients`, `!hub identify`, `!hub quiet [on|off]`, `!hub confirm` and `!hub cancel` talk to the service itself.
+  `!hub status`, `!hub clients`, `!hub identify`, `!hub quiet [on|off]`, `!hub timestamps [on|off]`, `!hub confirm` and `!hub cancel` talk to the service itself.
+  `!hub timestamps on` makes every line the service sends that connection start with `[HH:MM:SS.mmm] ` (the service's local time, as in the log), for a person at a terminal;
+  `net_client.py` turns it on by itself in interactive mode. It is per connection and off by default, because programs that parse replies (`fw_update.py`, `wham_console.py`, LabVIEW) must see them bare.
   Several operators can be connected to one controller; interactive clients see who joins and what others send and receive, and a
   dangerous command (`dangerous_commands.py`) is announced to the other clients and logged with its category (optionally held until
   its sender confirms: `confirm_dangerous`). Design and framing details: `docs/device_identity_and_host_service.md`, section 5.1.

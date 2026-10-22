@@ -3,6 +3,7 @@ import asyncio
 import datetime
 import json
 import os
+import re
 import socket
 import sys
 import tempfile
@@ -1289,6 +1290,57 @@ class SlowClientTests(HubBase):
         await a.send("BIG 3000")
         await a.lines_until(lambda l: l == "OK", 20)
         self.assertEqual(len(hub.clients), 1)
+
+
+class TimestampTests(HubBase):
+    STAMP = re.compile(r"^\[\d\d:\d\d:\d\d\.\d{3}\] ")
+
+    async def test_off_by_default_and_every_line_is_stamped_when_on(self):
+        hub = await self.start_hub()
+        a = await Client.connect(self.listen, "alice")
+        await a.lines_until(lambda l: l.startswith("--- connected"))
+        await a.send("ECHO plain")
+        self.assertEqual(await a.lines_until(lambda l: l == "OK plain"), ["OK plain"])
+        await a.send("!hub timestamps on")
+        out = await a.lines_until(lambda l: "timestamps on" in l)
+        self.assertRegex(out[-1], self.STAMP.pattern + r"# hub: timestamps on$")
+        await a.send("ECHO stamped")
+        out = await a.lines_until(lambda l: l.endswith("OK stamped"))
+        self.assertRegex(out[-1], self.STAMP.pattern + r"OK stamped$")
+        await a.send("!hub clients")                      # one answer of several lines: each one is stamped
+        out = await a.lines_until(lambda l: "alice" in l)
+        self.assertTrue(len(out) >= 2 and all(self.STAMP.match(l) for l in out), out)
+        await a.send("!hub timestamps off")
+        out = await a.lines_until(lambda l: "timestamps off" in l)
+        self.assertEqual(out[-1], "# hub: timestamps off")
+
+    async def test_the_time_is_the_local_time_of_the_service(self):
+        hub = await self.start_hub()
+        a = await Client.connect(self.listen, "alice")
+        await a.lines_until(lambda l: l.startswith("--- connected"))
+        before = datetime.datetime.now()
+        await a.send("!hub timestamps on")
+        line = (await a.lines_until(lambda l: "timestamps on" in l))[-1]
+        after = datetime.datetime.now()
+        stamp = datetime.datetime.strptime(line[1:13], "%H:%M:%S.%f").time()
+        lo = (before - datetime.timedelta(seconds=1)).time()
+        hi = (after + datetime.timedelta(seconds=1)).time()
+        if lo <= hi:
+            self.assertTrue(lo <= stamp <= hi, (lo, stamp, hi))
+
+    async def test_stamping_is_per_connection_and_a_quiet_client_stays_bare(self):
+        hub = await self.start_hub()
+        a = await Client.connect(self.listen, "alice")
+        q = await Client.connect(self.listen, "prog", quiet=True)
+        await a.lines_until(lambda l: l.startswith("--- connected"))
+        await a.send("!hub timestamps on")
+        await a.lines_until(lambda l: "timestamps on" in l)
+        await q.send("ECHO bare")
+        self.assertEqual(await q.lines_until(lambda l: l.startswith("OK")), ["OK bare"])
+        await a.send("!hub timestamps maybe")             # not on/off: the help line, and the setting is untouched
+        out = await a.lines_until(lambda l: "commands are" in l)
+        self.assertRegex(out[-1], self.STAMP.pattern + r"# hub: commands are")
+        self.assertIn("!hub timestamps [on|off]", out[-1])
 
 
 class AccessTests(HubBase):
