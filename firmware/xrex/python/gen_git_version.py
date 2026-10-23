@@ -67,7 +67,9 @@ def main():
         # flagged explicitly rather than silently reporting a commit
         # hash that doesn't actually match what's running (see
         # cmd_system.c's cmd_idn() for how this renders in *IDN?).
-        status = run_git(["status", "--porcelain"])
+        # Only this product's own folder counts: in the monorepo, someone else's uncommitted change
+        # elsewhere (hardware/, the other product, docs/) is not in this image.
+        status = run_git(["status", "--porcelain", "--", "."])
         dirty = 1 if status else 0
 
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
