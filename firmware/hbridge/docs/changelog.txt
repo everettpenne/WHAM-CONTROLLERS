@@ -5,8 +5,10 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
 -----------------------------------------------------------------------
   FW_VERSION_STRING v0.9 -> v0.10 (ctrlr_config.h: bump on every release). The PF15 shot trigger (2026-10-20 below) had been flashed to the bench simulator board
   as "v0.9", the same string as the image before it, so two different images carried one version; the commit hash in *IDN? told them apart, the version did not.
-  The first board to receive v0.10 is a new, blank controller (ECH-HVPS, a gyrotron controller) flashed over the ST-Link; see the entry that follows it in
-  host/devices.csv's registry for its serial.
+  The first board to receive v0.10 is a new, blank controller (ECH-HVPS, a gyrotron controller): flashed over the ST-Link with openocd (image built clean, commit
+  ad7483f1, 106,032 bytes, verified), then given serial WB-0001-8 and label ECH-HVPS by host/provision_board.py (first entry of host/devices.csv). Read back after a
+  reset: identity=ok verified=1, STATE IDLE, FAULT 0, EXTernal:TRIGger on, PF15 low. Bank 2 is still blank. Also: gen_git_version.py now marks an image dirty only for
+  uncommitted changes under the product's own folder (it used to count the whole repository).
 
 2026-10-20  -  External shot trigger: a rising edge on PF15 while ARMED starts the shot (interrupt-driven)  [FLASHED to the bench board; command layer verified; NOT YET TESTED WITH A REAL EDGE]
 -----------------------------------------------------------------------
