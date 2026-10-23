@@ -1,6 +1,13 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-23  -  Firmware version v0.10; first image for a new board (ECH-HVPS)
+-----------------------------------------------------------------------
+  FW_VERSION_STRING v0.9 -> v0.10 (ctrlr_config.h: bump on every release). The PF15 shot trigger (2026-10-20 below) had been flashed to the bench simulator board
+  as "v0.9", the same string as the image before it, so two different images carried one version; the commit hash in *IDN? told them apart, the version did not.
+  The first board to receive v0.10 is a new, blank controller (ECH-HVPS, a gyrotron controller) flashed over the ST-Link; see the entry that follows it in
+  host/devices.csv's registry for its serial.
+
 2026-10-20  -  External shot trigger: a rising edge on PF15 while ARMED starts the shot (interrupt-driven)  [FLASHED to the bench board; command layer verified; NOT YET TESTED WITH A REAL EDGE]
 -----------------------------------------------------------------------
   Request: the HBRIDGE should fire on a rising edge at PF15 like the XREX; handled as an interrupt, not polled; "assuming all shot conditions are met".
