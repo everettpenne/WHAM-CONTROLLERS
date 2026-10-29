@@ -97,6 +97,11 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
   interrupt-driven rather than polled as in XREX: `src/app/control/shot_trigger.c` (edge handler, priority 1, pends a software interrupt)
   and `shot_start.c` (the one start routine FIRE and the trigger share; host-tested in `tests/test_shot_trigger.c`). Not ported yet:
   the external ENABLE interlock (PF13), DEBUG:FAULT:BYPASS, telemetry events (Phase 5).
+- **The CHARGE output** (`CHARGE:FREQuency`, added 2026-10-27): one 50 % square wave on PG0 ("GPOut_01") from its own timer, TIM20 channel 1's COMPLEMENTARY output
+  (CH1N, alternate function 2), for a frequency-to-voltage converter charging the capacitor bank. 0 Hz = off, 1 Hz - 100 kHz. **Independent of the state machine and of every fault,
+  by decision** (the user: usable and left on in any state; a fault leaves it on). Off at boot, not in profiles. PG0, TIM20 are reserved for it. Pieces:
+  `src/drivers/charge_out.h` + `src/bsp/stm32g4/charge_out.c` (pin/timer), `src/app/control/charge.c` (timer settings, setpoint; host-tested in `tests/test_charge.c`),
+  `src/app/commands/cmd_charge.c`. PG0..PG3 are the only free GPOuts that reach a timer (TIM20 CH1N-CH4N); PG4-PG7 and PD9-PD11 have none.
 - **Firmware update, boot diagnostics, `!BOOT` banner** (added
   2026-09-29, Phase 2 of the port from WHAM-XREX-PFMG474; `flash_bank.c`,
   `boot_diag.c`, `cmd_fwupdate.c`, `cmd_system.c`): `FWUPdate:*`

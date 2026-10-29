@@ -427,6 +427,38 @@ at priority 2 a fault stop and the first period of the shot can both preempt it.
 - **No interlock input.** Unlike XREX there is no external-*enable* input (PF13) in this firmware: the trigger is the only external input.
 - **Not yet verified with a real signal** (see `docs/changelog.txt`, 2026-10-20).
 
+### The CHARGE output: `CHARGE:FREQuency`, `CHARGE:FREQuency?`, `CHARGE:STATus?`
+
+One **50 % square wave on PG0** (`GPOut_01` on the board), made by its own timer (TIM20), with **no relation to the HRTIM phase outputs**. It drives a
+frequency-to-voltage converter that charges a capacitor bank: the operator turns it on, leaves it running, and turns it off.
+
+```
+> CHARGE:FREQuency 100000
+< OK
+> CHARGE:FREQuency?
+< OK 100000
+> CHARGE:STATus?
+< OK freq=100000 running=1 actual=100000.000 psc=0 arr=1699 ccr=850
+> CHARGE:FREQuency 0
+< OK
+```
+
+- **`CHARGE:FREQuency <hz>`** -- whole hertz: **`0` = off**, otherwise `1` to `100000`. Anything else (a fraction, text, a negative number, more than 100 kHz, a missing or extra
+  argument) is `ERR 12` and changes nothing. A new frequency while it runs takes effect at once (the cycle restarts: one short or long cycle at the change).
+- **`CHARGE:FREQuency?`** -- `OK <hz>`: the setpoint, `0` when off.
+- **`CHARGE:STATus?`** -- `key=value` fields (parse by key): `freq` (the setpoint), `running` (`1` while the pin is driven by the timer), `actual` (the frequency the timer really
+  produces, in Hz with three decimals: the timer divides its 170 MHz clock into whole counts, so it is within about 0.03 % of the setpoint at 100 kHz and better below), and the timer
+  settings `psc`, `arr`, `ccr` (`0` when off).
+
+**Rules.**
+- **Any state.** It can be switched on and off in `IDLE`, `ARMED`, `FIRING` and `FAULT`. Nothing here looks at the state machine. (The operator is expected not to turn it on during `FIRING`;
+  nothing prevents it.)
+- **A latched fault does not turn it off.** Neither do `DISARM`, a shot ending, `FAULT:CLEar` or a general or protection trip. If it must stop, send `CHARGE:FREQuency 0`.
+- **Off at every boot, and not stored in profiles** (`*SAV`/`*RCL`). Anything that resets the controller turns it off: power, the emergency-stop fibre (which resets the chip), `BOOT`, a firmware swap.
+- **Off is a driven LOW pin**, not a floating one. Until the firmware starts after a reset the pin floats, so the converter's input needs a pull-down.
+- **Dangerous to the hub** (it charges the bank): a nonzero frequency is announced to everyone and logged; `CHARGE:FREQuency 0` is not.
+- Not yet verified on the board's pin with a scope or logic analyser (see `docs/changelog.txt`, 2026-10-27).
+
 ### Operating state: `ARM`, `DISARM`, `STATE?`, `GENERAL:TEST:FAULT`
 
 Added 2026-09-29 (`src/app/control/state_machine.h`, mirroring

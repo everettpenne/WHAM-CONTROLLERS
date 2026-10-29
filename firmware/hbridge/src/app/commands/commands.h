@@ -39,6 +39,7 @@ extern "C" {
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, GENERAL:TEST:FAULT
  *   cmd_io.c       GDS?, GDS:LAST?, DIAGnostic:LEDs?, EXTernal:TRIGger*
+ *   cmd_charge.c   CHARGE:FREQuency, CHARGE:STATus? (the PG0 frequency output)
  *   cmd_pfmin.c    PFMIN:*
  *   cmd_phase.c    PHASe:ENAble/SELect (which of U, V, W drive their gate drivers)
  * Shared reply/precondition helpers live in cmd_common.c/.h.
@@ -309,6 +310,10 @@ void cmd_ext_trigger(uart_instance_t *inst, char *args);              /* EXTerna
 void cmd_ext_trigger_query(uart_instance_t *inst, char *args);        /* EXTernal:TRIGger? -- OK <0|1> */
 void cmd_ext_trigger_input_query(uart_instance_t *inst, char *args);  /* EXTernal:TRIGger:INPut? -- OK <0|1>, the raw PF15 level */
 void cmd_ext_trigger_status_query(uart_instance_t *inst, char *args); /* EXTernal:TRIGger:STATus? -- counters and the last result */
+/* The CHARGE output: a 50 % square wave on PG0 (charge.h), independent of the state */
+void cmd_charge_freq(uart_instance_t *inst, char *args);              /* CHARGE:FREQuency <hz>  (0 = off) */
+void cmd_charge_freq_query(uart_instance_t *inst, char *args);        /* CHARGE:FREQuency? -- OK <hz> */
+void cmd_charge_status_query(uart_instance_t *inst, char *args);      /* CHARGE:STATus? -- setpoint, produced frequency, timer settings */
 
 /* Analog inputs (adc.h), see cmd_adc.c */
 void cmd_adc_input_query(uart_instance_t *inst, char *args);      /* ADC:INPut? <1-4> -- OK <volts> <code> */

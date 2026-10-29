@@ -235,6 +235,8 @@ CONFig:MODE HVPS ... upload ... ARM -> OK -> FIRE -> OK        (FIRE plays the u
 | Command | Reply | Notes |
 |---|---|---|
 | `EXTernal:TRIGger <0\|1>` / `?`, `EXTernal:TRIGger:INPut?`, `EXTernal:TRIGger:STATus?` | `OK` / `OK <0\|1>` / `OK <0\|1>` / `OK enabled=... last=...` | a rising edge on PF15 while `ARMED` **starts the shot like `FIRE`**, from an interrupt (on by default). The state can go `ARMED` to `FIRING` with no command from you. `...STATus?` has the counters and why a trigger did not start a shot. HBRIDGE has no `EXTernal:ENAble` |
+| `CHARGE:FREQuency <hz>` **DANGEROUS if not 0** | `OK` | **HBRIDGE only.** A separate 50 % square wave on one pin for the capacitor-bank charger: `0` = off, otherwise 1 to 100000 Hz. **Any state; it stays on through a fault**, off after every reset, not stored in a profile. `ERR 12` for any other value |
+| `CHARGE:FREQuency?`, `CHARGE:STATus?` | `OK <hz>` / `OK freq=... running=... actual=... psc=... arr=... ccr=...` | the setpoint (`0` = off), and the frequency the timer really produces |
 | `FIRE` **DANGEROUS** | `OK` | plays the open-loop shot (and runs any closed phases). Needs `ARMED`. Refusals in order: `ERR 6` fault latched, `ERR 13` not armed, `ERR 5` nothing to play. The state goes `FIRING` and returns to `IDLE` at the end of the shot. **There is no stop-in-the-middle for a shot except a fault or `SOURce:STOP`** |
 | `SOURce:RUN` **DANGEROUS** | `OK` | closed-loop run holding each loop's `SOURce:SETpoint`; every enabled phase must be closed loop (`ERR 13` otherwise) |
 | `SOURce:STOP` | `OK` | |

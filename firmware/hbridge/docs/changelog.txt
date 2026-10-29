@@ -1,6 +1,23 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-10-27  -  CHARGE output: a 50 % square wave on PG0 for the capacitor-bank charger (CHARGE:FREQuency), v0.11  [host-tested, builds clean; NOT YET FLASHED, NOT YET SEEN ON THE PIN]
+-----------------------------------------------------------------------
+  Request: for the Limiter, a single PWM output at 50 % duty, independent of the HRTIM outputs, driving a frequency-to-voltage converter that charges a capacitor bank. The operator turns it on,
+  leaves it on in any state (not expected during FIRING), turns it off in any state. 0 Hz (off) to ~100 kHz. Pin choice: PG0 (user's decision after the survey below). Name: CHARGE. A fault leaves it ON (user's decision).
+  Pin survey (CubeMX database, STM32G474QETx): of PG0-PG7 and PD9-PD12 only PG0..PG3 reach a timer output (TIM20_CH1N..CH4N; AF2 on PG0-PG2, AF6 on PG3). PG4-PG7, PD9, PD10, PD11 have none
+  (PD11's TIM5_ETR is an input); PD12 is TIM4_CH1 but is the PFM_Input_06 capture input. PG0 = GPOut_01 (docs/pin_mapping_v4.csv). Nothing in the HBRIDGE firmware used port G or TIM20 before.
+  Design: TIM20 channel 1, complementary output only (CC1NE=1, CC1E=0, no dead time: the pin carries OC1REF, PWM mode 1, so CCR1 = period/2 is 50 %), MOE=1; counter clock = APB2 timer clock (170 MHz).
+    - src/drivers/charge_out.h + src/bsp/stm32g4/charge_out.c: pin and timer. Off = the pin switched to a plain output at LOW FIRST, then the timer stopped (the pin can never stay HIGH because the counter
+      stopped mid-cycle). Start/retime writes PSC, ARR, CCR1 (buffered) and forces an update event so the new frequency applies at once, even from 1 Hz.
+    - src/app/control/charge.c: Charge_Plan() turns Hz into psc/arr/ccr (rounded counts per period; the smallest prescaler that fits a 16-bit period; 100 kHz = 1700 counts exactly, 850 high; 1 Hz = psc 2593);
+      Charge_SetFrequency(0..100000). Whole hertz. No state-machine, fault or HRTIM dependency, so it works in IDLE/ARMED/FIRING/FAULT and a latched fault, DISARM, a shot ending and FAULT:CLEar leave it alone.
+    - src/app/commands/cmd_charge.c: CHARGE:FREQuency <hz> (0 = off; anything else outside 1-100000, or not a whole number, is ERR 12), CHARGE:FREQuency?, CHARGE:STATus? (freq, running, actual in Hz, psc, arr, ccr).
+    - Off at every boot (Charge_Init() in App_Init()); not stored in profiles. The hub treats a nonzero CHARGE:FREQuency as dangerous (host/dangerous_commands.py); 0 is not.
+  Tests: tests/test_charge.c (160 checks): every frequency in a sweep from 1 Hz to 100 kHz within 0.05 %, 16-bit period, a 50 % high count, the refusals, off/stop, re-timing a running output, the start-up state.
+  Build: clean; the image is 107,324 bytes (was 106,032). FW_VERSION_STRING v0.10 -> v0.11.
+  NOT YET DONE: flash to a board; look at PG0 with a scope or logic analyser (the complementary-only mode and the 50 % duty are from the reference manual, not yet seen); check the converter's input has a pull-down.
+
 2026-10-23  -  Firmware version v0.10; first image for a new board (ECH-HVPS)
 -----------------------------------------------------------------------
   FW_VERSION_STRING v0.9 -> v0.10 (ctrlr_config.h: bump on every release). The PF15 shot trigger (2026-10-20 below) had been flashed to the bench simulator board

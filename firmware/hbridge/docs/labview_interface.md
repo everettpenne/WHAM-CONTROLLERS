@@ -281,6 +281,19 @@ What a front-end must allow for:
 - After a shot, `EXTernal:TRIGger:STATus?` tells whether a trigger started it (`started` went up and `last=STARTED`) and, when a trigger did *not* start one, why (`last=NO_SHOT`, ...).
 - Only an `EXTernal:TRIGger 0` stops a live trigger input from being able to start a shot once armed. The hub treats enabling it as a dangerous command.
 
+### 6.2 The CHARGE output (a frequency on PG0 for the capacitor-bank charger)
+
+A separate, 50 % duty square wave on one pin, from its own timer, **independent of the state and of every fault**. The operator sets a frequency, leaves it running, and sets `0` to stop it.
+
+| Command | Reply | Meaning |
+|---|---|---|
+| `CHARGE:FREQuency <hz>` | `OK` | **`0` = off**, otherwise `1` to `100000` whole hertz. `ERR 12` for anything else (nothing changes). Works in every state |
+| `CHARGE:FREQuency?` | `OK <hz>` | the setpoint, `0` = off |
+| `CHARGE:STATus?` | `OK freq=100000 running=1 actual=100000.000 psc=0 arr=1699 ccr=850` | what the timer is really producing (`actual`, Hz); parse by key |
+
+What a front-end must allow for: it **stays on through `FAULT`, `DISARM` and the end of a shot** (it does not follow the state); only `CHARGE:FREQuency 0` or a controller reset stops it, and it is **off after every reset**, so
+read it back after you see a reboot. It is **not stored in a profile**. The hub treats a nonzero `CHARGE:FREQuency` as dangerous; `0` is not.
+
 ---
 
 ## 7. Status, fault and health polling

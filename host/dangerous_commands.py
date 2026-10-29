@@ -29,6 +29,7 @@ RULES = [
     ("FIRE",                    ANY, "output"),
     ("SOURce:RUN",              ANY, "output"),
     ("SHOT:STARt",              ANY, "output"),
+    ("CHARGE:FREQuency",        ON,  "output"),     # HBRIDGE: charges the capacitor bank; a frequency of 0 turns it off
     ("EXTernal:TRIGger",        ON,  "output"),     # a rising edge on PF15 then starts the shot while ARMED (both products)
     ("SOURce:ENAble",           ON,  "output"),     # XREX: SOURce:ENAble <ch> <0|1>
     ("XREX:CHANnel:ENAOut",     ON,  "output"),     # XREX: a Transrex unit's enable line

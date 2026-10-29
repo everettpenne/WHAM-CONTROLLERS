@@ -12,6 +12,7 @@
 #include "pfm_input.h"
 #include "state_machine.h"
 #include "shot_trigger.h"
+#include "charge.h"
 #include "flash_bank.h"
 #include "boot_diag.h"
 #include "mcu.h"
@@ -57,6 +58,7 @@ void App_Init(void)
        can be processed. */
     SM_Init();
     ShotTrigger_Init();           /* the software interrupt the PF15 trigger starts the shot from */
+    Charge_Init();                /* the CHARGE output (PG0) off, pin driven LOW */
 
     /* QUADSPI bring-up (PE12-PE15/PB10-PB11, W25Q128JVS) -- see
        qspi_test.h for scope. No-op when QSPI_TEST_FEATURE_ENABLED is 0,

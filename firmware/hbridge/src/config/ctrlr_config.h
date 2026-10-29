@@ -32,7 +32,7 @@
 /* Firmware identity. Bump on every release the way the sibling
  * PFM-STM32G474 project does (FW_VERSION_STRING in its
  * supply_config.h). */
-#define FW_VERSION_STRING "v0.10"
+#define FW_VERSION_STRING "v0.11"
 
 /* --------------------------------------------------------------------------
  * HRTIM channel count
@@ -201,6 +201,11 @@
 /* External shot trigger: a rising edge on PF15 ("Fiber_Enable") while ARMED starts the shot exactly as FIRE would
    (EXTernal:TRIGger). 1 = on at every boot, like XREX; EXTernal:TRIGger 0 turns it off for a session. */
 #define SHOT_TRIGGER_DEFAULT_ENABLED  (1U)
+
+/* The CHARGE output (CHARGE:FREQuency): a 50 % square wave on PG0 for the frequency-to-voltage converter that charges the
+   capacitor bank. 0 Hz = off; otherwise whole hertz from CHARGE_MIN_HZ to CHARGE_MAX_HZ. Off at every boot. */
+#define CHARGE_MIN_HZ  (1U)
+#define CHARGE_MAX_HZ  (100000U)
 
 #define SHOT_SETPOINT_MAX        (500U)
 #define SHOT_MAX_DURATION_US     (1000000UL)

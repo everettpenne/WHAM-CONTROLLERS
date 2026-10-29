@@ -126,6 +126,11 @@ static const scpi_command_t command_table[] = {
     { "EXTernal:TRIGger:INPut?", cmd_ext_trigger_input_query  },
     { "EXTernal:TRIGger:STATus?", cmd_ext_trigger_status_query },
 
+    /* The CHARGE output (PG0, 50 % duty): any state -- see charge.h and cmd_charge.c. */
+    { "CHARGE:FREQuency",        cmd_charge_freq              },
+    { "CHARGE:FREQuency?",       cmd_charge_freq_query        },
+    { "CHARGE:STATus?",          cmd_charge_status_query      },
+
     /* The analog inputs -- see cmd_adc.c. */
     { "ADC:INPut?",          cmd_adc_input_query  },
     { "ADC:STATus?",         cmd_adc_status_query },

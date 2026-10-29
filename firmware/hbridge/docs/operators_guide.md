@@ -182,6 +182,22 @@ What this means for you:
 - A shot started this way is **not announced** as such: there is no event stream on this controller. After the shot, `EXTernal:TRIGger:STATus?` (`started` went up, `last=STARTED`) tells you it was the trigger.
 - **[no real rising edge has been applied yet]**: see section 13.
 
+### 4.3b The CHARGE output (the capacitor-bank charger's frequency)
+
+Separately from the shot, the controller can put a **50 % square wave on one output pin (PG0)** that drives the frequency-to-voltage converter charging the capacitor bank. You set the frequency
+(1 to 100,000 Hz); `0` turns it off:
+
+```
+CHARGE:FREQuency 100000     (on, 100 kHz)
+CHARGE:STATus?              (what it is really producing)
+CHARGE:FREQuency 0          (off)
+```
+
+- **It works in every state and you can leave it running.** It is meant to be on while the bank charges, before and between shots. **Do not turn it on during `FIRING`** (nothing stops you).
+- **A fault does not turn it off.** `FAULT`, `DISARM`, the end of a shot, `FAULT:CLEar`: none of them touch it. If you need it off, send `CHARGE:FREQuency 0`. Check it with `CHARGE:FREQuency?` (`OK 0` = off).
+- **A reset turns it off** (power, the emergency-stop fibre, a firmware update). After any reboot, it is off until you set it again.
+- It is not part of a saved profile.
+
 ### 4.4 The emergency stop
 There is no emergency-stop function in this controller's software and this guide does not define one. Emergency stopping is the supply's and facility's responsibility (section 1).
 
@@ -532,6 +548,7 @@ When in doubt about a behaviour, treat it as unverified and ask the controls tea
 | run | `FIRE` (or a rising edge on the trigger input, while armed) |
 | stop (not an emergency stop) | `SOURce:STOP` |
 | see or switch the external trigger | `EXTernal:TRIGger?`, `EXTernal:TRIGger 0|1`, `EXTernal:TRIGger:STATus?` |
+| run, check, stop the capacitor-charger frequency | `CHARGE:FREQuency <hz>`, `CHARGE:STATus?`, `CHARGE:FREQuency 0` |
 | clear a fault (check the result) | `FAULT:CLEar`, then `STATE?` |
 | see who is connected | `!hub clients` |
 | restore saved settings | `CONFig:PROFile:DIFF? <slot>`, then `*RCL <slot>` |
