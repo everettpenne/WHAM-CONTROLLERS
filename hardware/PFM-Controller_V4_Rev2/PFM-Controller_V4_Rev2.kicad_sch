@@ -32897,6 +32897,28 @@
 			)
 		)
 	)
+	(global_label "STATE_IDLE_LED"
+		(shape input)
+		(at 599.44 153.67 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "78af718a-507e-41bd-a608-3dbfb2d18f87")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 581.6383 153.67 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
 	(global_label "NRST"
 		(shape input)
 		(at 881.38 474.98 270)
@@ -35757,28 +35779,6 @@
 			)
 		)
 	)
-	(global_label "STATE_IDLE_LED"
-		(shape input)
-		(at 599.44 153.67 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "d2d9b2df-ed80-495b-80d3-bac00b22481f")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 581.6383 153.67 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-				(hide yes)
-			)
-		)
-	)
 	(global_label "STATE_ARMED_LED"
 		(shape input)
 		(at 1026.16 595.63 90)
@@ -35946,28 +35946,6 @@
 		(uuid "d7a6bf0f-2cad-4b31-8ea9-c107139ed4af")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 136.3954 537.21 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-	)
-	(global_label "UART_TX_LED"
-		(shape input)
-		(at 661.67 73.66 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "d81cd1a6-6a41-4918-82dd-4d4a0fc540d3")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 676.8713 73.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -36672,28 +36650,6 @@
 		(uuid "f5d49023-577e-484d-96d1-3cc08c4bfdbf")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 644.0328 322.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
-	)
-	(global_label "UART_RX_LED"
-		(shape input)
-		(at 661.67 76.2 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "f783aea8-dd55-47cb-a7b9-3ab94d7e5a48")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 677.1737 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -80421,70 +80377,6 @@
 			(project "HVPS_Controller_V3"
 				(path "/0c118319-b670-4d7d-b2a6-406a9985b5e8"
 					(reference "#PWR071")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Mechanical:MountingHole")
-		(at 896.62 645.16 0)
-		(unit 1)
-		(exclude_from_sim yes)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "8fe47590-2023-4af6-af03-e967924e2934")
-		(property "Reference" "H19"
-			(at 899.16 643.8899 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "QR Code"
-			(at 899.16 646.4299 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" "wham-bs-footprints:QR_Code_15mm"
-			(at 896.62 645.16 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 896.62 645.16 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Mounting Hole without connection"
-			(at 896.62 645.16 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(instances
-			(project ""
-				(path "/0c118319-b670-4d7d-b2a6-406a9985b5e8"
-					(reference "H19")
 					(unit 1)
 				)
 			)
