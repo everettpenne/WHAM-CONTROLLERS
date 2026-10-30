@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WHAM Operator Console</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand"><span class="logo">W</span><span>WHAM Operator Console</span></div>
+  <nav id="tabs" aria-label="Controllers"></nav>
+  <button id="btn-new" class="btn primary">+ Connect to a controller</button>
+</header>
+
+<main id="main">
+  <section id="home" class="home"></section>
+  <section id="views"></section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="dlg-connect">
+  <form method="dialog" id="form-connect">
+    <h2>Connect to a controller</h2>
+    <fieldset class="how">
+      <legend>How do you want to connect?</legend>
+      <label class="choice"><input type="radio" name="mode" value="hub" checked>
+        <span><b>Through the host</b> (recommended)<small>The host service shares the controller with other people, keeps a log, and shows who is connected.</small></span></label>
+      <label class="choice"><input type="radio" name="mode" value="direct">
+        <span><b>Directly over the network</b><small>Use this when the host is not available. The controller's network bridge accepts only one connection: nobody else, and not the host, can be connected to it at the same time.</small></span></label>
+      <label class="choice"><input type="radio" name="mode" value="serial">
+        <span><b>USB-serial cable</b><small>A cable from this computer to the controller.</small></span></label>
+    </fieldset>
+    <div id="net-fields" class="fields">
+      <label>Host name or address <input id="f-host" type="text" placeholder="127.0.0.1" autocomplete="off"></label>
+      <label>Port <input id="f-port" type="number" min="1" max="65535" placeholder="5102"></label>
+    </div>
+    <div id="serial-fields" class="fields" hidden>
+      <label>Serial port <select id="f-device"></select></label>
+      <p class="hint" id="serial-hint"></p>
+    </div>
+    <label class="wide">A name to show for it <input id="f-name" type="text" placeholder="for example: ECH gyrotron controller" autocomplete="off"></label>
+    <label class="check"><input id="f-save" type="checkbox"> Add it to the saved list on the start screen</label>
+    <p id="connect-error" class="error" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" id="connect-cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="connect-go">Connect</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-confirm">
+  <form method="dialog" id="form-confirm">
+    <h2 id="confirm-title">Confirm</h2>
+    <p id="confirm-body"></p>
+    <p class="cmdline"><span>Command:</span> <code id="confirm-cmd"></code></p>
+    <p id="confirm-others" class="warn" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" id="confirm-cancel" autofocus>Cancel</button>
+      <button type="submit" class="btn danger" id="confirm-yes">Yes, send it</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+window.WHAM = { token: "__WHAM_TOKEN__", user: "__WHAM_USER__" };
+</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

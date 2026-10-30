@@ -6,6 +6,8 @@ people, switching between controllers, and leaving. It does **not** say what to 
 guide for your product (`firmware/xrex/docs/operators_guide.md`, `firmware/hbridge/docs/operators_guide.md`). Programs (LabVIEW and
 others) connect differently: see `docs/labview_hub_guide.md`.
 
+> **Prefer clicking to typing?** `docs/operator_ui_guide.md` describes the operator console, a web page that does everything in this guide (connecting through the hub, directly, or by cable) without a terminal.
+
 ## 1. How the connection works
 
 Each controller is reached through a **hub**, a small service running on a server in the lab. The hub is the only thing that

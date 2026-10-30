@@ -11,3 +11,6 @@ __pycache__/
 **/production/backups/
 # large archives of third-party documents (GitHub refuses files over 100 MB); keep them elsewhere
 hardware/*.zip
+host/operator_ui/controllers.json
+host/operator_ui/controllers.json.tmp
+host/operator_ui/shots/
