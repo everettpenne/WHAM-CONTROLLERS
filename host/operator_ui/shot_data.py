@@ -87,9 +87,39 @@ def build_recording(product, controller, outcome, rate_hz, decim, raw, calib=Non
             units = {"sp": "V", "pv": "V", "out": out_unit}
         chans.append({"n": n, "name": channel_name(product, n), "units": units, **ser})
     count = min((len(c["sp"]) for c in chans), default=0)
-    return {"version": 1, "product": product, "controller": controller, "started": started.isoformat(timespec="seconds"),
-            "outcome": outcome, "rate_hz": rate_hz, "decim": decim, "count": count, "duration_s": (count / rate_hz) if rate_hz else 0.0,
-            "mode": mode, "calib": calib or {}, "meta": meta or {}, "notes": list(notes or []), "channels": chans}
+    rec = {"version": 1, "product": product, "controller": controller, "started": started.isoformat(timespec="seconds"),
+           "outcome": outcome, "rate_hz": rate_hz, "decim": decim, "count": count, "duration_s": (count / rate_hz) if rate_hz else 0.0,
+           "mode": mode, "calib": calib or {}, "meta": meta or {}, "notes": list(notes or []), "channels": chans}
+    rec["notes"] += [n for n in diagnose(rec) if n not in rec["notes"]]
+    return rec
+
+
+def diagnose(rec):
+    """Plain-language findings about a recording that look like a setup problem rather than a real result."""
+    notes = []
+    meta_ch = (rec.get("meta") or {}).get("channels") or {}
+    for ch in rec["channels"]:
+        n, name = ch["n"], ch["name"]
+        sp, pv, out = ch["sp"], ch["pv"], ch["out"]
+        if not sp:
+            continue
+        sp_rng, out_rng, pv_rng = max(sp) - min(sp), max(out) - min(out), max(pv) - min(pv)
+        info = meta_ch.get(str(n)) or {}
+        if rec["product"] != "xrex":
+            continue
+        if info.get("in_shot") is False and sp_rng == 0 and out_rng == 0:
+            notes.append(f"{name} was not enabled for this shot (SOURce:ENAble {n} 0), so its log is empty.")
+            continue
+        if sp_rng > 1000 and out_rng < 0.02 * sp_rng:
+            loop, gains = info.get("loop"), info.get("gains_kp_ki_kd")
+            why = ("It was in closed loop with all PID gains zero (PID:GAINS), which holds the output at the minimum frequency." if loop == "closed" and gains and not any(gains)
+                   else "It was in open loop, where the output should follow the setpoint: check that the channel is enabled and its output is running." if loop == "open"
+                   else "Check its loop mode (PID:LOOPMODE) and PID gains (PID:GAINS): a closed loop with zero gains holds the output at the minimum frequency.")
+            notes.append(f"{name}: the output did not follow the setpoint (it stayed near {out[len(out) // 2]:,.0f} Hz while the setpoint went from "
+                         f"{min(sp):,.0f} to {max(sp):,.0f} Hz). {why}")
+        elif out_rng > 1000 and pv_rng < 0.2 * out_rng:
+            notes.append(f"{name}: the measured feedback barely moved while the output did. Check the feedback wiring (fibre or loopback to the PFM input).")
+    return notes
 
 
 def amps_from_hz(rec, n, hz_list):
@@ -411,5 +441,6 @@ def describe(rec, sid, unit="A"):
     for ch in rec["channels"]:
         rows, raw = stats(rec, ch["n"], unit)
         chans.append({"n": ch["n"], "name": ch["name"], "svg": plot_svg(rec, ch["n"], unit), "stats": rows, "raw": raw})
-    return {"sid": sid, "summary": summary_of(rec, sid), "header": _header_rows(rec), "notes": rec.get("notes", []), "meta": rec.get("meta", {}),
+    notes = list(rec.get("notes", [])) + [n for n in diagnose(rec) if n not in rec.get("notes", [])]     # recordings saved before diagnose() existed
+    return {"sid": sid, "summary": summary_of(rec, sid), "header": _header_rows(rec), "notes": notes, "meta": rec.get("meta", {}),
             "unit": unit, "can_amps": has_amps, "amps_note": XREX_NOTE if rec["product"] == "xrex" else None, "channels": chans}

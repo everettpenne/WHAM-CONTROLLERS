@@ -45,6 +45,8 @@ class SimState:
         self.ext_enable = 1
         self.boot = time.time()
         self.pid_rate = 1000 if product == "xrex" else 10000
+        self.xloop = {n: 1 for n in (1, 2, 3, 4)}  # XREX: 1 = closed loop (the firmware's default)
+        self.gains = {n: [0.0, 0.0, 0.0] for n in (1, 2, 3, 4)}   # XREX gains are zero at boot, as on the real controller
         self.loopmode = [0, 0, 0]                  # HBRIDGE: 1 = closed loop (only a closed-loop run is logged)
         self.log_arm = None                        # (loop or 0 = all, max samples, decim) from LOG:ARM
         self.log = {}                              # channel -> [(setpoint, measured, output), ...] in the wire's integer units
@@ -184,6 +186,10 @@ class SimController(socketserver.ThreadingTCPServer):
                 ("SHOT:CURRent", False, self.current_set),
                 ("SHOT:CURRent", True, lambda a: f"OK {s.channels[self.ch(a)]['amps']:g}"),
                 ("SHOT:STARt", False, self.fire),
+                ("PID:LOOPMODE", False, self.xloop_set),
+                ("PID:LOOPMODE", True, lambda a: f"OK {s.xloop[self.ch(a)]}"),
+                ("PID:GAINS", False, self.gains_set),
+                ("PID:GAINS", True, lambda a: "OK " + " ".join(f"{g:g}" for g in s.gains[self.ch(a)])),
                 ("CONFig:TURNONHz", True, lambda a: "OK 5000"),
                 ("CONFig:MAXFREQHz", True, lambda a: "OK 100000"),
                 ("CONFig:MAXCURRent", True, lambda a: (self.ch(a), "OK 6000")[1]),
@@ -277,8 +283,12 @@ class SimController(socketserver.ThreadingTCPServer):
                     a = s.channels[ch]["amps"] or 3000.0
                     frac = t / up if t < up else 1.0 if t < up + flat else max(0.0, 1 - (t - up - flat) / down)
                     sp = 5000 + frac * (a / 6000.0) * 95000
-                    pv += (sp - pv) * 0.25 + 40 * math.sin(i * 0.7 + ch)
-                    rows.append((int(sp), int(pv), int(sp + 120 * math.sin(i * 0.3))))
+                    if s.xloop[ch] == 1 and not any(s.gains[ch]):
+                        out = 3000.0                      # the real controller: closed loop with zero gains sits at the 3 kHz floor
+                    else:
+                        out = sp + 120 * math.sin(i * 0.3)
+                    pv += (out - pv) * 0.25 + 40 * math.sin(i * 0.7 + ch)
+                    rows.append((int(sp), int(pv), int(out)))
                 else:
                     tt = t * 1e6
                     sp = 300.0 * (tt / max(1, s.shot[-1][0]))
@@ -319,6 +329,26 @@ class SimController(socketserver.ThreadingTCPServer):
         page = rows[start:start + want]
         total = sum(x & 0xFFFFFFFF for r in page for x in r) & 0xFFFFFFFF
         return f"OK {len(rows)} {s.log_rate} SUM={total} " + " ".join(f"{a} {b} {c}" for a, b, c in page)
+
+    def xloop_set(self, a):
+        s = self.sim
+        n = self.ch(a)
+        if len(a) != 2 or a[1] not in ("0", "1"):
+            return "ERR 12 PID:LOOPMODE needs <ch> <0|1>"
+        s.xloop[n] = int(a[1])
+        return "OK"
+
+    def gains_set(self, a):
+        s = self.sim
+        n = self.ch(a)
+        try:
+            g = [float(x) for x in a[1:]]
+        except ValueError:
+            return "ERR 12 not a number"
+        if len(g) != 3 or any(x < 0 for x in g):
+            return "ERR 12 PID:GAINS needs <ch> <kp> <ki> <kd>"
+        s.gains[n] = g
+        return "OK"
 
     def loopmode_set(self, a):
         s = self.sim

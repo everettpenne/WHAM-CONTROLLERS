@@ -373,18 +373,18 @@ class Connection:
         return reply
 
     def query(self, commands):
-        """Only queries (first word ends in '?'), in order, under one lock. Returns [(command, reply or None, error)]."""
+        """Only queries (first word ends in '?'), in order. Returns [(command, reply or None, error)]."""
         out = []
-        with self.lock:
-            for c in commands:
-                c = c.strip()
-                if not c or not c.split()[0].endswith("?"):
-                    out.append((c, None, "not a query"))
-                    continue
-                try:
+        for c in commands:                      # the lock is taken per command, so an operator's click is not queued behind a long refresh
+            c = c.strip()
+            if not c or not c.split()[0].endswith("?"):
+                out.append((c, None, "not a query"))
+                continue
+            try:
+                with self.lock:
                     out.append((c, self._exchange(c, self._timeout_for(c), poll=True), None))
-                except CommandTimeout as e:
-                    out.append((c, None, str(e)))
+            except CommandTimeout as e:
+                out.append((c, None, str(e)))
         return out
 
     # -- identity, state, link health
@@ -765,6 +765,12 @@ class Server(ThreadingHTTPServer):
     def __init__(self, addr, app):
         super().__init__(addr, Handler)
         self.app = app
+
+    def handle_error(self, request, client_address):
+        # A browser closing an idle connection (page reload, tab closed) is normal, not an error worth a traceback.
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def make_server(app, host="127.0.0.1", port=8765):

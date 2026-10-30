@@ -87,6 +87,21 @@ class RecordingTests(unittest.TestCase):
         self.assertLess(raw2["mean_error"], 0)                           # measured behind a rising setpoint
         self.assertTrue(any("Flat top" in a for a, _ in rows))
 
+    def test_diagnose_finds_a_flat_output_and_a_disabled_channel(self):
+        flat = sd.build_recording("xrex", {"serial": "S"}, "completed", 100.0, 10,
+                                  {1: [[5000 + 500 * i for i in range(100)], [3000] * 100, [3000] * 100], 2: [[0] * 100, [0] * 100, [0] * 100]},
+                                  meta={"channels": {"1": {"in_shot": True, "loop": "closed", "gains_kp_ki_kd": [0, 0, 0]}, "2": {"in_shot": False}}})
+        text = " ".join(flat["notes"])
+        self.assertIn("did not follow the setpoint", text)
+        self.assertIn("all PID gains zero", text)
+        self.assertIn("Channel 2 was not enabled", text)
+        good = sd.build_recording("xrex", {"serial": "S"}, "completed", 100.0, 10,
+                                  {1: [[5000 + 500 * i for i in range(100)], [5000 + 500 * i for i in range(100)], [5000 + 500 * i for i in range(100)]]})
+        self.assertEqual(good["notes"], [])
+        stuck_fb = sd.build_recording("xrex", {"serial": "S"}, "completed", 100.0, 10,
+                                      {1: [[5000 + 500 * i for i in range(100)], [3000] * 100, [5000 + 500 * i for i in range(100)]]})
+        self.assertIn("feedback barely moved", " ".join(stuck_fb["notes"]))
+
     def test_svg_and_reports_are_well_formed(self):
         import xml.dom.minidom
         rec = synthetic()

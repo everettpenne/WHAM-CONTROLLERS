@@ -517,6 +517,8 @@ function buildHbridge(conn) {
       P.shotResult = h("div", { class: "banner ok", text: `Shot loaded and checked by reading it back: ${P.rows.length} setpoints, ${fmt(P.rows[P.rows.length - 1].t, 3)} ms. ARM, then FIRE, when ready.` });
     } finally { conn.busy = false; validate(); refreshSoon(conn, true); }
   }
+  // control loops
+  const loopBtns = [0, 1, 2].map(i => h("button", { class: "toggle", onclick: async () => { await send(conn, `PID:LOOPMODE ${i + 1} ${P.loops && P.loops[i] ? 0 : 1}`); await P.refresh(); } }));
   // trigger
   const trigBtn = h("button", { class: "toggle", onclick: async () => { const on = P.trig && P.trig.enabled === "1"; await send(conn, `EXTernal:TRIGger ${on ? 0 : 1}`); await P.refresh(); } });
   const trigInfo = h("div", { class: "hint" }), trigWarn = h("div");
@@ -535,6 +537,8 @@ function buildHbridge(conn) {
       h("table", { class: "shot" }, h("thead", {}, h("tr", {}, h("th", { text: "Time (ms)" }), h("th", { text: "Frequency (kHz)" }), h("th", { class: "u", text: "Duty U (%)" }), h("th", { class: "v", text: "Duty V (%)" }), h("th", { class: "w", text: "Duty W (%)" }), h("th"))), tbody),
       h("p", { class: "hint" }, "The controller moves frequency and duty in straight lines between setpoints. The first setpoint is at 0 ms. Values outside the supply's limits are marked and cannot be sent."),
       shotMsg, canvas),
+    section("Control loop (per phase)", "", h("div", { class: "row" }, ...["U", "V", "W"].map((p, i) => h("span", { class: "row" }, h("span", { class: p.toLowerCase() }, p), loopBtns[i]))),
+      h("p", { class: "hint" }, "Open loop: the phase plays the duty you set in the shot. Closed loop: a PID holds the phase's output voltage to a target using the feedback input; it needs gains (PID:GAINS) and a target (TARGet:*), which are set in the Console for now. The controller records data (Shot data tab) only for a run with a closed loop.")),
     section("Run", "4", h("p", {}, "Use ", h("b", {}, "ARM"), " then ", h("b", {}, "FIRE"), " in the State box on the left. FIRE asks for confirmation."),
       h("div", { class: "row" }, h("span", {}, "External trigger:"), trigBtn), trigInfo, trigWarn),
     section("Capacitor charger (CHARGE)", "", h("p", { class: "hint" }, "A separate 50 % square wave that drives the frequency-to-voltage converter charging the capacitor bank. It is independent of the controller's state: you can leave it running, and a fault does not stop it."),
@@ -546,8 +550,10 @@ function buildHbridge(conn) {
     trigWarn.replaceChildren(s === "ARMED" && P.trig && P.trig.enabled === "1" ? h("div", { class: "banner warn", text: "ARMED with the external trigger ON: a rising edge on the trigger input will start the shot." }) : "");
   };
   P.refresh = async () => {
-    const res = await query(conn, ["CONFig:MODE?", "CONFig:LIMits?", "PHASe:ENAble?", "EXTernal:TRIGger:STATus?", "CHARGE:STATus?", "SHOT?"]);
-    const [mode, limits, phases, trig, charge, shotInfo] = res.map(okval);
+    const res = await query(conn, ["CONFig:MODE?", "CONFig:LIMits?", "PHASe:ENAble?", "EXTernal:TRIGger:STATus?", "CHARGE:STATus?", "SHOT?", "PID:LOOPMODE? 0"]);
+    const [mode, limits, phases, trig, charge, shotInfo, loops] = res.map(okval);
+    P.loops = loops ? loops.split(/\s+/).map(Number) : null;
+    loopBtns.forEach((b, i) => { const v = P.loops ? P.loops[i] : null; b.textContent = v === 1 ? "Closed" : v === 0 ? "Open" : "?"; b.className = "toggle " + (v === 1 ? "on" : "off"); });
     P.heldShotS = shotInfo && /^\d+ \d+/.test(shotInfo) && +shotInfo.split(" ")[0] > 0 ? +shotInfo.split(" ")[1] / 1e6 : null;   // what the controller holds, not what the table shows
     P.mode = mode; modeNote.textContent = "";
     segLim.classList.toggle("on", mode === "LIMITER"); segHv.classList.toggle("on", mode === "HVPS");
@@ -565,7 +571,7 @@ function buildHbridge(conn) {
     const ph = ["U", "V", "W"].map((p, i) => (P.phases[p] ? i + 1 : 0)).filter(Boolean);
     const last = P.rows.length ? P.rows[P.rows.length - 1].t : 10;
     return { channels: ph.length ? ph : [1, 2, 3], duration_s: P.heldShotS || Math.max(0.001, (Number.isFinite(last) ? last : 10) / 1000),
-             meta: { supply: P.mode, phases_on: ph.map(i => "UVW"[i - 1]).join(""), shot_setpoints: P.rows.map(r => ({ t_ms: r.t, f_kHz: r.f, duty_U: r.u, duty_V: r.v, duty_W: r.w })) } };
+             meta: { supply: P.mode, loop_modes_U_V_W: P.loops ? P.loops.map(v => (v ? "closed" : "open")).join(" ") : null, phases_on: ph.map(i => "UVW"[i - 1]).join(""), shot_setpoints: P.rows.map(r => ({ t_ms: r.t, f_kHz: r.f, duty_U: r.u, duty_V: r.v, duty_W: r.w })) } };
   };
   drawTable(); P.el = el;
   conn.lastExtras = 0; setTimeout(() => P.refresh(), 100);
@@ -577,15 +583,32 @@ function buildXrex(conn) {
   const P = { ch: {}, timing: null };
   const el = h("div"), grid = h("div", { class: "chan-grid" });
   const cards = {};
+  const gainInput = label => h("input", { type: "number", min: 0, step: "any", style: "width:78px", "aria-label": label, oninput: ev => { ev.target.dataset.touched = "1"; } });
+  const gainsTouched = (c, v) => [c.kp, c.ki, c.kd].forEach(i => { if (v) i.dataset.touched = "1"; else delete i.dataset.touched; });
+  const zeroGains = c => c.gains && c.gains.every(x => x === 0);
   for (const n of [1, 2, 3, 4]) {
     const c = { n };
     c.title = h("h3", {}, `Channel ${n}`); c.run = h("div", { class: "hint" });
-    c.enable = h("button", { class: "toggle", onclick: async () => { await send(conn, `SOURce:ENAble ${n} ${c.en === "1" ? 0 : 1}`); await P.refresh(); } });
-    c.ena = h("button", { class: "toggle", onclick: async () => { await send(conn, `XREX:CHANnel:ENAOut ${n} ${c.enaV === "1" ? 0 : 1}`); await P.refresh(); } });
-    c.con = h("button", { class: "toggle", onclick: async () => { await send(conn, `XREX:CHANnel:CONTactOut ${n} ${c.conV === "1" ? 0 : 1}`); await P.refresh(); } });
+    /* a click shows its result at once (from the controller's own OK), then the full refresh confirms it */
+    const flip = (cmd, key, btn, on, off) => async () => {
+      const want = c[key] === "1" ? "0" : "1";
+      const r = await send(conn, `${cmd} ${n} ${want}`);
+      if (r && r.ok) { c[key] = want; P.paint(btn || { enaV: c.ena, conV: c.con, en: c.enable }[key], want, on, off); }
+      await P.refresh();
+    };
+    c.enable = h("button", { class: "toggle", onclick: flip("SOURce:ENAble", "en", null, "ENABLED", "OFF") });
+    c.ena = h("button", { class: "toggle", onclick: flip("XREX:CHANnel:ENAOut", "enaV", null, "ON", "OFF") });
+    c.con = h("button", { class: "toggle", onclick: flip("XREX:CHANnel:CONTactOut", "conV", null, "ON", "OFF") });
     c.amps = h("input", { type: "number", min: 0, step: "any", style: "width:100px", "aria-label": `Peak current for channel ${n}` });
     c.pins = h("div", { class: "pins" });
-    c.el = h("div", { class: "card" }, c.title, c.run,
+    c.loop = h("button", { class: "toggle", title: "Closed loop: the PID corrects the output from the feedback. Open loop: the output is the setpoint, feedback only reported.",
+      onclick: async () => { const want = c.loopV === "1" ? "0" : "1"; const r = await send(conn, `PID:LOOPMODE ${n} ${want}`); if (r && r.ok) { c.loopV = want; c.loop.textContent = want === "1" ? "Closed loop" : "Open loop"; c.loop.className = "toggle " + (want === "1" ? "on" : "off"); } await P.refresh(); } });
+    c.kp = gainInput(`Kp of channel ${n}`); c.ki = gainInput(`Ki of channel ${n}`); c.kd = gainInput(`Kd of channel ${n}`);
+    c.warn = h("div");
+    c.el = h("div", { class: "card" }, c.title, c.run, c.warn,
+      h("div", { class: "row" }, h("span", {}, "Control:"), c.loop),
+      h("div", { class: "row", style: "margin-top:6px" }, h("span", {}, "PID gains"), h("label", {}, "Kp ", c.kp), h("label", {}, "Ki ", c.ki), h("label", {}, "Kd ", c.kd),
+        h("button", { class: "btn small", onclick: async () => { const v = [c.kp, c.ki, c.kd].map(i => i.value.trim()); if (v.some(x => x === "" || !Number.isFinite(+x) || +x < 0)) { toast("Enter Kp, Ki and Kd as numbers (0 or more).", true); return; } await send(conn, `PID:GAINS ${n} ${v.join(" ")}`); gainsTouched(c, false); await P.refresh(); } }, "Set")),
       h("div", { class: "row" }, h("span", {}, "In shot:"), c.enable), h("div", { class: "row" }, h("span", {}, "Enable line:"), c.ena, h("span", {}, "Contactor:"), c.con),
       h("div", { class: "row", style: "margin-top:8px" }, h("label", {}, "Peak current ", c.amps, " A"), h("button", { class: "btn small", onclick: async () => { const v = +c.amps.value; if (!(v >= 0)) { toast("Enter a current in amps.", true); return; } await send(conn, `SHOT:CURRent ${n} ${v}`); await P.refresh(); } }, "Set")),
       h("div", { class: "hint", style: "margin-top:8px" }, "Fault inputs, raw levels (what each level means depends on the polarity settings):"), c.pins);
@@ -599,28 +622,39 @@ function buildXrex(conn) {
     section("Channels", "2", grid),
     section("Run", "3", h("p", {}, "Use ", h("b", {}, "ARM"), " then ", h("b", {}, "START SHOT"), " in the State box on the left. ARM is refused unless every channel that is in the shot has its enable line and contactor on."), interlock));
   const paint = (btn, v, on, off) => { btn.textContent = v === "1" ? on : off; btn.className = "toggle " + (v === "1" ? "on" : "off"); };
+  P.paint = paint;
   P.refresh = async () => {
     const cmds = ["SHOT:TIMing?", "EXTernal:ENAble?", "EXTernal:INPut?", "EXTernal:TRIGger?"];
-    for (const n of [1, 2, 3, 4]) cmds.push(`SOURce:ENAble? ${n}`, `SOURce:STATus? ${n}`, `XREX:CHANnel:STATus? ${n}`, `XREX:CHANnel:ENAOut? ${n}`, `XREX:CHANnel:CONTactOut? ${n}`, `SHOT:CURRent? ${n}`);
+    for (const n of [1, 2, 3, 4]) cmds.push(`SOURce:ENAble? ${n}`, `SOURce:STATus? ${n}`, `XREX:CHANnel:STATus? ${n}`, `XREX:CHANnel:ENAOut? ${n}`, `XREX:CHANnel:CONTactOut? ${n}`, `SHOT:CURRent? ${n}`, `PID:LOOPMODE? ${n}`, `PID:GAINS? ${n}`);
     const res = await query(conn, cmds), val = i => okval(res[i]);
     const tm = val(0); P.timingVals = tm ? tm.split(/\s+/).map(Number) : null; if (tm) { const [a, b, c] = tm.split(/\s+/); if (document.activeElement !== tUp && document.activeElement !== tFlat && document.activeElement !== tDown) { tUp.value = a; tFlat.value = b; tDown.value = c; } timingInfo.textContent = `Set in the controller: ${a} s up, ${b} s flat, ${c} s down.`; }
     else timingInfo.textContent = "No shot timing has been set since the controller started: set it before starting a shot.";
     interlock.textContent = `External enable interlock: ${val(1) === "1" ? "on" : "off"}; its input reads ${val(2) === "1" ? "HIGH" : "LOW"}. External trigger: ${val(3) === "1" ? "on" : "off"}.`;
     [1, 2, 3, 4].forEach((n, k) => {
-      const c = cards[n], o = 4 + k * 6;
+      const c = cards[n], o = 4 + k * 8;
       c.en = val(o); c.enaV = val(o + 3); c.conV = val(o + 4);
       paint(c.enable, c.en, "ENABLED", "OFF"); paint(c.ena, c.enaV, "ON", "OFF"); paint(c.con, c.conV, "ON", "OFF");
       const st = val(o + 1); if (st) { const [run, sp, meas, outp] = st.split(/\s+/); c.run.textContent = `${run === "1" ? "Running" : "Not running"}: setpoint ${sp} Hz, measured ${meas} Hz, output ${outp} Hz.`; }
       if (document.activeElement !== c.amps && val(o + 5) != null) c.amps.value = val(o + 5);
+      c.loopV = val(o + 6); c.loop.textContent = c.loopV === "1" ? "Closed loop" : c.loopV === "0" ? "Open loop" : "?"; c.loop.className = "toggle " + (c.loopV === "1" ? "on" : "off");
+      const g = val(o + 7); c.gains = g ? g.split(/\s+/).map(Number) : null;
+      if (c.gains) for (const [inp, v] of [[c.kp, c.gains[0]], [c.ki, c.gains[1]], [c.kd, c.gains[2]]]) if (document.activeElement !== inp && !inp.dataset.touched) inp.value = String(v);
+      c.warn.replaceChildren(c.loopV === "1" && zeroGains(c) ? h("div", { class: "banner err", text: "Closed loop with all gains zero: the output will sit at the minimum frequency (3 kHz) and never follow the setpoint. Set the gains, or switch to open loop." }) : "");
       const pins = val(o + 2); c.pins.replaceChildren(...(pins ? pins.split(/\s+/).map(t => { const [k2, v] = t.split("="); return h("div", { class: "pin" }, h("b", { text: k2 }), v); }) : []));
     });
   };
   P.el = el; P.onStatus = () => {};
+  P.preArmWarnings = () => {
+    const none = [1, 2, 3, 4].every(n => cards[n].en !== "1");
+    if (none) return ["No channel is enabled for the shot (\"In shot\" is OFF on every channel), so nothing will be output."];
+    const bad = [1, 2, 3, 4].filter(n => cards[n].en === "1" && cards[n].loopV === "1" && zeroGains(cards[n]));
+    return bad.length ? [`Channel${bad.length > 1 ? "s" : ""} ${bad.join(", ")} ${bad.length > 1 ? "are" : "is"} in the shot, in closed loop, with all PID gains zero. The output would stay at the minimum frequency and not follow the setpoint.`] : [];
+  };
   P.recordDefaults = () => {
     const on = [1, 2, 3, 4].filter(n => cards[n].en === "1");
     const t = P.timingVals || [3, 0, 0];
     return { channels: on.length ? on : [1, 2, 3, 4], duration_s: t.reduce((a, b) => a + b, 0) || 3,
-             meta: { shot_timing_s: { up: t[0], flat: t[1], down: t[2] }, channels: Object.fromEntries([1, 2, 3, 4].map(n => [n, { in_shot: cards[n].en === "1", peak_current_A: +cards[n].amps.value || null }])) } };
+             meta: { shot_timing_s: { up: t[0], flat: t[1], down: t[2] }, channels: Object.fromEntries([1, 2, 3, 4].map(n => [n, { in_shot: cards[n].en === "1", peak_current_A: +cards[n].amps.value || null, loop: cards[n].loopV === "1" ? "closed" : cards[n].loopV === "0" ? "open" : null, gains_kp_ki_kd: cards[n].gains || null }])) } };
   };
   setTimeout(() => P.refresh(), 100);
   return P;
@@ -686,6 +720,8 @@ async function armRecording(conn) {
   }
 }
 async function armClicked(conn) {
+  const warn = conn.panel && conn.panel.preArmWarnings ? conn.panel.preArmWarnings() : [];
+  if (warn.length && !confirm(warn.join("\n\n") + "\n\nArm anyway?")) return;
   const r = await send(conn, "ARM");
   if (r.ok && conn.ui.recCheck.checked && !recActive(conn)) await armRecording(conn);
 }

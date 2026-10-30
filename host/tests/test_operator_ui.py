@@ -132,6 +132,18 @@ class DirectModeTests(UiBase):
         _, r = self.http.call("/api/send", {"id": self.cid, "command": "STATE?"})
         self.assertEqual(r["reply"], "OK IDLE")
 
+    def test_a_click_is_not_queued_behind_a_long_refresh(self):
+        import threading, time
+        slow = threading.Thread(target=lambda: self.http.call("/api/query", {"id": self.cid, "commands": ["STATE?"] * 60}))
+        slow.start()
+        time.sleep(0.02)
+        t0 = time.time()
+        code, r = self.http.call("/api/send", {"id": self.cid, "command": "STATE?"})
+        waited = time.time() - t0
+        slow.join()
+        self.assertEqual(code, 200)
+        self.assertLess(waited, 5.0)
+
     def test_hub_lines_are_refused_outside_hub_mode(self):
         code, r = self.http.call("/api/send", {"id": self.cid, "command": "!hub status"})
         self.assertEqual(code, 400)
@@ -339,6 +351,25 @@ class RecordingTests(UiBase):
             saved = json.load(f)
         self.assertEqual(saved["meta"], {"what": "test"})
         self.assertEqual(saved["controller"]["serial"], "WB-SIM1-0")
+
+    def test_xrex_zero_gains_shot_is_flagged_and_gains_fix_it(self):
+        self.connect("xrex")
+        self.send("SHOT:TIMing 0.5 0.5 0.5")
+        self.send("SHOT:CURRent 1 3000")
+        _, r = self.http.call("/api/query", {"id": self.cid, "commands": ["PID:GAINS? 1", "PID:LOOPMODE? 1"]})
+        self.assertEqual([x["reply"] for x in r["results"]], ["OK 0 0 0", "OK 1"])     # the controller's boot state
+        meta = {"channels": {"1": {"in_shot": True, "loop": "closed", "gains_kp_ki_kd": [0, 0, 0]}}}
+        for gains, flagged in (("0 0 0", True), ("1 10 0", False)):
+            self.send(f"PID:GAINS 1 {gains}")
+            self.send("ARM")
+            self.http.call("/api/record/arm", {"id": self.cid, "channels": [1], "duration_s": 1.5, "meta": meta})
+            self.send("SHOT:STARt")
+            rec = self.wait_rec(("done", "failed", "empty"))
+            self.assertEqual(rec["state"], "done", rec)
+            _, d = self.http.call(f"/api/shot?sid={rec['sid']}")
+            self.assertEqual(any("did not follow" in n for n in d["notes"]), flagged, d["notes"])
+            self.http.wait(self.cid, lambda c: c["state"] == "IDLE", "IDLE")
+            self.http.call("/api/record/cancel", {"id": self.cid})
 
     def test_hbridge_closed_loop_shot_is_read_back_in_checked_pages(self):
         self.connect("hbridge")
