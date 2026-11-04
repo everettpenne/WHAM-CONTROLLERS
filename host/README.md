@@ -24,6 +24,7 @@ Python 3.8+, standard library only (PyYAML is used for configs if installed, but
   `devices.csv`. `--check` compares a board with the registry without changing anything; `--list` prints the registry.
 - **`dangerous_commands.py`** -- the list of dangerous commands (what starts output, weakens a protection, reflashes, ...), matched the way the firmware matches.
 - `config/` -- one YAML file per controller (`example.yaml`); `deploy/wham-hub@.service` -- the systemd template unit.
+- The bench controllers (XREX-CTRL, LMTR-CTRL, ECH-HVPS), their MACs, hub configs (`config/xrex-ctrl.yaml`, `lmtr-ctrl.yaml`, `ech-hvps.yaml`) and what the administrator must do on `andrew`: `docs/bench_devices.md`.
 - Logs go to `host/logs/` and the registry to `host/devices.csv`, next to the scripts, unless the config says otherwise. On a server set `log_dir`
   outside the install tree; `log_keep_days` deletes day files older than that many days.
 

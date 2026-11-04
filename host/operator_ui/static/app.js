@@ -176,6 +176,7 @@ function presetCard(p, idx) {
   return h("div", { class: "card" },
     h("h3", {}, p.name, h("span", { class: "chip " + p.mode, text: mode })),
     h("div", { class: "meta", text: target }),
+    p.note ? h("div", { class: "hint", text: p.note }) : null,
     h("div", { class: "row spread" },
       open ? h("button", { class: "btn", onclick: () => { S.active = open.id; renderAll(); } }, "Open")
            : h("button", { class: "btn primary", onclick: async ev => { ev.target.disabled = true; try { await connect({ ...p }); } catch (e) { toast(e.message, true); } ev.target.disabled = false; } }, "Connect"),
