@@ -55,7 +55,7 @@ DEFAULT_PRESETS = [
     # ports are the ssh-tunnel ports on this computer (andrew's hubs listen on the same numbers); MACs are the serial-to-Ethernet modules'
     {"name": "WHAM-PFM-G474-XREX-CTRL", "mode": "hub", "host": "127.0.0.1", "port": 5101, "note": "XREX magnet-supply controller. Bridge 192.168.130.138, MAC 00:08:DC:74:8A:9E, hub bench2."},
     {"name": "WHAM-PFM-G474-LMTR-CTRL", "mode": "hub", "host": "127.0.0.1", "port": 5102, "note": "Limiter controller (HBRIDGE firmware). Bridge 192.168.130.253, MAC 00:08:DC:74:8B:D7, hub xrexsim."},
-    {"name": "WHAM-PFM-G474-ECH-HVPS", "mode": "hub", "host": "127.0.0.1", "port": 5103, "note": "ECH gyrotron HVPS (HBRIDGE firmware). Bridge MAC 00:08:DC:74:8A:95: NOT FOUND on the bench network yet, and no hub on port 5103 yet."},
+    {"name": "WHAM-PFM-G474-ECH-HVPS", "mode": "hub", "host": "127.0.0.1", "port": 5103, "note": "ECH gyrotron HVPS (HBRIDGE firmware, board WB-0001-8). Bridge 192.168.130.250, MAC 00:08:DC:74:8D:BB, hub ech-hvps (needs the administrator to start it)."},
 ]
 REPLY_RE = re.compile(r"^(OK($| )|ERR( |$))")
 # What the hub says instead of a reply to an interactive client when it does not forward a command (to a quiet client it is "ERR hub ...").

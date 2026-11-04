@@ -1,7 +1,6 @@
-# WHAM-PFM-G474-ECH-HVPS: HBRIDGE firmware; bridge MAC 00:08:DC:74:8A:95. NOT READY: that bridge has not been found on the network.
-# Set host: to its fixed IP (and check it with the steps in docs/bench_devices.md) BEFORE running systemctl enable --now wham-hub@ech-hvps.
+# WHAM-PFM-G474-ECH-HVPS: HBRIDGE firmware (board WB-0001-8); bridge MAC 00:08:DC:74:8D:BB at 192.168.130.250.
 name: ech-hvps                # shown in logs and to clients; also the service instance name
-host: REPLACE-WITH-BRIDGE-IP      # the controller's serial-over-TCP bridge (fixed IP)
+host: 192.168.130.250      # the controller's serial-over-TCP bridge (fixed IP)
 port: 5000                # the bridge's TCP port
 listen_host: 0.0.0.0       # where clients connect to this service (all interfaces; 127.0.0.1 for this host only)
 listen_port: 5103          # one distinct port per controller

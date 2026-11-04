@@ -7,7 +7,7 @@ The three controllers on the bench network, the serial-to-Ethernet module (WIZne
 |---|---|---|---|---|---|---|
 | WHAM-PFM-G474-XREX-CTRL | XREX | 00:08:DC:74:8A:9E | 192.168.130.138 | `xrex-ctrl` | 5101 | running (as `bench2`) |
 | WHAM-PFM-G474-LMTR-CTRL | HBRIDGE (Limiter) | 00:08:DC:74:8B:D7 | 192.168.130.253 | `lmtr-ctrl` | 5102 | running (as `xrexsim`) |
-| WHAM-PFM-G474-ECH-HVPS | HBRIDGE (ECH gyrotron HVPS) | 00:08:DC:74:8A:95 | not found | `ech-hvps` | 5103 | not started: bridge not found on the network |
+| WHAM-PFM-G474-ECH-HVPS | HBRIDGE (ECH gyrotron HVPS, board WB-0001-8) | 00:08:DC:74:8D:BB | 192.168.130.250 | `ech-hvps` | 5103 | bridge and board answer (2026-11-04); hub not started yet |
 
 The hub configs are `host/config/xrex-ctrl.yaml`, `lmtr-ctrl.yaml` and `ech-hvps.yaml`. On 2026-11-04 the two running hubs used
 hand-made, untracked files on `andrew` (`bench2.yaml`, `xrexsim.yaml`) with the same addresses and ports; the tracked files
@@ -41,21 +41,20 @@ The `whamdata` account has no sudo, so these steps need an account that has it. 
    2026-10-26.
 4. **Remove the old configs** once the new services work: `host/config/bench2.yaml` and `host/config/xrexsim.yaml` (keep a
    copy if wanted; they are untracked).
-5. **ECH-HVPS: bring up its bridge first.** Its WIZnet module (MAC 00:08:DC:74:8A:95) did not answer on any lab subnet of
-   `andrew` (192.168.130.x, 192.168.20.x, 192.168.150.x, 192.168.10.x, 10.10.10.x) on 2026-11-04. Check power, the link light and the
-   switch port it is plugged into. Then give it a fixed IP on 192.168.130.x and the same settings as the Limiter's bridge (above).
-   Search for it with the WIZnet configuration tool from a computer on the same network segment (a broadcast search does not
-   cross routers or ssh tunnels). When it answers at `<ip>`:
-   - edit `host/config/ech-hvps.yaml`: `host: <ip>` (it holds a placeholder that makes the hub refuse to run until it is set);
+5. **Start the ECH-HVPS hub.** Its bridge (WIZnet WIZ5XXSR-RP, MAC 00:08:DC:74:8D:BB) is already on the network at
+   192.168.130.250 with the same settings as the Limiter's (static IP, TCP server on port 5000, 8N1, no flow control), and on
+   2026-11-04 the board behind it answered `*IDN?` as WHAM-HBRIDGE-PFMG474 v0.10, SN=WB-0001-8, label ECH-HVPS. `host/config/ech-hvps.yaml`
+   already points at it, so:
    - `sudo systemctl enable --now wham-hub@ech-hvps`;
-   - confirm with `!hub status` on port 5103: `product=WHAM-HBRIDGE-PFMG474`.
+   - confirm with `!hub status` on port 5103: `connected=1`, `product=WHAM-HBRIDGE-PFMG474`, `serial=WB-0001-8`.
 6. **Operators' tunnels** keep working for 5101 and 5102. To use the ECH hub from a laptop, add `-L 5103:localhost:5103` to the
    ssh command.
 
 ## Open items
 
-- The Limiter board reports `CONFig:MODE? = NONE`: no Limiter/HVPS mode has been selected on it yet.
+- The ECH-HVPS also reports `CONFig:MODE? = NONE` (no mode selected yet). The Limiter board reports `CONFig:MODE? = NONE`: no Limiter/HVPS mode has been selected on it yet.
 - Both bench boards still report `SN=UNSET`; `python3 host/provision_board.py` gives them serials, and recordings are filed
   under the serial (until then under "unassigned-...").
-- `host/devices.csv` lists one board labelled ECH-HVPS (serial WB-0001-8). Which WIZnet module it sits behind is not recorded
-  anywhere; the MAC 00:08:DC:74:8A:95 above is the one the operator gave for the ECH-HVPS.
+- The ECH-HVPS bridge was first given as 00:08:DC:74:8A:95 (swapped out of service) and then mistyped as …8D:BF; the module in
+  use is 00:08:DC:74:8D:BB. Only one client can be connected to it at a time: do not leave a terminal on 192.168.130.250:5000
+  once the hub is running.
