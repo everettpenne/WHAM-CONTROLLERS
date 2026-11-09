@@ -367,7 +367,7 @@ A profile saved by older firmware still recalls on newer firmware; `IGNORED` cou
 |---|---|
 | `FWUPdate:*`, `BOOT` | firmware management belongs to the maintained update tool, with the hub's cooperation, in `IDLE`, never during operations |
 | `SYS:SERial`, `SYS:LABel`, `SYS:ID:CLEar` | the board's permanent identity |
-| `DEBUG:FAULT:BYPASS` (XREX) | disables fault detection; bench only |
+| `DEBUG:FAULT:BYPASS` (XREX, HBRIDGE) | disables fault detection; bench only |
 | `OCP:TEST:FAULT`, `GENERAL:TEST:FAULT` | inject faults on purpose; testing only |
 | `SIM:*` | simulator-only: the plant models, simulated fault inputs |
 | `DIAGnostic:GPOut09..12`, `GPOut:ENAble`, `PWMAlt:ENAble` | raw board outputs; commissioning only |

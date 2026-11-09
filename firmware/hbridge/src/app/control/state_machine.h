@@ -37,8 +37,9 @@ extern "C" {
  *   state stays FAULT. Otherwise IDLE -- never straight back to ARMED.
  *
  * Not ported from XREX (not part of this product, or deferred): the PID
- * ramp-downs, per-channel fault types, the external ENABLE interlock (PF13),
- * DEBUG:FAULT:BYPASS and telemetry events. (The external TRIGGER, PF15, was
+ * ramp-downs, per-channel fault types, the external ENABLE interlock (PF13)
+ * and telemetry events. (DEBUG:FAULT:BYPASS was ported 2026-11-09, narrower
+ * than XREX's -- see SM_SetFaultBypassEnabled(). The external TRIGGER, PF15, was
  * ported 2026-10-20 as shot_trigger.c, interrupt-driven; it starts the shot
  * through ShotStart_Run(), shot_start.c, the same routine FIRE uses.)
  */
@@ -104,6 +105,22 @@ uint8_t SM_GetFaultSources(void);
    Stops the output at once and latches FAULT GENERAL until FAULT:CLEAR, like every other fault.
    Safe to call from the control interrupt. */
 void SM_ReportControlFault(uint8_t src);
+
+/* DEBUG:FAULT:BYPASS -- a BENCH-ONLY override, added 2026-11-09 (the XREX command of the same name, narrower: see
+   below). Off at every boot, RAM-only, never saved in a profile. While ON:
+     - PC10/HRTIM1_FLT6 and the 12 GateDriverStatus inputs, as seen by the firmware, no longer put the machine in
+       FAULT, refuse ARM/FIRE/SOURce:RUN or the trigger, or stop the output (GateDriver_CheckFault() neither
+       force-stops nor latches);
+     - FAULT:CLEar succeeds whatever those inputs read;
+     - GENERAL:TEST:FAULT is ignored.
+   NOT bypassed: the HRTIM's own PC10 gating of the outputs (silicon, autonomous), and the faults the controller
+   finds in itself -- the closed-loop OVERVOLT and FEEDBACK faults and a table underrun -- because the closed-loop
+   run is already torn down when they are reported, so ignoring them would leave the output running uncontrolled.
+   FAULT:SOURces? and the FAULT? query still report the true state of every source.
+   Turning it OFF re-scans the GateDriverStatus pins at once. *** Never enable it where a real fault condition is
+   physically possible (a gyrotron/HVPS or Limiter connected to a real load). *** */
+void SM_SetFaultBypassEnabled(uint8_t enabled);
+uint8_t SM_GetFaultBypassEnabled(void);
 
 /* FAULT -> IDLE if both fault sources clear (each re-checks its physical
    input). Returns 1 if the state is now IDLE, 0 if it stays FAULT or was

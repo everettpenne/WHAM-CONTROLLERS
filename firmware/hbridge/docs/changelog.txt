@@ -1,6 +1,20 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-09  -  DEBUG:FAULT:BYPASS on the HBRIDGE controllers (Limiter, ECH-HVPS)  [host-tested, builds clean; NOT YET FLASHED]
+-----------------------------------------------------------------------
+  Request: add the XREX fault bypass to the Limiter and ECH-HVPS controllers (both run this firmware). Bench boards with nothing wired to PC10 / the 12 GateDriverStatus pins latch FAULT at boot.
+  DEBUG:FAULT:BYPASS <0|1> / DEBUG:FAULT:BYPASS? (cmd_state.c). RAM-only, 0 at every boot, not in profiles. While 1 (state_machine.c g_faultBypass):
+    - the state machine ignores PC10/HRTIM1_FLT6 and GateDriverStatus: no FAULT, no ERR 6 on ARM/FIRE/SOURce:RUN/PF15 trigger (ShotStart_FaultLatched()), a shot finishes normally even though a source is latched;
+    - GateDriver_CheckFault() neither force-stops nor latches; FAULT:CLEar succeeds with the input still bad; GENERAL:TEST:FAULT is ignored (not latched, so it cannot appear when the bypass goes off);
+    - turning it off re-scans the GateDriverStatus pins once (they are edge-triggered), as XREX does.
+  DELIBERATELY NARROWER THAN XREX ("nothing behaves as faulted regardless of source"): the closed-loop OVERVOLT and FEEDBACK faults and a table underrun still fault. When control_runtime.c reports an OVP/feedback fault it has already ended
+  the run (EndRun), and it relies on the state machine to stop the output; ignoring the report would leave the output running with no control. The bypass exists for missing external fault wiring, which these are not.
+  Not bypassed either: the HRTIM's own PC10 output gating (silicon). FAULT? now reads SM_GetFaultSources() (the true latches), so FAULT? can be 1 while STATE? is IDLE under bypass; FAULT:SOURces? is unchanged.
+  Error code for a bad argument is ERR 12 (this product's flag convention; XREX uses ERR 11 for a non-0/1 value).
+  Tests: test_state_machine (TestFaultBypass: external inputs ignored, shot completion, own faults still fault, clear, re-scan on disable), test_shot_trigger (start check under bypass). All host tests pass; the ARM build is clean.
+  NOT YET DONE: flash to the Limiter (WB-0002-6) and ECH-HVPS (WB-0001-8) and try it on the bench; no version bump yet (v0.11 string unchanged) -- bump it when the image is released.
+
 2026-10-27  -  CHARGE output: a 50 % square wave on PG0 for the capacitor-bank charger (CHARGE:FREQuency), v0.11  [host-tested, builds clean; NOT YET FLASHED, NOT YET SEEN ON THE PIN]
 -----------------------------------------------------------------------
   Request: for the Limiter, a single PWM output at 50 % duty, independent of the HRTIM outputs, driving a frequency-to-voltage converter that charges a capacitor bank. The operator turns it on,

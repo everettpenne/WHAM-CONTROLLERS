@@ -32,6 +32,8 @@ static void (*f_inPrepare)(void);          /* runs inside Control_Prepare: stand
 
 SM_State_t SM_GetState(void)         { return f_state; }
 uint8_t SM_GetFaultSources(void)     { return f_srcMask; }
+static uint8_t f_bypass;
+uint8_t SM_GetFaultBypassEnabled(void) { return f_bypass; }
 uint8_t SM_Fire(void)
 {
     f_fires++;
@@ -63,7 +65,7 @@ uint8_t BoardIo_ReadExtTrigger(void) { return f_pin; }
 static void Reset(void)
 {
     f_state = SM_STATE_ARMED;
-    f_fireWorks = 1U; f_shotReady = 1U; f_closed = 0U; f_hrtimTripped = f_gdsLatched = f_underrun = f_srcMask = 0U;
+    f_fireWorks = 1U; f_shotReady = 1U; f_closed = 0U; f_hrtimTripped = f_gdsLatched = f_underrun = f_srcMask = f_bypass = 0U;
     f_pin = 1U;
     f_prepareResult = CTL_OK;
     f_fires = f_prepares = f_goes = f_stops = f_restoreSrc = f_irqDepth = f_startIrqPends = 0;
@@ -97,6 +99,10 @@ static void TestStartOrderAndResults(void)
     Reset(); f_srcMask = SM_FAULT_SRC_FEEDBACK;  CHECK(ShotStart_Run().code == SHOT_START_FAULT);
     Reset(); f_srcMask = SM_FAULT_SRC_PC10;      CHECK(ShotStart_Run().code == SHOT_START_OK);   /* PC10/test bits are SM's own state, not read here */
     CHECK(f_fires == 1);
+    /* DEBUG:FAULT:BYPASS removes the two external inputs from the start check, not the controller's own faults */
+    Reset(); f_bypass = 1U; f_hrtimTripped = 1U; f_gdsLatched = 1U;  CHECK(ShotStart_Run().code == SHOT_START_OK);
+    Reset(); f_bypass = 1U; f_underrun = 1U;                         CHECK(ShotStart_Run().code == SHOT_START_FAULT);
+    Reset(); f_bypass = 1U; f_srcMask = SM_FAULT_SRC_OVERVOLT;       CHECK(ShotStart_Run().code == SHOT_START_FAULT);
 
     Reset(); f_state = SM_STATE_IDLE;  CHECK(ShotStart_Run().code == SHOT_START_NOT_ARMED);
     Reset(); f_state = SM_STATE_FIRING; CHECK(ShotStart_Run().code == SHOT_START_NOT_ARMED);

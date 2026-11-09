@@ -285,9 +285,10 @@ interlock, floating inputs). Show the operator that the fault is still present a
 
 **Recovery sequence, HBRIDGE:** `FAULT:CLEar`, `STATE?` must return `OK IDLE`; re-select the supply mode and phases if the controller was reset; `ARM`; start.
 
-**`DEBUG:FAULT:BYPASS 1` (XREX) is not a recovery tool.** It is a bench-only override that makes the controller ignore its own fault
-detection (faults stop being raised, `FAULT:CLEar` clears unconditionally, and the external-enable permissive reads satisfied), so that
-signal paths can be tested with nothing wired to the protection inputs. It is off at every reset. Never send it to a controller connected to a
+**`DEBUG:FAULT:BYPASS 1` (XREX and, since 2026-11-09, HBRIDGE) is not a recovery tool.** It is a bench-only override that makes the controller ignore its own fault
+detection (faults stop being raised, `FAULT:CLEar` clears unconditionally, and on XREX the external-enable permissive reads satisfied), so that
+signal paths can be tested with nothing wired to the protection inputs. On HBRIDGE it covers only PC10 and the GateDriverStatus inputs; the
+closed-loop overvoltage/feedback faults and a table underrun still fault. It is off at every reset. Never send it to a controller connected to a
 real supply, and do not put it in an operator front-end; the hub treats it as a dangerous command.
 
 A fault is also a reason to **ask a human**. Your program should never include an unattended "clear and retry" path for a fault that

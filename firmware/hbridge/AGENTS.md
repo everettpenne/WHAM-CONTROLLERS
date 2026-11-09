@@ -96,7 +96,8 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
   The external SHOT TRIGGER (a rising edge on PF15 while ARMED starts the shot, `EXTernal:TRIGger`, added 2026-10-20) IS ported, and is
   interrupt-driven rather than polled as in XREX: `src/app/control/shot_trigger.c` (edge handler, priority 1, pends a software interrupt)
   and `shot_start.c` (the one start routine FIRE and the trigger share; host-tested in `tests/test_shot_trigger.c`). Not ported yet:
-  the external ENABLE interlock (PF13), DEBUG:FAULT:BYPASS, telemetry events (Phase 5).
+  the external ENABLE interlock (PF13), telemetry events (Phase 5). DEBUG:FAULT:BYPASS was ported 2026-11-09 (narrower than XREX: it
+  ignores PC10 and GateDriverStatus in the state machine, not the closed-loop OVERVOLT/FEEDBACK faults or a table underrun; `state_machine.h`).
 - **The CHARGE output** (`CHARGE:FREQuency`, added 2026-10-27): one 50 % square wave on PG0 ("GPOut_01") from its own timer, TIM20 channel 1's COMPLEMENTARY output
   (CH1N, alternate function 2), for a frequency-to-voltage converter charging the capacitor bank. 0 Hz = off, 1 Hz - 100 kHz. **Independent of the state machine and of every fault,
   by decision** (the user: usable and left on in any state; a fault leaves it on). Off at boot, not in profiles. PG0, TIM20 are reserved for it. Pieces:

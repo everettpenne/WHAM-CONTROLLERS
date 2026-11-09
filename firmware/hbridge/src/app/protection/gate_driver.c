@@ -14,6 +14,7 @@
 #include "hrtim.h"
 #include "pfm.h"
 #include "board_io.h"
+#include "state_machine.h"
 
 /* GateDriverStatus_01..12 = bits 0..11 of BoardIo_ReadGateDriverStatus(). */
 #define GDS_PIN_MASK   (0x0FFFU)
@@ -53,7 +54,10 @@ void GateDriver_CheckFault(void)
         badBits = (uint16_t)(~raw) & GDS_PIN_MASK;
     }
 
-    if (badBits != 0U)
+    /* DEBUG:FAULT:BYPASS (state_machine.h): with the bypass on, a bad pin neither force-stops the output nor latches --
+       otherwise this EXTI path would kill a shot the state machine has been told to ignore this input for, and
+       GateDriver_FaultClear()'s own re-check would re-latch it at once. */
+    if ((badBits != 0U) && (SM_GetFaultBypassEnabled() == 0U))
     {
         g_dbgBadRaw = raw;
         PFM_ForceStop();

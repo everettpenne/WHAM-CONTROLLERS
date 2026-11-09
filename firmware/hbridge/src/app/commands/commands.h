@@ -37,7 +37,7 @@ extern "C" {
  *   cmd_dac.c      DAC:* (the two analog outputs, PA4/PA5)
  *   cmd_adc.c      ADC:* (the four analog inputs, PA0/PA1/PC0/PB0)
  *   cmd_config.c   CONFig:*
- *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, GENERAL:TEST:FAULT
+ *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, DEBUG:FAULT:BYPASS, GENERAL:TEST:FAULT
  *   cmd_io.c       GDS?, GDS:LAST?, DIAGnostic:LEDs?, EXTernal:TRIGger*
  *   cmd_charge.c   CHARGE:FREQuency, CHARGE:STATus? (the PG0 frequency output)
  *   cmd_pfmin.c    PFMIN:*
@@ -216,6 +216,8 @@ void cmd_arm(uart_instance_t *inst, char *args);                 /* ARM -- IDLE 
 void cmd_disarm(uart_instance_t *inst, char *args);              /* DISARM -- ARMED -> IDLE */
 void cmd_state_query(uart_instance_t *inst, char *args);         /* STATE? -- OK IDLE|ARMED|FIRING|FAULT GENERAL */
 void cmd_general_test_fault(uart_instance_t *inst, char *args);  /* GENERAL:TEST:FAULT -- software fault injection */
+void cmd_debug_fault_bypass(uart_instance_t *inst, char *args);        /* DEBUG:FAULT:BYPASS <0|1> -- bench-only: ignore PC10/GateDriverStatus */
+void cmd_debug_fault_bypass_query(uart_instance_t *inst, char *args);  /* DEBUG:FAULT:BYPASS? -- OK 0|1 */
 
 /* Supply mode (supply_mode.h), see cmd_config.c / cmd_table.c */
 void cmd_config_mode(uart_instance_t *inst, char *args);          /* CONFig:MODE LIMiter|HVPS */

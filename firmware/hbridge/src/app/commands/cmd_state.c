@@ -1,6 +1,6 @@
 /*
  * cmd_state.c -- serial command handlers: FAULT?/FAULT:CLEar, ARM/DISARM/
- * STATE?, GENERAL:TEST:FAULT. The states and fault policy are
+ * STATE?, DEBUG:FAULT:BYPASS, GENERAL:TEST:FAULT. The states and fault policy are
  * state_machine.h. See commands.h for the file map.
  */
 #include "commands.h"
@@ -9,6 +9,7 @@
 #include "state_machine.h"
 #include "pfm.h"
 #include <stdio.h>
+#include <string.h>
 
 /* --------------------------------------------------------------------------
  * FAULT? / FAULT:CLEar
@@ -24,7 +25,9 @@
 void cmd_fault_query(uart_instance_t *inst, char *args)
 {
     (void)args;
-    uart_send(inst, ((SM_GetState() == SM_STATE_FAULT) || (AnyFaultLatched() != 0U))
+    /* The unfiltered truth (every source's own latch), not what ARM/FIRE honour: with DEBUG:FAULT:BYPASS on, FAULT? can
+       say 1 while the controller is IDLE and happily armable. */
+    uart_send(inst, ((SM_GetState() == SM_STATE_FAULT) || (SM_GetFaultSources() != 0U))
                         ? "OK 1\r\n" : "OK 0\r\n");
 }
 
@@ -120,4 +123,34 @@ void cmd_general_test_fault(uart_instance_t *inst, char *args)
     (void)args;
     SM_ReportGeneralFault();
     Scpi_ReplyOk(inst);
+}
+
+/* --------------------------------------------------------------------------
+ * DEBUG:FAULT:BYPASS <0|1> / DEBUG:FAULT:BYPASS?
+ *
+ * A bench-only override (the XREX command of the same name, narrower -- see SM_SetFaultBypassEnabled() in
+ * state_machine.h for exactly what it does and does not ignore): lets the controller be driven with the PC10 and
+ * GateDriverStatus fault inputs unconnected or floating. Off at every boot, never saved in a profile.
+ * ERR 12 for a missing or non-0/1 argument.
+ * -------------------------------------------------------------------------- */
+void cmd_debug_fault_bypass(uart_instance_t *inst, char *args)
+{
+    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+
+    if ((tok == NULL) || ((strcmp(tok, "0") != 0) && (strcmp(tok, "1") != 0)))
+    {
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "DEBUG:FAULT:BYPASS needs one argument: 0|1");
+        return;
+    }
+    SM_SetFaultBypassEnabled((uint8_t)(tok[0] - '0'));
+    Scpi_ReplyOk(inst);
+}
+
+void cmd_debug_fault_bypass_query(uart_instance_t *inst, char *args)
+{
+    char buf[16];
+    (void)args;
+
+    snprintf(buf, sizeof(buf), "OK %u\r\n", (unsigned)SM_GetFaultBypassEnabled());
+    uart_send(inst, buf);
 }

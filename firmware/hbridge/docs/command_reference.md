@@ -459,7 +459,7 @@ frequency-to-voltage converter that charges a capacitor bank: the operator turns
 - **Dangerous to the hub** (it charges the bank): a nonzero frequency is announced to everyone and logged; `CHARGE:FREQuency 0` is not.
 - Not yet verified on the board's pin with a scope or logic analyser (see `docs/changelog.txt`, 2026-10-27).
 
-### Operating state: `ARM`, `DISARM`, `STATE?`, `GENERAL:TEST:FAULT`
+### Operating state: `ARM`, `DISARM`, `STATE?`, `GENERAL:TEST:FAULT`, `DEBUG:FAULT:BYPASS`
 
 Added 2026-09-29 (`src/app/control/state_machine.h`, mirroring
 WHAM-XREX-PFMG474's state machine).
@@ -477,6 +477,25 @@ any state --fault--> FAULT --FAULT:CLEAR (inputs healthy)--> IDLE
 | `DISARM` | `OK` (`ARMED` -> `IDLE`; a harmless no-op in any other state) |
 | `STATE?` | `OK IDLE`, `OK ARMED`, `OK FIRING` or `OK FAULT GENERAL` |
 | `GENERAL:TEST:FAULT` | `OK`; enters `FAULT` exactly as a real fault would (output force-stopped). A bench test of the fault path; it can only stop output. Cleared by `FAULT:CLEAR` |
+
+| `DEBUG:FAULT:BYPASS <0\|1>` | `OK`; `ERR 12` if the argument is missing or not `0`/`1`. Bench-only, see below |
+| `DEBUG:FAULT:BYPASS?` | `OK 0` or `OK 1` |
+
+**`DEBUG:FAULT:BYPASS`** (added 2026-11-09, the XREX command of the same name, narrower) lets the controller be driven with
+nothing wired to its fault inputs: a bench board's floating GateDriverStatus pins read as an instant fault. While it is `1`:
+
+- PC10/HRTIM1_FLT6 and the 12 GateDriverStatus inputs no longer put the controller in `FAULT`, refuse `ARM`/`FIRE`/`SOURce:RUN`/the
+  PF15 trigger (`ERR 6`), or stop the output (a bad GateDriverStatus pin no longer force-stops from its interrupt);
+- `FAULT:CLEAR` succeeds even if those inputs still read bad;
+- `GENERAL:TEST:FAULT` does nothing.
+
+Not bypassed, deliberately: the HRTIM's own PC10 gating of the outputs (silicon, independent of the firmware), and the faults the
+controller finds in itself -- the closed-loop `OVERVOLTAGE` and `FEEDBACK` faults and a table underrun -- because the closed-loop
+run has already been torn down when those are reported, so ignoring them would leave the output running uncontrolled. `FAULT?` and
+`FAULT:SOURces?` keep reporting the true state of every source, so `FAULT? = 1` with `STATE? = IDLE` is normal under bypass. It is
+`0` at every boot, never saved in a profile, and turning it off re-scans the GateDriverStatus pins at once. **Never enable it where a
+real fault condition is physically possible.** (XREX returns `ERR 11` for a value that is not 0/1; here it is `ERR 12`, this
+product's convention for a bad flag.)
 
 **One fault type.** Every fault source — PC10/HRTIM1_FLT6, any of the 12
 GateDriverStatus inputs, and `GENERAL:TEST:FAULT` — puts the controller in

@@ -14,7 +14,15 @@ static volatile uint8_t g_busy = 0U;
 
 uint8_t ShotStart_FaultLatched(void)
 {
-    return (HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) || (PFM_UnderrunLatched() != 0U) ||
+    /* DEBUG:FAULT:BYPASS (state_machine.h) removes the two external inputs from this check; the controller's own
+       faults (underrun, closed-loop overvoltage/feedback) always count. */
+    uint8_t external = ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U)) ? 1U : 0U;
+
+    if (SM_GetFaultBypassEnabled() != 0U)
+    {
+        external = 0U;
+    }
+    return (external != 0U) || (PFM_UnderrunLatched() != 0U) ||
            ((SM_GetFaultSources() & (SM_FAULT_SRC_OVERVOLT | SM_FAULT_SRC_FEEDBACK)) != 0U);
 }
 

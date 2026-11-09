@@ -36,10 +36,42 @@ static uint8_t g_softFaultLatched = 0U;
 /* The closed-loop faults (SM_FAULT_SRC_OVERVOLT / _FEEDBACK), latched until FAULT:CLEAR. */
 static volatile uint8_t g_controlFaults = 0U;
 
+/* DEBUG:FAULT:BYPASS (see SM_SetFaultBypassEnabled() in state_machine.h): a bench-only override, RAM-only, OFF at every
+   boot. While ON the state machine ignores the two EXTERNAL fault inputs (PC10/HRTIM1_FLT6 and the 12 GateDriverStatus
+   pins) and GENERAL:TEST:FAULT; it does NOT ignore the faults the controller finds in itself (the closed-loop
+   overvoltage/feedback faults, a table underrun) -- those leave the output half-controlled, not merely unconfirmed. */
+static volatile uint8_t g_faultBypass = 0U;
+
 static uint8_t AnySourceLatched(void)
 {
-    return ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) ||
-            (PFM_UnderrunLatched() != 0U) || (g_softFaultLatched != 0U) || (g_controlFaults != 0U)) ? 1U : 0U;
+    uint8_t external = ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U)) ? 1U : 0U;
+
+    if (g_faultBypass != 0U)
+    {
+        external = 0U;
+    }
+    return ((external != 0U) || (PFM_UnderrunLatched() != 0U) ||
+            (g_softFaultLatched != 0U) || (g_controlFaults != 0U)) ? 1U : 0U;
+}
+
+void SM_SetFaultBypassEnabled(uint8_t enabled)
+{
+    uint8_t wasEnabled = g_faultBypass;
+
+    g_faultBypass = (enabled != 0U) ? 1U : 0U;
+
+    /* Turning it OFF returns to normal operation. The GateDriverStatus pins are evaluated only on an EDGE (EXTI), so a
+       pin that sat in its fault state the whole time the bypass was on would otherwise never be noticed again: re-scan
+       once now, as app.c does at boot for the same reason. (PC10 is a hardware latch and shows up on its own.) */
+    if ((wasEnabled != 0U) && (g_faultBypass == 0U))
+    {
+        GateDriver_CheckFault();
+    }
+}
+
+uint8_t SM_GetFaultBypassEnabled(void)
+{
+    return g_faultBypass;
 }
 
 /* The single place a fault is latched into the state machine. Callers hold
@@ -162,6 +194,10 @@ void SM_ReportControlFault(uint8_t src)
 
 void SM_ReportGeneralFault(void)
 {
+    if (g_faultBypass != 0U)
+    {
+        return;   /* DEBUG:FAULT:BYPASS: an injected test fault is ignored like any other external one */
+    }
     Mcu_IrqDisable();
     g_softFaultLatched = 1U;
     if (g_state != SM_STATE_FAULT)
@@ -189,7 +225,10 @@ uint8_t SM_ClearFault(void)
     Mcu_IrqDisable();
     g_softFaultLatched = 0U;
     g_controlFaults = 0U;
-    if ((HRTIM1_FaultIsTripped() == 0U) && (GateDriver_FaultIsLatched() == 0U))
+    /* With DEBUG:FAULT:BYPASS on, an external input that is still bad no longer refuses the clear: the point of the
+       bypass is to keep working with that fault present. (A physically tripped PC10 still holds the HRTIM outputs
+       off in silicon whatever this says.) */
+    if ((g_faultBypass != 0U) || ((HRTIM1_FaultIsTripped() == 0U) && (GateDriver_FaultIsLatched() == 0U)))
     {
         SetState(SM_STATE_IDLE);
         g_faultType = SM_FAULT_NONE;

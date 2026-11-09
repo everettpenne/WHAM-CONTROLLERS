@@ -47,7 +47,7 @@ RULES = [
     ("ARM",                     ANY, "arm"),
     # switches a protection off, or changes how faults are read or limited
     ("EXTernal:ENAble",         OFF, "interlock"),  # XREX: the PF13 interlock off
-    ("DEBUG:FAULT:BYPASS",      ON,  "interlock"),  # XREX
+    ("DEBUG:FAULT:BYPASS",      ON,  "interlock"),  # XREX and HBRIDGE
     ("CONFig:FaultPolarity:WATER",   ANY, "interlock"),
     ("CONFig:FaultPolarity:TEMP",    ANY, "interlock"),
     ("CONFig:FaultPolarity:ENERPRO", ANY, "interlock"),

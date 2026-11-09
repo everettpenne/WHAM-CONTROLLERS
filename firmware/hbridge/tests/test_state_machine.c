@@ -29,6 +29,8 @@ uint8_t HRTIM1_FaultIsTripped(void) { return f_hrtimTripped; }
 void HRTIM1_FaultClear(void)    { f_hrtimTripped = f_hrtimPin; }   /* re-trips if the pin is still low */
 uint8_t GateDriver_FaultIsLatched(void) { return f_gdsLatched; }
 void GateDriver_FaultClear(void){ f_gdsLatched = f_gdsPin; }        /* re-checks the pins */
+static int f_gdsChecks;
+void GateDriver_CheckFault(void){ f_gdsChecks++; }
 void Mcu_IrqDisable(void)       { f_irqDepth++; if (f_irqDepth > f_irqMax) { f_irqMax = f_irqDepth; } }
 void Mcu_IrqEnable(void)        { f_irqDepth--; }
 
@@ -50,6 +52,9 @@ static void Reset(void)
     f_pfmState = PFM_STATE_STOPPED; f_entries = 10U;
     f_restarts = f_forceStops = f_irqDepth = f_irqMax = 0;
     f_hrtimTripped = f_hrtimPin = f_gdsLatched = f_gdsPin = 0U;
+    f_underrun = 0U; f_gdsChecks = 0;
+    SM_SetFaultBypassEnabled(0U);
+    f_gdsChecks = 0;
     SM_Init();
 }
 
@@ -208,6 +213,60 @@ static void TestLedsFollowState(void)
     CHECK(f_ledUpdates > 0 && f_ledMismatch == 0);
 }
 
+static void TestFaultBypass(void)
+{
+    Reset();
+    CHECK(SM_GetFaultBypassEnabled() == 0U);          /* off at boot / init */
+    SM_SetFaultBypassEnabled(1U);
+    CHECK(SM_GetFaultBypassEnabled() == 1U);
+
+    /* the two external inputs are ignored: no FAULT, ARM and FIRE allowed, the shot completes normally */
+    f_gdsLatched = 1U; f_gdsPin = 1U; f_hrtimTripped = 1U; f_hrtimPin = 1U;
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_IDLE && f_forceStops == 0);
+    CHECK(SM_Arm() == 1U);
+    CHECK(SM_Fire() == 1U && f_restarts == 1);
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_FIRING);
+    f_pfmState = PFM_STATE_STOPPED;
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_IDLE);            /* not stuck FIRING because a source is latched */
+    CHECK((SM_GetFaultSources() & (SM_FAULT_SRC_PC10 | SM_FAULT_SRC_GATEDRV)) == (SM_FAULT_SRC_PC10 | SM_FAULT_SRC_GATEDRV));   /* the truth is still reported */
+
+    /* an injected test fault is ignored, and does not wait to surprise us when the bypass goes off */
+    SM_ReportGeneralFault();
+    CHECK(SM_GetState() == SM_STATE_IDLE && (SM_GetFaultSources() & SM_FAULT_SRC_TEST) == 0U);
+
+    /* the controller's own faults are NOT bypassed */
+    SM_ReportControlFault(SM_FAULT_SRC_OVERVOLT);
+    CHECK(SM_GetState() == SM_STATE_FAULT && f_forceStops >= 1);
+    CHECK(SM_ClearFault() == 1U && SM_GetState() == SM_STATE_IDLE);   /* external inputs still bad, clear allowed */
+    f_underrun = 1U;
+    CHECK(SM_Arm() == 0U);                            /* an underrun still refuses ARM */
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_FAULT);
+    CHECK(SM_ClearFault() == 1U);
+
+    /* FAULT:CLEAR succeeds with the cause still present only while bypassed */
+    Reset();
+    f_gdsLatched = 1U; f_gdsPin = 1U;
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_FAULT);
+    CHECK(SM_ClearFault() == 0U);
+    SM_SetFaultBypassEnabled(1U);
+    CHECK(SM_ClearFault() == 1U && SM_GetState() == SM_STATE_IDLE);
+
+    /* turning it off re-scans the GateDriverStatus pins once, and a still-bad input then faults normally */
+    f_gdsChecks = 0;
+    SM_SetFaultBypassEnabled(0U);
+    CHECK(f_gdsChecks == 1);
+    SM_SetFaultBypassEnabled(0U);                     /* off -> off: no second scan */
+    CHECK(f_gdsChecks == 1);
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_FAULT);
+    CHECK(f_irqDepth == 0);
+}
+
 int main(void)
 {
     TestNormalShot();
@@ -218,5 +277,6 @@ int main(void)
     TestFaultBeatsShotCompletion();
     TestSoftFaultStaysUntilCleared();
     TestLedsFollowState();
+    TestFaultBypass();
     return test_report("test_state_machine");
 }

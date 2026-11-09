@@ -197,6 +197,8 @@ static const scpi_command_t command_table[] = {
     { "DISARM",              cmd_disarm       },
     { "STATE?",              cmd_state_query  },
     { "GENERAL:TEST:FAULT",  cmd_general_test_fault },
+    { "DEBUG:FAULT:BYPASS",  cmd_debug_fault_bypass       },
+    { "DEBUG:FAULT:BYPASS?", cmd_debug_fault_bypass_query },
     { "FAULT:SOURces?",      cmd_fault_sources_query },
     { "FAULT:CLEar",         cmd_fault_clear  },
 
