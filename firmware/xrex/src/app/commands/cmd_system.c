@@ -16,6 +16,7 @@
 #include "git_version.h"
 #include "device_identity.h"
 #include "mcu.h"
+#include "rejected_line.h"
 #include "telemetry.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -259,14 +260,29 @@ void cmd_diag_rstcause_query(uart_instance_t *inst, char *args)
    restarted (before 2026-11-09 it stayed off until a power cycle). */
 void cmd_diag_uart_query(uart_instance_t *inst, char *args)
 {
-    char buf[96];
+    char buf[160];
     uart_rx_errors_t e;
     (void)args;
 
     uart_get_rx_errors(inst, &e);
-    snprintf(buf, sizeof(buf), "OK OVERRUN=%lu FRAMING=%lu NOISE=%lu PARITY=%lu REARMED=%lu\r\n",
+    snprintf(buf, sizeof(buf),
+             "OK OVERRUN=%lu FRAMING=%lu NOISE=%lu PARITY=%lu REARMED=%lu LINES=%lu CLOBBERED=%lu REJECTED=%lu\r\n",
              (unsigned long)e.overrun, (unsigned long)e.framing, (unsigned long)e.noise,
-             (unsigned long)e.parity, (unsigned long)e.rearmed);
+             (unsigned long)e.parity, (unsigned long)e.rearmed, (unsigned long)e.lines,
+             (unsigned long)e.clobbered, (unsigned long)RejectedLine_Count());
+    uart_send(inst, buf);
+}
+
+/* DIAGnostic:UART:REJect? -- the last line refused as "Unknown command", as the controller received it: its count,
+   true length, hex bytes and text (rejected_line.h). Compare it with what the client sent (the hub log). */
+void cmd_diag_uart_reject_query(uart_instance_t *inst, char *args)
+{
+    static char buf[REJECTED_LINE_TEXT_MAX + 8U];
+    (void)args;
+
+    buf[0] = 'O'; buf[1] = 'K'; buf[2] = ' ';
+    size_t n = 3U + RejectedLine_Format(&buf[3], sizeof(buf) - 3U - 2U);
+    buf[n++] = '\r'; buf[n++] = '\n'; buf[n] = '\0';
     uart_send(inst, buf);
 }
 

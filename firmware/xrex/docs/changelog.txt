@@ -1,6 +1,19 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-09  -  Raw capture of a refused line (DIAGnostic:UART:REJect?); line counters in DIAGnostic:UART?  [XREX only; HBRIDGE's uart.c now differs]
+-----------------------------------------------------------------------
+  A real LabVIEW shot on the receive-recovery image (7577bf7d) kept the hub connected, but one valid poll, SOURce:STATus? 3 at 16:25:54.707, in the
+  ramp-up came back "ERR 1 Unknown command" while DIAGnostic:UART? read all zeros (no overrun, framing, noise or parity error). So no byte was lost to
+  an overrun; either a byte was changed or lost before the UART (bridge, wiring) without any flag, or the controller mangled the line.
+  New: DIAGnostic:UART:REJect? -> OK COUNT=<n> LEN=<n> HEX=<hex> TEXT=<text>: the last line refused as ERR 1, as received (copied in Commands_Dispatch before the
+  parser works on it; new rejected_line.c/.h, tests/test_rejected_line.c, 17 checks). Compare it with what the hub log says the client sent: different =
+  the link changed it; identical = the controller refused a good line.
+  DIAGnostic:UART? gains LINES (complete lines received), CLOBBERED (a line completed while the previous one was still waiting or being run by the parser,
+  which works in place on the shared line buffer: a race, expected 0) and REJECTED. uart.c now keeps the true line length (memcpy, not strcpy: a NUL byte
+  no longer cuts a received line short) -- XREX only for now, so src/bsp/stm32g4/uart.c, uart_hw.h and src/drivers/uart.h differ from HBRIDGE's copies
+  until the same change is carried over.
+
 2026-11-09  -  Serial receive can no longer be switched off by an overrun; USART2 interrupt priority 3 -> 2; DIAGnostic:UART?
 -----------------------------------------------------------------------
   Found from the hub's log of a LabVIEW shot on the bench XREX (WB-0003-4), 16:02: LabVIEW polled ~10 commands/s during FIRING; valid polls started

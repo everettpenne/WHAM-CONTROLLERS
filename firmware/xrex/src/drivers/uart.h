@@ -10,6 +10,7 @@
 #ifndef INC_UART_H_
 #define INC_UART_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define UART_RX_BUF_SIZE    128   /* longest line, including the terminator */
@@ -25,8 +26,12 @@ void uart_start(uart_instance_t *inst);
 
 /* Receive errors seen since boot, and how many times reception had to be restarted. An overrun means the
    serial interrupt was served too late (a byte was lost); the partial line is dropped and reception restarts. */
-typedef struct { uint32_t overrun, framing, noise, parity, rearmed; } uart_rx_errors_t;
+typedef struct { uint32_t overrun, framing, noise, parity, rearmed, lines, clobbered; } uart_rx_errors_t;
 void uart_get_rx_errors(const uart_instance_t *inst, uart_rx_errors_t *out);
+
+/* True byte count of the line uart_take_line() last returned (the line is NUL-terminated, but a NUL byte received
+   inside it would end the string early). Valid until the next line arrives. */
+size_t uart_line_length(const uart_instance_t *inst);
 
 /* Send a NUL-terminated string; returns once it is all on the wire. */
 void uart_send(uart_instance_t *inst, const char *str);

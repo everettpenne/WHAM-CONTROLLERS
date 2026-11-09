@@ -994,12 +994,23 @@ coverage for all 4 channels (XR3/XR4 OCP were already covered by
 
 ### `DIAGnostic:UART?`
 
-`OK OVERRUN=<n> FRAMING=<n> NOISE=<n> PARITY=<n> REARMED=<n>` -- serial **receive** errors since boot (added
-2026-11-09). A nonzero `OVERRUN` means the serial interrupt was served too late and a byte was lost: the partial
+`OK OVERRUN=<n> FRAMING=<n> NOISE=<n> PARITY=<n> REARMED=<n> LINES=<n> CLOBBERED=<n> REJECTED=<n>` -- serial
+**receive** errors since boot (added 2026-11-09). `LINES` is the number of complete lines received; `CLOBBERED` counts
+lines that arrived while the previous one was still waiting or being run (it would overwrite it -- should be 0);
+`REJECTED` counts lines refused as `ERR 1 Unknown command` (see `DIAGnostic:UART:REJect?`). A nonzero `OVERRUN` means the serial interrupt was served too late and a byte was lost: the partial
 line is dropped and reception restarts (`REARMED` counts the restarts). Before 2026-11-09 an overrun switched
 reception off until a power cycle: the controller kept sending its own `!EVT` lines but never answered again, and
 the hub reported "the controller is not connected". Replies of `ERR 1 Unknown command` to a valid command are the
 other symptom of a lost byte. All zero on a healthy link; read it after a shot.
+
+### `DIAGnostic:UART:REJect?`
+
+`OK COUNT=<n> LEN=<bytes> HEX=<hex> TEXT=<text>` -- the last line the controller refused as `ERR 1 Unknown command`,
+exactly as it was received (added 2026-11-09): how many have been refused since boot, its true length, up to the first
+48 bytes in hex, and as text (printable ASCII as is, `\\` for a backslash, anything else as `\xHH`; `TEXT` last because it
+may contain spaces). Before any line has been refused: `COUNT=0 LEN=0 HEX= TEXT=`. Use it right after a valid command
+comes back `ERR 1`: if the line differs from what was sent, a byte was changed or lost on the way (compare with the
+hub log); if it is identical, the controller refused a good line.
 
 ### `DIAGnostic:RSTCause?` / `DIAGnostic:RSTCause:CLEar`
 

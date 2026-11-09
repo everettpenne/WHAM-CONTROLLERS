@@ -259,7 +259,11 @@ void cmd_diag_rstcause_query(uart_instance_t *inst, char *args); /* DIAGnostic:R
                                                                       LPWR=.. OBL=.. */
 void cmd_diag_uart_query(uart_instance_t *inst, char *args);     /* DIAGnostic:UART? --
                                                                       OK OVERRUN=.. FRAMING=.. NOISE=..
-                                                                      PARITY=.. REARMED=.. (added 2026-11-09) */
+                                                                      PARITY=.. REARMED=.. LINES=.. CLOBBERED=..
+                                                                      REJECTED=.. (added 2026-11-09) */
+void cmd_diag_uart_reject_query(uart_instance_t *inst, char *args); /* DIAGnostic:UART:REJect? -- the last
+                                                                      refused line as received: OK COUNT=.. LEN=..
+                                                                      HEX=.. TEXT=.. (added 2026-11-09) */
 void cmd_diag_rstcause_clear(uart_instance_t *inst, char *args); /* DIAGnostic:RSTCause:CLEar
                                                                       -- OK, clears all flags
                                                                       above via RCC_CSR_RMVF */

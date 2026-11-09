@@ -17,7 +17,8 @@ C_SRCS += \
 ../src/app/commands/cmd_state.c \
 ../src/app/commands/cmd_system.c \
 ../src/app/commands/cmd_table.c \
-../src/app/commands/command_table.c
+../src/app/commands/command_table.c \
+../src/app/commands/rejected_line.c
 
 OBJS += \
 ./src/app/commands/cmd_common.o \
@@ -32,7 +33,8 @@ OBJS += \
 ./src/app/commands/cmd_state.o \
 ./src/app/commands/cmd_system.o \
 ./src/app/commands/cmd_table.o \
-./src/app/commands/command_table.o
+./src/app/commands/command_table.o \
+./src/app/commands/rejected_line.o
 
 C_DEPS += \
 ./src/app/commands/cmd_common.d \
@@ -47,7 +49,8 @@ C_DEPS += \
 ./src/app/commands/cmd_state.d \
 ./src/app/commands/cmd_system.d \
 ./src/app/commands/cmd_table.d \
-./src/app/commands/command_table.d
+./src/app/commands/command_table.d \
+./src/app/commands/rejected_line.d
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -57,7 +60,7 @@ src/app/commands/%.o src/app/commands/%.su src/app/commands/%.cyclo: ../src/app/
 clean: clean-src-2f-app-2f-commands
 
 clean-src-2f-app-2f-commands:
-	-$(RM) ./src/app/commands/cmd_common.cyclo ./src/app/commands/cmd_common.d ./src/app/commands/cmd_common.o ./src/app/commands/cmd_common.su ./src/app/commands/cmd_config.cyclo ./src/app/commands/cmd_config.d ./src/app/commands/cmd_config.o ./src/app/commands/cmd_config.su ./src/app/commands/cmd_control.cyclo ./src/app/commands/cmd_control.d ./src/app/commands/cmd_control.o ./src/app/commands/cmd_control.su ./src/app/commands/cmd_fwupdate.cyclo ./src/app/commands/cmd_fwupdate.d ./src/app/commands/cmd_fwupdate.o ./src/app/commands/cmd_fwupdate.su ./src/app/commands/cmd_io.cyclo ./src/app/commands/cmd_io.d ./src/app/commands/cmd_io.o ./src/app/commands/cmd_io.su ./src/app/commands/cmd_pfmin.cyclo ./src/app/commands/cmd_pfmin.d ./src/app/commands/cmd_pfmin.o ./src/app/commands/cmd_pfmin.su ./src/app/commands/cmd_profile.cyclo ./src/app/commands/cmd_profile.d ./src/app/commands/cmd_profile.o ./src/app/commands/cmd_profile.su ./src/app/commands/cmd_shot.cyclo ./src/app/commands/cmd_shot.d ./src/app/commands/cmd_shot.o ./src/app/commands/cmd_shot.su ./src/app/commands/cmd_sim.cyclo ./src/app/commands/cmd_sim.d ./src/app/commands/cmd_sim.o ./src/app/commands/cmd_sim.su ./src/app/commands/cmd_state.cyclo ./src/app/commands/cmd_state.d ./src/app/commands/cmd_state.o ./src/app/commands/cmd_state.su ./src/app/commands/cmd_system.cyclo ./src/app/commands/cmd_system.d ./src/app/commands/cmd_system.o ./src/app/commands/cmd_system.su ./src/app/commands/cmd_table.cyclo ./src/app/commands/cmd_table.d ./src/app/commands/cmd_table.o ./src/app/commands/cmd_table.su ./src/app/commands/command_table.cyclo ./src/app/commands/command_table.d ./src/app/commands/command_table.o ./src/app/commands/command_table.su
+	-$(RM) ./src/app/commands/cmd_common.cyclo ./src/app/commands/cmd_common.d ./src/app/commands/cmd_common.o ./src/app/commands/cmd_common.su ./src/app/commands/cmd_config.cyclo ./src/app/commands/cmd_config.d ./src/app/commands/cmd_config.o ./src/app/commands/cmd_config.su ./src/app/commands/cmd_control.cyclo ./src/app/commands/cmd_control.d ./src/app/commands/cmd_control.o ./src/app/commands/cmd_control.su ./src/app/commands/cmd_fwupdate.cyclo ./src/app/commands/cmd_fwupdate.d ./src/app/commands/cmd_fwupdate.o ./src/app/commands/cmd_fwupdate.su ./src/app/commands/cmd_io.cyclo ./src/app/commands/cmd_io.d ./src/app/commands/cmd_io.o ./src/app/commands/cmd_io.su ./src/app/commands/cmd_pfmin.cyclo ./src/app/commands/cmd_pfmin.d ./src/app/commands/cmd_pfmin.o ./src/app/commands/cmd_pfmin.su ./src/app/commands/cmd_profile.cyclo ./src/app/commands/cmd_profile.d ./src/app/commands/cmd_profile.o ./src/app/commands/cmd_profile.su ./src/app/commands/cmd_shot.cyclo ./src/app/commands/cmd_shot.d ./src/app/commands/cmd_shot.o ./src/app/commands/cmd_shot.su ./src/app/commands/cmd_sim.cyclo ./src/app/commands/cmd_sim.d ./src/app/commands/cmd_sim.o ./src/app/commands/cmd_sim.su ./src/app/commands/cmd_state.cyclo ./src/app/commands/cmd_state.d ./src/app/commands/cmd_state.o ./src/app/commands/cmd_state.su ./src/app/commands/cmd_system.cyclo ./src/app/commands/cmd_system.d ./src/app/commands/cmd_system.o ./src/app/commands/cmd_system.su ./src/app/commands/cmd_table.cyclo ./src/app/commands/cmd_table.d ./src/app/commands/cmd_table.o ./src/app/commands/cmd_table.su ./src/app/commands/command_table.cyclo ./src/app/commands/command_table.d ./src/app/commands/command_table.o ./src/app/commands/command_table.su ./src/app/commands/rejected_line.cyclo ./src/app/commands/rejected_line.d ./src/app/commands/rejected_line.o ./src/app/commands/rejected_line.su
 
 .PHONY: clean-src-2f-app-2f-commands
 

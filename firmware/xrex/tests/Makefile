@@ -12,13 +12,13 @@ OUT     := $(ROOT)/build/tests
 CC      ?= cc
 CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
            -I$(ROOT)/src/middleware/scpi \
-           -I$(ROOT)/src/app/settings -I$(ROOT)/src/app/protection -I$(ROOT)/src/config -I$(ROOT)/build/generated -I$(OUT)
+           -I$(ROOT)/src/app/settings -I$(ROOT)/src/app/protection -I$(ROOT)/src/app/commands -I$(ROOT)/src/config -I$(ROOT)/build/generated -I$(OUT)
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
 SCPI_UTIL := $(ROOT)/src/middleware/scpi/scpi_util.c
 SETTINGS := $(ROOT)/src/app/settings
 TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table \
-           $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_fault_mask
+           $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_fault_mask $(OUT)/test_rejected_line
 
 .PHONY: all run clean
 all: run
@@ -58,6 +58,9 @@ $(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(
 
 $(OUT)/test_fault_mask: test_fault_mask.c $(ROOT)/src/app/protection/fault_mask.c $(ROOT)/src/app/protection/fault_mask.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -o $@ test_fault_mask.c $(ROOT)/src/app/protection/fault_mask.c
+
+$(OUT)/test_rejected_line: test_rejected_line.c $(ROOT)/src/app/commands/rejected_line.c $(ROOT)/src/app/commands/rejected_line.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -o $@ test_rejected_line.c $(ROOT)/src/app/commands/rejected_line.c
 
 clean:
 	rm -rf $(OUT)

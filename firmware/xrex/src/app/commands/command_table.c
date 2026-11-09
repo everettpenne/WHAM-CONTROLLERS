@@ -16,6 +16,8 @@
 #include "cmd_common.h"
 #include "scpi_parser.h"
 #include "boot_jump.h"
+#include "rejected_line.h"
+#include <string.h>
 #include "qspi_test.h"
 #include "pfm_input.h"
 
@@ -197,6 +199,7 @@ static const scpi_command_t command_table[] = {
        cmd_diag_rstcause_query(). */
     { "DIAGnostic:RSTCause?",      cmd_diag_rstcause_query },
     { "DIAGnostic:UART?",          cmd_diag_uart_query },
+    { "DIAGnostic:UART:REJect?",   cmd_diag_uart_reject_query },
     { "DIAGnostic:RSTCause:CLEar", cmd_diag_rstcause_clear },
 
     /* TEMPORARY debug/verification command -- software OCP fault
@@ -329,8 +332,16 @@ static const scpi_command_t command_table[] = {
 
 void Commands_Dispatch(uart_instance_t *inst, char *line)
 {
+    /* Keep the bytes as received BEFORE the parser (which works in place) touches them, so a refused line can be
+       inspected afterwards (DIAGnostic:UART:REJect?). */
+    uint8_t raw[REJECTED_LINE_KEEP];
+    size_t  len  = uart_line_length(inst);
+    size_t  kept = (len < sizeof(raw)) ? len : sizeof(raw);
+
+    memcpy(raw, line, kept);
     if (scpi_dispatch(command_table, NUM_COMMANDS, inst, line) == SCPI_UNKNOWN)
     {
+        RejectedLine_Record(raw, len);   /* only `kept` bytes of it are valid: the record keeps min(len, KEEP) too */
         Scpi_SendErr(inst, ERR_UNKNOWN_COMMAND, "Unknown command");
     }
 }

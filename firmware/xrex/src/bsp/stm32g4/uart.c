@@ -28,6 +28,12 @@ struct uart_instance
     volatile uint8_t    line_ready;
     /* Receive-error counters (DIAGnostic:UART?). Written from the USART2 ISR and the main loop. */
     volatile uint32_t   err_overrun, err_framing, err_noise, err_parity, rearmed;
+    /* Line bookkeeping (DIAGnostic:UART?). line_len is the true byte count of line_buf (it may hold a NUL). A line
+       that completes while the previous one is still waiting to be taken, or is still being run by the command
+       parser (it works in place on line_buf), overwrites it: counted in line_clobbered. */
+    volatile uint8_t    line_len;
+    volatile uint8_t    in_dispatch;
+    volatile uint32_t   lines, line_clobbered;
 };
 
 /* Global UART instance for USART2 */
@@ -39,6 +45,7 @@ void uart_bind(uart_instance_t *inst, UART_HandleTypeDef *huart)
     inst->rx_index   = 0;
     inst->line_ready = 0;
     inst->err_overrun = inst->err_framing = inst->err_noise = inst->err_parity = inst->rearmed = 0U;
+    inst->line_len = 0U; inst->in_dispatch = 0U; inst->lines = inst->line_clobbered = 0U;
 }
 
 void uart_start(uart_instance_t *inst)
@@ -78,9 +85,12 @@ void uart_rx_callback(uart_instance_t *inst)
         /* End of line */
         if (inst->rx_index > 0) {
             inst->rx_line[inst->rx_index] = '\0';
-            strcpy(inst->line_buf, inst->rx_line);
+            if (inst->line_ready || inst->in_dispatch) { inst->line_clobbered++; }
+            memcpy(inst->line_buf, inst->rx_line, (size_t)inst->rx_index + 1U);
+            inst->line_len = inst->rx_index;
             inst->rx_index = 0;
             inst->line_ready = 1;
+            inst->lines++;
         }
     } else if (inst->rx_index < UART_RX_BUF_SIZE - 1) {
         inst->rx_line[inst->rx_index++] = c;
@@ -139,13 +149,22 @@ void uart_get_rx_errors(const uart_instance_t *inst, uart_rx_errors_t *out)
     out->noise   = inst->err_noise;
     out->parity  = inst->err_parity;
     out->rearmed = inst->rearmed;
+    out->lines   = inst->lines;
+    out->clobbered = inst->line_clobbered;
+}
+
+size_t uart_line_length(const uart_instance_t *inst)
+{
+    return inst->line_len;
 }
 
 char *uart_take_line(uart_instance_t *inst)
 {
     uart_rx_ensure_armed(inst);   /* polled every main-loop pass: a receive that was ended is restarted within one */
+    inst->in_dispatch = 0U;       /* the caller is back: it has finished with the line it was given last time */
     if (inst->line_ready) {
         inst->line_ready = 0;
+        inst->in_dispatch = 1U;
         return inst->line_buf;
     }
     return NULL;
