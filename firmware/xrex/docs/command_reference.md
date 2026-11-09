@@ -694,8 +694,8 @@ reconnects mid-session (the stream is not buffered across reconnect).
 - **`SYS:TELEM?`** — `OK <schema_version>` — the telemetry data-contract
   version (`TELEMETRY_SCHEMA_VERSION`, currently `3`); bumped on any
   wire-format change so a host can detect/adapt.
-- **`SYS:EVENT <0|1>`** — `OK` — gate the *live* `!EVT` stream (`1` = on, the
-  default; `0` = off). Gating only silences the live stream — the flight
+- **`SYS:EVENT <0|1>`** — `OK` — gate the *live* `!EVT` stream (`1` = on; `0` = off,
+  the **default since 2026-11-09** -- the stream is opt-in and is off again at every reset). Gating only silences the live stream — the flight
   recorder (below) keeps recording, so nothing is lost for post-mortem.
 - **`SYS:EVENT?`** — `OK <0|1>`.
 - **`SYS:EVLOG?`** — the **flight recorder** (docs/telemetry.md Phase 4):

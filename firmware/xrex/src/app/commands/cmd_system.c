@@ -91,7 +91,7 @@ void cmd_boot(uart_instance_t *inst, char *args)
  * that owns the telemetry data-contract: SYS:TIME? exposes the monotonic
  * millisecond clock (HAL_GetTick, SysTick 1 ms), SYS:TELEM? the schema
  * version (TELEMETRY_SCHEMA_VERSION, telemetry.h -- bumped on any wire-format
- * change), and SYS:EVENT gates the unsolicited `!EVT` stream (default ON).
+ * change), and SYS:EVENT gates the unsolicited `!EVT` stream (default OFF since 2026-11-09).
  * The `!EVT` lines themselves are emitted by telemetry.c's
  * Telemetry_PollEmit(), not by any of these handlers.
  * -------------------------------------------------------------------------- */

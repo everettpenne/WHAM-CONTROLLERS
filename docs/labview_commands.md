@@ -139,7 +139,7 @@ LOG:DATA? [<ch>]                        OK <count> <rateHz> s1 m1 o1 s2 m2 o2 ..
 
 ### 3.7 Events and history
 
-`!EVT` lines (part 2, section 2.3) arrive without being asked for. `SYS:EVENT 0|1` / `SYS:EVENT?` switch the live stream (default on). `SYS:EVLOG?` replays the history
+When switched on, `!EVT` lines (part 2, section 2.3) arrive without being asked for. `SYS:EVENT 0|1` / `SYS:EVENT?` switch the live stream (**default off since 2026-11-09**: send `SYS:EVENT 1` after every connect or `!BOOT` to receive events; the history in `SYS:EVLOG?` is recorded either way). `SYS:EVLOG?` replays the history
 since boot: `OK <n>` followed by exactly `n` `!EVT` lines (part 1, section 5.3). `SYS:TELEM?` returns the event format version: read it on connect and
 refuse to decode a version you do not know.
 

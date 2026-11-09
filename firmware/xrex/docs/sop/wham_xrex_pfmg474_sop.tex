@@ -699,7 +699,7 @@ it happened. Full protocol detail: \code{docs/command\_reference.md}'s
 
 \subsection{The live stream}
 
-Enabled by default (\code{SYS:EVENT?} reports \code{1}). A \code{!EVT}
+Disabled by default since 2026-11-09 (\code{SYS:EVENT?} reports \code{0}; \code{SYS:EVENT 1} turns it on). When on, a \code{!EVT}
 line can arrive interleaved between any two commands' own \code{OK}/
 \code{ERR} replies -- the \code{!EVT} prefix can never collide with
 either, so it is always unambiguous which kind of line just arrived.
@@ -709,8 +709,8 @@ wall-clock time, the moment it arrives -- nothing special has to be
 sent or typed to see it happen. Driving the board over a bare terminal
 instead, the same lines simply appear on their own between typed
 commands and replies; no special terminal mode is needed. To silence
-the live stream without losing anything (the flight recorder, below,
-keeps recording regardless): \code{SYS:EVENT 0}. Re-enable with
+the live stream again without losing anything (the flight recorder, below,
+keeps recording regardless): \code{SYS:EVENT 0}. Enable it with
 \code{SYS:EVENT 1}.
 
 \subsection{Translating an \code{!EVT} line}

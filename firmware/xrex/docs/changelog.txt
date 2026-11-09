@@ -1,6 +1,14 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-09  -  The live !EVT stream is OFF by default (SYS:EVENT 0 at every boot)
+-----------------------------------------------------------------------
+  Request: turn off system event reporting by default. telemetry.c: TELEM_EVENT_DEFAULT_ENABLED 0, used by the static initialiser and Telemetry_Init(). SYS:EVENT 1 turns
+  the stream on until the next reset; the flight recorder (SYS:EVLOG?) records every event regardless, so nothing is lost for post-mortem. Not stored in a profile.
+  Consequences to know about: LabVIEW and the hub no longer get STATE/FAULT pushes unless they send SYS:EVENT 1 after each connect or !BOOT (poll STATE? meanwhile);
+  the hub's own log loses its "event" rows (shot start/end, faults) for this controller; wham_console prints live events only once the stream is on.
+  Docs updated: command_reference, labview_interface, telemetry, SOP, docs/labview_commands, docs/labview_state_and_faults.
+
 2026-11-09  -  Raw capture of a refused line (DIAGnostic:UART:REJect?); line counters in DIAGnostic:UART?  [XREX only; HBRIDGE's uart.c now differs]
 -----------------------------------------------------------------------
   A real LabVIEW shot on the receive-recovery image (7577bf7d) kept the hub connected, but one valid poll, SOURce:STATus? 3 at 16:25:54.707, in the

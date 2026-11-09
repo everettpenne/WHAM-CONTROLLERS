@@ -110,7 +110,7 @@ New `SYS:` namespace (owns the telemetry contract):
 ```
 SYS:TIME?        -> OK <tick_ms>          (monotonic ms since boot)
 SYS:TELEM?       -> OK <schema_version>
-SYS:EVENT <0|1>  -> OK                     (gate the !EVT stream; default 1)
+SYS:EVENT <0|1>  -> OK                     (gate the !EVT stream; default 0 since 2026-11-09)
 SYS:EVLOG?       -> OK <n> <tick> <event> ... (flight recorder, Phase 4)
 ```
 

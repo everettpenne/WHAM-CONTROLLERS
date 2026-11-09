@@ -292,7 +292,7 @@ and faults. The host doesn't have to poll for them.
 
 | Command | Reply | Meaning |
 |---|---|---|
-| `SYS:EVENT 1` | `OK` | Enable the live `!EVT` stream (**default is already ON**). |
+| `SYS:EVENT 1` | `OK` | Enable the live `!EVT` stream (**default is OFF since 2026-11-09**, and it is off again after every reset: send this after each connect or `!BOOT` if you want events). |
 | `SYS:EVENT 0` | `OK` | Silence the live stream (the flight recorder still records). |
 | `SYS:EVENT?` | `OK <0\|1>` | Current gate state. |
 | `SYS:TELEM?` | `OK 4` | Schema version — re-verify on connect. |

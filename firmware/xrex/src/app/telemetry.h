@@ -31,7 +31,7 @@
  *     !EVT <tick_ms> TRIGGER FIRING   (external trigger on PF15 fired a shot)
  * where <ch> is 1-based and only present for per-channel fault types.
  *
- * `SYS:EVENT <0|1>` gates EMISSION only (default 1): while disabled,
+ * `SYS:EVENT <0|1>` gates EMISSION only (default 0 since 2026-11-09: the live stream is opt-in): while disabled,
  * Telemetry_PollEmit still drains the transmit queue but transmits nothing.
  *
  * FLIGHT RECORDER (Phase 4, docs/telemetry.md): every pushed event is ALSO

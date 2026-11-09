@@ -101,7 +101,7 @@ still latched". Use `STATE?` for the display and `FAULT?` where you only need a 
 XREX also **pushes** state changes as unsolicited lines, so a display does not have to poll fast (part 1, section 4, lines starting `!`):
 
 ```
-!EVT <tick_ms> STATE <IDLE|ARMED|FIRING|FAULT>
+!EVT <tick_ms> STATE <IDLE|ARMED|FIRING|FAULT>      (only after SYS:EVENT 1: the stream is OFF by default since 2026-11-09)
 !EVT <tick_ms> FAULT <GENERAL|OVERCURRENT|EXTERNAL_ENABLE|ENABLE_OUTPUT|ENERPRO> [<ch>]
 !EVT <tick_ms> FAULT CLEAR
 !EVT <tick_ms> TRIGGER FIRING        a shot was started by the external trigger input, not by a command
@@ -119,7 +119,7 @@ way to find out what happened while you were disconnected. HBRIDGE has **no** `!
 | Idle display | `STATE?` | 1-2 per second |
 | Shot in progress | `STATE?` (and the `SOURce:STATus?` of the channels you display) | up to 5-10 per second; faster polling adds nothing and just fills the hub's queue (part 1, section 5.2) |
 | Waiting for a shot to finish | `STATE?` until it returns `OK IDLE` | every 100-250 ms, with a timeout a little over the shot's length |
-| Anything else with events available (XREX) | rely on `!EVT`, plus one `STATE?` every few seconds as a cross-check | |
+| Anything else with events available (XREX) | `!EVT` if you switched it on (`SYS:EVENT 1`; off by default since 2026-11-09), plus one `STATE?` every few seconds as a cross-check -- without events, poll `STATE?` | |
 
 Always poll `STATE?` right after connecting, after reconnecting, after every `!BOOT` line, and after any `ERR hub` reply, before you
 decide what to do next.

@@ -59,7 +59,11 @@ static TelemetryEvent_t g_flight[TELEM_FLIGHT_LOG_SIZE];
 static volatile uint32_t g_flightWrite = 0U;   /* next slot to write (mod SIZE) */
 static volatile uint32_t g_flightCount = 0U;   /* valid entries, 0..SIZE */
 
-static uint8_t g_eventEnabled = 1U;
+/* Live !EVT stream OFF by default (2026-11-09, direct request): a controller that is not asked for events no longer
+   interleaves unsolicited lines with its replies. SYS:EVENT 1 turns it on; the flight recorder (SYS:EVLOG?) records
+   regardless. Reset to this at every boot and by Telemetry_Init(). */
+#define TELEM_EVENT_DEFAULT_ENABLED   (0U)
+static uint8_t g_eventEnabled = TELEM_EVENT_DEFAULT_ENABLED;
 
 static const char *StateName(SM_State_t s)
 {
@@ -178,7 +182,7 @@ void Telemetry_Init(void)
     g_tail         = 0U;
     g_flightWrite  = 0U;
     g_flightCount  = 0U;
-    g_eventEnabled = 1U;
+    g_eventEnabled = TELEM_EVENT_DEFAULT_ENABLED;
 }
 
 void Telemetry_SetEventEnabled(uint8_t enabled)
