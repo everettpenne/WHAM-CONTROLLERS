@@ -147,6 +147,17 @@ extern "C" {
  * badBits check. */
 uint8_t XrexIo_EvaluateGateDriverFault(uint16_t raw12);
 
+/* The full result behind XrexIo_EvaluateGateDriverFault(): which individual
+ * WATER/TMP/ENERPRO faults (fault_mask.h's FM_* bits) the raw 12-bit read
+ * represents, after per-channel gating and per-category polarity. Pure; 0 on
+ * the simulator build target. */
+uint32_t XrexIo_ScanGateDriverFaults(uint16_t raw12);
+
+/* Polls the Water/Temp/Enerpro pins (GateDriver_PollFault()) exactly like
+ * XrexIo_PollOcpFaults() polls OCP: call from the main loop, PID_Update() and
+ * boot. Added 2026-11-09. A no-op on the simulator build target. */
+void XrexIo_PollGateDriverFaults(void);
+
 /* XR_WATER_FLT_POLARITY/XR_TMP_FLT_POLARITY/XR_ENERPRO_FLT_POLARITY/
  * XR_OCP_FLT_POLARITY (ctrlr_config.h) -- RUNTIME-CONFIGURABLE as of
  * 2026-09-22, direct request. Back CONFig:FaultPolarity:WATER/:TEMP/

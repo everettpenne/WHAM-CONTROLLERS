@@ -112,6 +112,7 @@ void App_Init(void)
        present should also start in FAULT, not IDLE. */
     SM_Init();
     SM_PollFaults();
+    XrexIo_PollGateDriverFaults();   /* Water/Temp/Enerpro, polled like OCP (2026-11-09) */
     XrexIo_PollOcpFaults();
     XrexIo_PollEnableOutputFaults();   /* no-op here -- SM_Init() just set
                                            IDLE, and this check only ever

@@ -5,14 +5,17 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../src/app/protection/fault_mask.c \
 ../src/app/protection/gate_driver.c \
 ../src/app/protection/xrex_io.c
 
 OBJS += \
+./src/app/protection/fault_mask.o \
 ./src/app/protection/gate_driver.o \
 ./src/app/protection/xrex_io.o
 
 C_DEPS += \
+./src/app/protection/fault_mask.d \
 ./src/app/protection/gate_driver.d \
 ./src/app/protection/xrex_io.d
 
@@ -24,7 +27,7 @@ src/app/protection/%.o src/app/protection/%.su src/app/protection/%.cyclo: ../sr
 clean: clean-src-2f-app-2f-protection
 
 clean-src-2f-app-2f-protection:
-	-$(RM) ./src/app/protection/gate_driver.cyclo ./src/app/protection/gate_driver.d ./src/app/protection/gate_driver.o ./src/app/protection/gate_driver.su ./src/app/protection/xrex_io.cyclo ./src/app/protection/xrex_io.d ./src/app/protection/xrex_io.o ./src/app/protection/xrex_io.su
+	-$(RM) ./src/app/protection/fault_mask.cyclo ./src/app/protection/fault_mask.d ./src/app/protection/fault_mask.o ./src/app/protection/fault_mask.su ./src/app/protection/gate_driver.cyclo ./src/app/protection/gate_driver.d ./src/app/protection/gate_driver.o ./src/app/protection/gate_driver.su ./src/app/protection/xrex_io.cyclo ./src/app/protection/xrex_io.d ./src/app/protection/xrex_io.o ./src/app/protection/xrex_io.su
 
 .PHONY: clean-src-2f-app-2f-protection
 

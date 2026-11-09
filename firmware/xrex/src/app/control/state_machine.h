@@ -862,6 +862,15 @@ void SM_ReportEnerproFault(uint8_t channel);
 void SM_SetFaultBypassEnabled(uint8_t enabled);
 uint8_t SM_GetFaultBypassEnabled(void);
 
+/* The faults MEASURED since the controller last was clear, as fault_mask.h
+ * FM_* bits -- all of them, not only the first one that latched (that one is
+ * SM_GetFaultType()/SM_GetFaultChannel()). Backs the ACTIVE= list on STATE?
+ * Added 2026-11-09. SM_NoteFaults() records bits (ignored under
+ * DEBUG:FAULT:BYPASS; safe from the EXTI ISR); a successful SM_ClearFault()
+ * empties the mask, a refused one leaves it. */
+void     SM_NoteFaults(uint32_t bits);
+uint32_t SM_GetActiveFaults(void);
+
 #ifdef __cplusplus
 }
 #endif

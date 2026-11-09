@@ -1,6 +1,23 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-09  -  Water/Temp/Enerpro polled like overcurrent; STATE? lists every measured fault (ACTIVE=)
+-----------------------------------------------------------------------
+  Found on the bench: XR1 enabled and armed with its water pin (PE0) pulled LOW, and no fault. Water, Temp and Enerpro (GateDriverStatus PE0..PE11) were only
+  evaluated on a pin EDGE (EXTI), once at boot and by FAULT:CLEAR while already in FAULT, so a pin that was already at its fault level when a channel was
+  enabled or armed never produced an edge and was never looked at. Overcurrent and ENA_OUT/CONTACT_OUT had no such gap (polled from the main loop, PID_Update()
+  and boot).
+  Now: XrexIo_PollGateDriverFaults() -> GateDriver_PollFault() is called next to XrexIo_PollOcpFaults() in task_faults.c, PID_Update() and the boot block of
+  app.c. A fault found by polling force-stops only when nothing is latched yet (the EXTI path is unchanged); Enerpro reports through SM_ReportEnerproFault() as
+  before. A disabled channel's pins are still ignored; the simulator build still treats PE0..PE11 as its gating inputs (no polling there).
+  STATE? while faulted ends with " ACTIVE=<list>": every fault measured (WATER<n>, TMP<n>, ENERPRO<n>, OCP<n>, ENABLE_OUTPUT<n>, EXTERNAL_ENABLE, PC10, TEST;
+  channels 1-based; NONE if empty), kept by state_machine.c (SM_NoteFaults()/SM_GetActiveFaults(), a bit mask), emptied by a successful FAULT:CLEAR, not recorded
+  under DEBUG:FAULT:BYPASS. The words before it (FAULT <TYPE> [ch]) are unchanged, so existing parsers (operator UI, LabVIEW) that read the first words keep working.
+  The !EVT fault line still names only the first fault; FAULT:SOURces? was not added to XREX.
+  New: src/app/protection/fault_mask.c/.h (pure: raw pin levels + polarity + enabled channels -> mask; mask -> names), tests/test_fault_mask.c (51 checks).
+  Verified: host suite green, controller and simulator build with no warnings. NOT DONE: not flashed to any board (the bench XREX board runs an older image);
+  nothing seen on real pins yet.
+
 2026-10-20  -  Operator's guide; LabVIEW interface note about the hub (documentation only, no firmware change)
 -----------------------------------------------------------------------
   New: docs/operators_guide.md (the system architecture from the Transrex upgrade plan, the safety model, step-by-step shot procedures, fault response, what is verified).

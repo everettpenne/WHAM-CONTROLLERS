@@ -335,7 +335,7 @@ and is lost at reset: save it first.
 
 **First, do not clear a fault just to make it go away.** A fault was raised for a reason. Find the reason first.
 
-1. **Read it.** `STATE?` gives the type and channel (for example `OK FAULT OVERCURRENT 2`). Note it down.
+1. **Read it.** `STATE?` gives the type and channel of the first fault (for example `OK FAULT OVERCURRENT 2`) and, after `ACTIVE=`, every fault the controller has measured (for example `OK FAULT OVERCURRENT 2 ACTIVE=WATER1,OCP2`). Note all of them down.
 2. **Wait for the ramp-down to finish** (about the fault ramp time, 1 s by default).
 3. **Make sure the supplies are safe** by the facility's own means.
 4. **Find the cause.** For a single channel, `XREX:CHANnel:STATus? <n>` shows the raw levels of its four fault inputs (`OK WATER=HIGH TMP=LOW ENERPRO=LOW OCP=LOW`). Read these as **levels, not good or bad**: which level means a fault depends on

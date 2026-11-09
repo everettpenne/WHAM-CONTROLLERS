@@ -16,6 +16,7 @@
 #include "board_io.h"
 #include "xrex_io.h"
 #include "state_machine.h"
+#include "fault_mask.h"
 
 /* Set only from GateDriver_CheckFault() (ISR context, EXTI0..EXTI4,
    EXTI9_5, EXTI15_10 -- see stm32g4xx_it.c), cleared only from
@@ -29,9 +30,13 @@ uint16_t GateDriver_Read(void)
     return BoardIo_ReadGateDriverStatus();
 }
 
-void GateDriver_CheckFault(void)
+/* The one evaluation both entry points share. `actOnNewFault` = 1: a
+   Water/Temp fault found here force-stops the outputs (the EXTI path, always;
+   the poll path, only while nothing is latched yet -- a repeat stop every
+   main-loop pass for a fault that is already being handled would be noise).
+   Either way the faults found are recorded for STATE? (SM_NoteFaults()). */
+static void CheckPins(uint16_t raw, uint8_t actOnNewFault)
 {
-    uint16_t raw = GateDriver_Read();
 
     /* Enerpro's own per-channel check, added 2026-09-18 -- see
        xrex_io.h's own header comment on the reclassification (Enerpro
@@ -62,9 +67,15 @@ void GateDriver_CheckFault(void)
        state machine has been told to ignore faults for, and
        GateDriver_FaultClear()'s own re-check below would immediately
        re-latch. */
-    if ((XrexIo_EvaluateGateDriverFault(raw) != 0U) &&
-        (SM_GetFaultBypassEnabled() == 0U))
+    const uint32_t wt = XrexIo_ScanGateDriverFaults(raw) & FM_WATER_TMP_MASK;
+
+    if ((wt != 0UL) && (SM_GetFaultBypassEnabled() == 0U))
     {
+        SM_NoteFaults(wt);
+        if (actOnNewFault == 0U)
+        {
+            return;
+        }
         /* *** REAL BUG, FIXED 2026-09-15, confirmed on real hardware ***
            -- see PFM_ForceStopSoft()'s own extensive doc comment
            (pfm.h) for the full diagnostic. This used to call the FULL
@@ -99,6 +110,18 @@ void GateDriver_CheckFault(void)
         }
         g_gdsFaultLatched = 1U;
     }
+}
+
+void GateDriver_CheckFault(void)
+{
+    CheckPins(GateDriver_Read(), 1U);
+}
+
+void GateDriver_PollFault(void)
+{
+    /* Polled from the same three places as XrexIo_PollOcpFaults() (main loop,
+       PID_Update(), boot) -- see gate_driver.h. */
+    CheckPins(GateDriver_Read(), (g_gdsFaultLatched == 0U) ? 1U : 0U);
 }
 
 uint8_t GateDriver_FaultIsLatched(void)

@@ -487,7 +487,22 @@ REVISIT" comments).
   `OK FAULT EXTERNAL_ENABLE` /
   `OK FAULT ENABLE_OUTPUT <ch>` (1-based) / `OK FAULT ENERPRO <ch>`
   (1-based — added 2026-09-18, reclassified out of `GENERAL`; see
-  below).
+  below). While faulted the reply ends with **` ACTIVE=<list>`**
+  (added 2026-11-09): every fault the controller has MEASURED since it was
+  last clear, comma-separated, not only the one that latched first (which is
+  the `FAULT <TYPE> [ch]` part). Example, XR1 water and XR3 overcurrent both
+  present: `OK FAULT GENERAL ACTIVE=WATER1,OCP3`. Names (channels 1-based),
+  in this order: `WATER<n>`, `TMP<n>`, `ENERPRO<n>`, `OCP<n>`,
+  `ENABLE_OUTPUT<n>`, `EXTERNAL_ENABLE`, `PC10` (the native hardware fault
+  input), `TEST` (`GENERAL:TEST:FAULT`); `NONE` if nothing is recorded (for
+  instance a fault cleared by a power-on). The list is emptied by a
+  successful `FAULT:CLEAR` (a refused one leaves it) and records nothing while
+  `DEBUG:FAULT:BYPASS` is on. Water, temperature and Enerpro are **polled**
+  from the main loop, the PID tick and at boot, exactly like overcurrent, so
+  a pin already at its fault level when a channel is enabled or armed is
+  seen; before 2026-11-09 they were evaluated only on a pin edge, at boot
+  and by `FAULT:CLEAR`. A disabled channel's pins are still ignored. The
+  `!EVT` fault line still names only the first fault.
 - New error code **13**: an invalid state-machine transition for the
   current state (e.g. `SHOT:STARt` sent while not `ARMED`;
   `ARM` sent while not `IDLE`).

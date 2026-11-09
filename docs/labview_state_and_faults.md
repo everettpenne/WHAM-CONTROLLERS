@@ -84,6 +84,10 @@ The authoritative answer. One line:
 
 Parse it as: the word after `OK` is the state. If it is `FAULT`, the next word is the fault type, and (only for the per-channel
 types `OVERCURRENT`, `ENABLE_OUTPUT`, `ENERPRO`) a 1-based channel number follows. HBRIDGE reports only `FAULT GENERAL`.
+On XREX a `FAULT` line ends with ` ACTIVE=<list>` (since 2026-11-09): every fault the controller has measured, comma-separated, for example
+`OK FAULT GENERAL ACTIVE=WATER1,OCP3` (`WATER<n>`, `TMP<n>`, `ENERPRO<n>`, `OCP<n>`, `ENABLE_OUTPUT<n>`, `EXTERNAL_ENABLE`, `PC10`, `TEST`; channels
+1-based). The type and channel words before it are the first fault that latched; `ACTIVE=` is the full list. Read the first words as before and
+treat `ACTIVE=` as an optional trailing field.
 Unknown fault types may be added in future: treat any word after `FAULT` you do not recognise as "unknown fault, controller is
 safe, operator must investigate", never as an error in your own parser.
 
@@ -174,6 +178,9 @@ fault is a real fault as far as everything else is concerned.
 | `FAULT ENERPRO <ch>` | 1-4 | that channel's Enerpro fault input |
 | `FAULT EXTERNAL_ENABLE` | none | the external-enable interlock input dropped while firing |
 | `FAULT ENABLE_OUTPUT <ch>` | 1-4 | that channel's enable or contactor output (the one this controller drives) was no longer HIGH while armed or firing |
+
+Water, temperature and Enerpro inputs are polled continuously, like overcurrent (before 2026-11-09 only on a pin edge), and `STATE?` lists every
+fault measured in its `ACTIVE=` field.
 
 Only **enabled** channels (`SOURce:ENAble <ch> 1`) count: a disabled channel's own fault inputs are ignored and never block anything.
 

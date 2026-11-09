@@ -182,9 +182,12 @@ OK FAULT ENABLE_OUTPUT <ch>
 OK FAULT ENERPRO <ch>
 ```
 
-`<ch>` is 1-based and present only for the per-channel fault types. Poll this
-(cheaply) in the LabVIEW loop to drive the front-end's state indicator and
-fault lamp.
+`<ch>` is 1-based and present only for the per-channel fault types. When the
+state is `FAULT` the line ends with ` ACTIVE=<list>` (since 2026-11-09), every
+fault currently recorded, e.g. `OK FAULT GENERAL ACTIVE=WATER1,OCP3`; parse the
+state and the type from the first words as before and treat `ACTIVE=` as an
+optional trailing field. Poll this (cheaply) in the LabVIEW loop to drive the
+front-end's state indicator and fault lamp.
 
 ### 3.4 Fault / health polling (raw and interpreted)
 

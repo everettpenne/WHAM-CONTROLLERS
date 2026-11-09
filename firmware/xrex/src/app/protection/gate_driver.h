@@ -72,6 +72,15 @@ uint16_t GateDriver_Read(void);
    harmless no-op re-stop) to call again while already latched. */
 void GateDriver_CheckFault(void);
 
+/* Same evaluation as GateDriver_CheckFault(), but for polling from the main
+   loop / PID_Update() / boot: a pin that is ALREADY at its fault level when
+   a channel is enabled or armed produces no EXTI edge, so the edge path alone
+   never sees it. Added 2026-11-09, direct request ("poll the faults just like
+   we do with overcurrent"). Records every Water/Temp/Enerpro fault found for
+   STATE? (SM_NoteFaults()) and force-stops only on a fault that is not
+   latched yet. Safe to call repeatedly. */
+void GateDriver_PollFault(void);
+
 uint8_t GateDriver_FaultIsLatched(void);
 
 /* Force-stops HRTIM output again (defensive, matching

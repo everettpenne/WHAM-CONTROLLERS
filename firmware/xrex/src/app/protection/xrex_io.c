@@ -10,22 +10,8 @@
 #include "state_machine.h"
 #include "pid.h"
 #include "board_io.h"
+#include "fault_mask.h"
 #include <stddef.h>
-
-/* Base bit position (within GateDriver_Read()'s 12-bit PE0..PE11
-   result) for each fault category's XR1 entry -- channel index ch
-   (0-based) uses bit (base + ch). Verified programmatically (not by
-   eye) against docs/pin_mapping_v4.csv's "XREX Pin Name" column,
-   2026-09-17:
-     XR1_WATER_FLT=PE0(bit0)   XR2=PE1(bit1)  XR3=PE2(bit2)  XR4=PE3(bit3)
-     XR1_TMP_FLT=PE4(bit4)     XR2=PE5(bit5)  XR3=PE6(bit6)  XR4=PE7(bit7)
-     XR1_ENERPRO_FLT=PE8(bit8) XR2=PE9(bit9)  XR3=PE10(bit10) XR4=PE11(bit11)
-   A genuinely regular pattern (category_base + channel_index), not a
-   coincidence to be suspicious of -- these are 12 consecutive pins on
-   one port, assigned in exactly this per-category block order. */
-#define XR_WATER_FLT_BIT_BASE     (0U)
-#define XR_TMP_FLT_BIT_BASE       (4U)
-#define XR_ENERPRO_FLT_BIT_BASE   (8U)
 
 /* XRn_OCP pins (PF4/PF8/PF12/PF5 for XR1..XR4 -- an irregular order) are
    BOARD_SIG_XR_OCP(ch); the pin table lives in the BSP (board_io.c). */
@@ -110,7 +96,23 @@ static uint8_t BitIsFault(uint8_t bit, uint32_t polarity)
 }
 #endif /* !BUILD_TARGET_SIMULATOR */
 
-uint8_t XrexIo_EvaluateGateDriverFault(uint16_t raw12)
+#if !defined(BUILD_TARGET_SIMULATOR)
+/* Bit ch set for every channel that is currently enabled (SOURce:ENAble). */
+static uint8_t EnabledChannelMask(void)
+{
+    uint8_t m = 0U;
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        if (PID_GetChannelEnable(ch) != 0U)
+        {
+            m |= (uint8_t)(1U << ch);
+        }
+    }
+    return m;
+}
+#endif /* !BUILD_TARGET_SIMULATOR */
+
+uint32_t XrexIo_ScanGateDriverFaults(uint16_t raw12)
 {
 #if defined(BUILD_TARGET_SIMULATOR)
     /* REAL BUG, found and fixed 2026-09-21: on the simulator, PE0..PE11
@@ -128,56 +130,41 @@ uint8_t XrexIo_EvaluateGateDriverFault(uint16_t raw12)
        changelog.txt's own extensive entry). No real meaning on this
        build target -- always report healthy. */
     (void)raw12;
-    return 0U;
+    return 0UL;
 #else
-    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
-    {
-        if (PID_GetChannelEnable(ch) == 0U)
-        {
-            continue;   /* gated: a disabled channel's own Water/Temp
-                           pins never count toward a fault */
-        }
-
-        uint8_t waterBit = (uint8_t)((raw12 >> (XR_WATER_FLT_BIT_BASE + ch)) & 1U);
-        uint8_t tmpBit   = (uint8_t)((raw12 >> (XR_TMP_FLT_BIT_BASE + ch)) & 1U);
-
-        /* Enerpro deliberately excluded here as of 2026-09-18 -- see
-           this file's own header comment and XrexIo_PollEnerproFaults()
-           below, which now owns Enerpro's own (differently-routed)
-           fault check. */
-        if ((BitIsFault(waterBit, g_xrWaterFltPolarity) != 0U) ||
-            (BitIsFault(tmpBit, g_xrTmpFltPolarity) != 0U))
-        {
-            return 1U;
-        }
-    }
-    return 0U;
+    return FaultMask_FromGateDriver(raw12, EnabledChannelMask(), g_xrWaterFltPolarity,
+                                    g_xrTmpFltPolarity, g_xrEnerproFltPolarity);
 #endif /* BUILD_TARGET_SIMULATOR */
+}
+
+uint8_t XrexIo_EvaluateGateDriverFault(uint16_t raw12)
+{
+    /* Enerpro deliberately excluded here as of 2026-09-18 -- see this
+       file's own header comment and XrexIo_PollEnerproFaults() below,
+       which owns Enerpro's own (differently-routed) fault check. */
+    return ((XrexIo_ScanGateDriverFaults(raw12) & FM_WATER_TMP_MASK) != 0UL) ? 1U : 0U;
 }
 
 void XrexIo_PollEnerproFaults(uint16_t raw12)
 {
-#if defined(BUILD_TARGET_SIMULATOR)
-    /* Same real bug as XrexIo_EvaluateGateDriverFault() above -- these
-       bits are the simulator's own ENA_OUT/CONTACT_OUT gating input on
-       this build target, not real Enerpro fault levels. No-op here. */
-    (void)raw12;
-    return;
-#else
-    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
-    {
-        if (PID_GetChannelEnable(ch) == 0U)
-        {
-            continue;   /* gated -- see this file's own header comment */
-        }
+    const uint32_t m = XrexIo_ScanGateDriverFaults(raw12) & FM_ENERPRO_MASK;   /* 0 on the simulator build */
 
-        uint8_t enerproBit = (uint8_t)((raw12 >> (XR_ENERPRO_FLT_BIT_BASE + ch)) & 1U);
-        if (BitIsFault(enerproBit, g_xrEnerproFltPolarity) != 0U)
+    for (uint8_t ch = 0U; (m != 0UL) && (ch < HRTIM_NUM_CHANNELS); ch++)
+    {
+        if ((m & FM_ENERPRO(ch)) != 0UL)
         {
             SM_ReportEnerproFault(ch);
         }
     }
-#endif /* BUILD_TARGET_SIMULATOR */
+}
+
+void XrexIo_PollGateDriverFaults(void)
+{
+#if defined(BUILD_TARGET_SIMULATOR)
+    return;   /* PE0..PE11 mean something else on the simulator, see XrexIo_ScanGateDriverFaults() */
+#else
+    GateDriver_PollFault();
+#endif
 }
 
 void XrexIo_PollOcpFaults(void)

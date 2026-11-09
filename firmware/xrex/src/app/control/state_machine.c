@@ -13,6 +13,7 @@
 #include "board_io.h"
 #include "mcu.h"
 #include "xrex_io.h"
+#include "fault_mask.h"
 #include "telemetry.h"
 #include "led_indicators.h"
 
@@ -185,6 +186,30 @@ void SM_SetFaultBypassEnabled(uint8_t enabled)
 uint8_t SM_GetFaultBypassEnabled(void)
 {
     return g_faultBypassEnabled;
+}
+
+/* Every fault MEASURED since the controller last was clear (fault_mask.h's FM_*
+   bits), not just the first -- g_faultType above names only the one that
+   latched first. Written from the main loop, PID_Update() and the EXTI ISR, so
+   every update is under Mcu_IrqDisable(). Zeroed by a successful
+   SM_ClearFault(), deliberately NOT by SM_Init() (nothing to clear there).
+   Added 2026-11-09, direct request: STATE? reports all of them. */
+static volatile uint32_t g_faultMask = 0UL;
+
+void SM_NoteFaults(uint32_t bits)
+{
+    if ((bits == 0UL) || (g_faultBypassEnabled != 0U))
+    {
+        return;   /* DEBUG:FAULT:BYPASS: faults are ignored, so none are recorded */
+    }
+    Mcu_IrqDisable();
+    g_faultMask |= bits;
+    Mcu_IrqEnable();
+}
+
+uint32_t SM_GetActiveFaults(void)
+{
+    return g_faultMask;
 }
 
 /* -- fault-type handlers -- */
@@ -609,6 +634,24 @@ void SM_PollFaults(void)
        use without special-casing ISR vs. main context. */
     Mcu_IrqDisable();
 
+    /* Record every system-wide fault that is present, even when the state
+       machine is already in FAULT for another reason (STATE? lists them all).
+       A bypassed run records none. */
+    if (g_faultBypassEnabled == 0U)
+    {
+        if (HRTIM1_FaultIsTripped() != 0U)
+        {
+            g_faultMask |= FM_PC10;
+        }
+        const uint8_t wasFiring = (g_state == SM_STATE_FIRING) ||
+                                  ((g_state == SM_STATE_FAULT) && (g_stateBeforeFault == SM_STATE_FIRING));
+        if ((g_externalEnableRequired != 0U) && (wasFiring != 0U) &&
+            (ExternalEnableInputIsHigh() == 0U))
+        {
+            g_faultMask |= FM_EXT_ENABLE;
+        }
+    }
+
     if (g_state == SM_STATE_FAULT)
     {
         Mcu_IrqEnable();
@@ -693,6 +736,7 @@ void SM_ReportOcpFault(uint8_t channel)
        protection against the same main-loop/ISR race SM_PollFaults()
        itself was fixed for. */
     Mcu_IrqDisable();
+    g_faultMask |= (g_faultBypassEnabled == 0U) ? FM_OCP(channel) : 0UL;
 
     if (g_state == SM_STATE_FAULT)
     {
@@ -725,6 +769,7 @@ void SM_ReportEnableOutputFault(uint8_t channel)
        the same tick cadence OCP polling gets, so it needs the same
        protection against the same main-loop/PID_Update()-tick race. */
     Mcu_IrqDisable();
+    g_faultMask |= (g_faultBypassEnabled == 0U) ? FM_ENABLE_OUT(channel) : 0UL;
 
     if (g_state == SM_STATE_FAULT)
     {
@@ -757,6 +802,7 @@ void SM_ReportEnerproFault(uint8_t channel)
        gate_driver.c's GateDriver_CheckFault() in EXTI ISR context, so it
        needs the same protection against a main-loop/ISR race. */
     Mcu_IrqDisable();
+    g_faultMask |= (g_faultBypassEnabled == 0U) ? FM_ENERPRO(channel) : 0UL;
 
     if (g_state == SM_STATE_FAULT)
     {
@@ -779,6 +825,7 @@ void SM_ReportGeneralFault(void)
     /* Same critical-section reasoning as SM_PollFaults()/SM_ReportOcpFault()
        above -- see SM_PollFaults()'s own extensive comment. */
     Mcu_IrqDisable();
+    g_faultMask |= (g_faultBypassEnabled == 0U) ? FM_TEST : 0UL;
 
     if (g_state == SM_STATE_FAULT)
     {
@@ -876,6 +923,9 @@ uint8_t SM_ClearFault(void)
     SetState(SM_STATE_IDLE);
     g_faultType    = SM_FAULT_NONE;
     g_faultChannel = 0xFFU;
+    Mcu_IrqDisable();
+    g_faultMask = 0UL;   /* only after the checks above passed: a fault still present stays listed */
+    Mcu_IrqEnable();
     Telemetry_PushFaultClear();
     return 1U;
 }

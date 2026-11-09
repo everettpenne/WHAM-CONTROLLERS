@@ -15,6 +15,7 @@ void TaskFaults_Poll(void)
        EXTI-driven (see xrex_io.h's own header comment for why), so it
        needs this same "regardless of state" call site to work at all. */
     SM_PollFaults();
+    XrexIo_PollGateDriverFaults();   /* Water/Temp/Enerpro, polled like OCP (2026-11-09) */
     XrexIo_PollOcpFaults();
     XrexIo_PollEnableOutputFaults();   /* added 2026-09-17 -- same
                                            "regardless of state" call site

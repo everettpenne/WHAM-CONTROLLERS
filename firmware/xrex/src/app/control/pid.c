@@ -1077,6 +1077,7 @@ void PID_Update(void)
        xrex_io.h's own header comment), so it needs this same real-tick
        cadence to actually catch anything while FIRING. */
     SM_PollFaults();
+    XrexIo_PollGateDriverFaults();   /* Water/Temp/Enerpro, polled like OCP (2026-11-09) */
     XrexIo_PollOcpFaults();
     XrexIo_PollEnableOutputFaults();   /* added 2026-09-17 -- same real-
                                            tick cadence, but itself only

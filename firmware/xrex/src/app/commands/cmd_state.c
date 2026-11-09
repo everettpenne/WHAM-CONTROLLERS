@@ -11,6 +11,7 @@
 #include "ctrlr_config.h"
 #include "state_machine.h"
 #include "xrex_io.h"
+#include "fault_mask.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -196,12 +197,16 @@ void cmd_debug_fault_bypass_query(uart_instance_t *inst, char *args)
 /* OK <IDLE|ARMED|FIRING|FAULT>, OK FAULT GENERAL, or OK FAULT OVERCURRENT
    <ch> (1-based, this project's usual wire convention -- see
    SM_GetFaultChannel()'s own doc comment, state_machine.h) when in
-   FAULT. The trailing <ch> token is new 2026-09-15, alongside
+   FAULT, followed (since 2026-11-09) by " ACTIVE=<list>": every fault
+   measured, comma-separated (WATER1,TMP2,ENERPRO3,OCP1,ENABLE_OUTPUT4,
+   EXTERNAL_ENABLE,PC10,TEST; NONE if the mask is empty) -- the first
+   type/channel after FAULT is the one that latched first. The trailing <ch> token is new 2026-09-15, alongside
    SM_ReportOcpFault() -- only present for OVERCURRENT, since General
    Fault is system-wide and has no single channel to report. */
 void cmd_state_query(uart_instance_t *inst, char *args)
 {
-    char buf[32];
+    char buf[48];
+    static char active[FAULT_MASK_TEXT_MAX];   /* main-loop command: no reentrancy, and off the small stack */
     const char *name;
     (void)args;
 
@@ -218,7 +223,7 @@ void cmd_state_query(uart_instance_t *inst, char *args)
     {
         if (SM_GetFaultType() == SM_FAULT_OVERCURRENT)
         {
-            snprintf(buf, sizeof(buf), "OK %s OVERCURRENT %u\r\n",
+            snprintf(buf, sizeof(buf), "OK %s OVERCURRENT %u",
                       name, (unsigned)(SM_GetFaultChannel() + 1U));
         }
         else if (SM_GetFaultType() == SM_FAULT_EXTERNAL_ENABLE)
@@ -227,7 +232,7 @@ void cmd_state_query(uart_instance_t *inst, char *args)
                operator diagnostics (identical ramp-down response
                either way, see state_machine.h's own external-enable
                section). */
-            snprintf(buf, sizeof(buf), "OK %s EXTERNAL_ENABLE\r\n", name);
+            snprintf(buf, sizeof(buf), "OK %s EXTERNAL_ENABLE", name);
         }
         else if (SM_GetFaultType() == SM_FAULT_ENABLE_OUTPUT)
         {
@@ -239,7 +244,7 @@ void cmd_state_query(uart_instance_t *inst, char *args)
                this firmware's OWN commanded ENA_OUT/CONTACT_OUT output
                state -- see state_machine.h's own SM_FAULT_ENABLE_OUTPUT
                header comment. */
-            snprintf(buf, sizeof(buf), "OK %s ENABLE_OUTPUT %u\r\n",
+            snprintf(buf, sizeof(buf), "OK %s ENABLE_OUTPUT %u",
                       name, (unsigned)(SM_GetFaultChannel() + 1U));
         }
         else if (SM_GetFaultType() == SM_FAULT_ENERPRO)
@@ -250,19 +255,29 @@ void cmd_state_query(uart_instance_t *inst, char *args)
                state_machine.h's own SM_FAULT_ENERPRO header comment for
                the full reasoning (Transrex_Controls_Upgrade doc's fault
                table). */
-            snprintf(buf, sizeof(buf), "OK %s ENERPRO %u\r\n",
+            snprintf(buf, sizeof(buf), "OK %s ENERPRO %u",
                       name, (unsigned)(SM_GetFaultChannel() + 1U));
         }
         else
         {
-            snprintf(buf, sizeof(buf), "OK %s GENERAL\r\n", name);
+            snprintf(buf, sizeof(buf), "OK %s GENERAL", name);
         }
     }
     else
     {
-        snprintf(buf, sizeof(buf), "OK %s\r\n", name);
+        snprintf(buf, sizeof(buf), "OK %s", name);
     }
     uart_send(inst, buf);
+    if (SM_GetState() == SM_STATE_FAULT)
+    {
+        /* ALL measured faults, not only the first that latched (added
+           2026-11-09, direct request) -- the "FAULT <TYPE> [ch]" part above is
+           unchanged, so a client reading the first words still works. */
+        (void)FaultMask_Format(SM_GetActiveFaults(), active, sizeof(active));
+        uart_send(inst, " ACTIVE=");
+        uart_send(inst, active);
+    }
+    uart_send(inst, "\r\n");
 }
 
 /* --------------------------------------------------------------------------
