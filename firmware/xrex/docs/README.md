@@ -10,6 +10,8 @@ that first.
   matching rules, error codes.
 - [`operators_guide.md`](operators_guide.md) — for operators: the system architecture (Transrex supplies, fiber, controller, hub),
   the safety model, step-by-step shot procedures, fault response, and what has and has not been verified.
+- [`xrex_command_flow.html`](xrex_command_flow.html) — a flowchart of the command sequence by operating state (open it in a browser);
+  regenerate it with `python3 python/gen_command_flow.py` after changing the command flow.
 - [`labview_interface.md`](labview_interface.md) — the LabVIEW front-end command contract (see its note about the hub).
 - [`serial_reflash_guide.md`](serial_reflash_guide.md) — the `BOOT`/`stm32flash`
   reflash mechanism, the VTOR/MEMRMP fix, troubleshooting.
