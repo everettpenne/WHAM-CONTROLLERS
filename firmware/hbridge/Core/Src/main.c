@@ -309,7 +309,14 @@ static void MX_USART2_UART_Init(void)
      hrtim.c for why) -- keeps USART2 strictly below every other
      interrupt in this project's scheme, unchanged in relative
      position, just renumbered to make room. */
-  HAL_NVIC_SetPriority(USART2_IRQn, 3U, 0U);
+  /* *** 2026-11-09: priority 1 (was 3), the HBRIDGE counterpart of a bug found on the XREX controller. A byte that
+     waits longer than one byte time (87 us at 115200) for this interrupt is overrun; the HAL then ends the
+     receive, and before uart.c re-armed after an error the controller kept sending but never heard another
+     command (the hub then reports "the controller is not connected"). XREX lost its bytes behind capture-DMA
+     batches; here the heavier interrupts are the ADC DMA and the software table refill (FMAC vector), both at 2,
+     so 2 would only tie with them: 1 lets USART2 preempt them and ties with HRTIM1_Master and the fault EXTI
+     lines. Its handler is a few microseconds (one byte per 87 us at most). */
+  HAL_NVIC_SetPriority(USART2_IRQn, 1U, 0U);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
   BOOT_DIAG_STAGE(BD_STAGE_USART);
   /* USER CODE END USART2_Init 2 */

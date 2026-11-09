@@ -914,6 +914,15 @@ sampled. `nBOOT0` is the option-byte boot0 value, used only when
 `nSWBOOT0` is `0`; `nBOOT1` combines with the effective boot0 to pick the
 boot target.
 
+### `DIAGnostic:UART?`
+
+`OK OVERRUN=<n> FRAMING=<n> NOISE=<n> PARITY=<n> REARMED=<n>` -- serial **receive** errors since boot (added
+2026-11-09). A nonzero `OVERRUN` means the serial interrupt was served too late and a byte was lost: the partial
+line is dropped and reception restarts (`REARMED` counts the restarts). Before 2026-11-09 an overrun switched
+reception off until a power cycle: the controller kept sending its own `!EVT` lines but never answered again, and
+the hub reported "the controller is not connected". Replies of `ERR 1 Unknown command` to a valid command are the
+other symptom of a lost byte. All zero on a healthy link; read it after a shot.
+
 ### `DIAGnostic:RSTCause?` / `DIAGnostic:RSTCause:CLEar`
 
 `RSTCause?` reports the `RCC->CSR` reset-cause flags:

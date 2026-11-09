@@ -236,6 +236,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     }
 }
 
+/* A UART receive error (overrun, framing, noise, parity): count it and restart reception -- see
+   uart_error_callback() in uart.c for the bug this closes (an overrun used to leave RX off for good). */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART2)
+    {
+        uart_error_callback(&uart2);
+    }
+}
+
 /**
   * @brief  This function handles USART2 global interrupt.
   *

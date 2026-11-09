@@ -23,6 +23,11 @@ extern uart_instance_t uart2;
    (uart_bind(), BSP, called from main.c). */
 void uart_start(uart_instance_t *inst);
 
+/* Receive errors seen since boot, and how many times reception had to be restarted. An overrun means the
+   serial interrupt was served too late (a byte was lost); the partial line is dropped and reception restarts. */
+typedef struct { uint32_t overrun, framing, noise, parity, rearmed; } uart_rx_errors_t;
+void uart_get_rx_errors(const uart_instance_t *inst, uart_rx_errors_t *out);
+
 /* Send a NUL-terminated string; returns once it is all on the wire. */
 void uart_send(uart_instance_t *inst, const char *str);
 

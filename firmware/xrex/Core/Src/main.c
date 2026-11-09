@@ -310,7 +310,12 @@ static void MX_USART2_UART_Init(void)
      hrtim.c for why) -- keeps USART2 strictly below every other
      interrupt in this project's scheme, unchanged in relative
      position, just renumbered to make room. */
-  HAL_NVIC_SetPriority(USART2_IRQn, 3U, 0U);
+  /* *** 2026-11-09: priority 2 (was 3). At 3 the serial receive interrupt queued behind the capture-DMA batch
+     ISRs (also 3, 16 edges per channel per run, more of them as a shot's frequency rises), and a byte that waited
+     longer than one byte time (87 us at 115200) was overrun: lost bytes, then -- before uart.c re-armed after an
+     error -- a controller that transmitted but never heard another command. 2 lets USART2 preempt those batches
+     and still yields to HRTIM1_Master and the fault EXTI lines (both 1). Its handler is a few microseconds. */
+  HAL_NVIC_SetPriority(USART2_IRQn, 2U, 0U);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
   BOOT_DIAG_STAGE(BD_STAGE_USART);
   /* USER CODE END USART2_Init 2 */

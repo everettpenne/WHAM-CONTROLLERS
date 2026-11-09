@@ -196,6 +196,7 @@ static const scpi_command_t command_table[] = {
        a genuine MCU reset, see cmd_system.c's own header comment on
        cmd_diag_rstcause_query(). */
     { "DIAGnostic:RSTCause?",      cmd_diag_rstcause_query },
+    { "DIAGnostic:UART?",          cmd_diag_uart_query },
     { "DIAGnostic:RSTCause:CLEar", cmd_diag_rstcause_clear },
 
     /* TEMPORARY debug/verification command -- software OCP fault

@@ -257,6 +257,9 @@ void cmd_diag_rstcause_query(uart_instance_t *inst, char *args); /* DIAGnostic:R
                                                                       OK CSR=.. BOR=.. PIN=..
                                                                       SFT=.. IWDG=.. WWDG=..
                                                                       LPWR=.. OBL=.. */
+void cmd_diag_uart_query(uart_instance_t *inst, char *args);     /* DIAGnostic:UART? --
+                                                                      OK OVERRUN=.. FRAMING=.. NOISE=..
+                                                                      PARITY=.. REARMED=.. (added 2026-11-09) */
 void cmd_diag_rstcause_clear(uart_instance_t *inst, char *args); /* DIAGnostic:RSTCause:CLEar
                                                                       -- OK, clears all flags
                                                                       above via RCC_CSR_RMVF */

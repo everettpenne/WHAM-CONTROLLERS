@@ -1,6 +1,22 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-09  -  Same fix as XREX: serial receive can no longer be switched off by an overrun; USART2 priority 3 -> 1; DIAGnostic:UART?
+-----------------------------------------------------------------------
+  Found from the hub's log of a LabVIEW shot on the bench XREX (WB-0003-4), 16:02: LabVIEW polled ~10 commands/s during FIRING; valid polls started
+  returning "ERR 1 Unknown command" (bytes lost), then the controller stopped answering altogether while still sending its own !EVT lines. The hub timed
+  out and closed its link ("the controller is not connected"); the board was powered the whole time and needed a power cycle. The same garbling had already
+  appeared during FIRING at 14:53 and 15:00 on the previous image, so it is not a regression of the fault-polling change.
+  Cause (from the logs and code; the first hardware confirmation is DIAGnostic:UART? after a shot): the single-byte USART2 receive interrupt had to wait
+  more than one byte time (87 us at 115200) behind other interrupts, so a byte was overrun. The HAL treats an overrun as blocking: it ENDS the receive and
+  calls HAL_UART_ErrorCallback, which this firmware did not define, so nothing re-armed it and the port stayed deaf (transmit unaffected) until power-off.
+  Fix, in uart.c (byte-identical in both products) and stm32g4xx_it.c: HAL_UART_ErrorCallback -> uart_error_callback() counts the error, drops the partial
+  line (a byte is missing from it) and re-arms; uart_take_line() (polled every main-loop pass) also re-arms if the receive is not running. New query
+  DIAGnostic:UART? -> OK OVERRUN=.. FRAMING=.. NOISE=.. PARITY=.. REARMED=.. (command_reference.md).
+  Whether the HBRIDGE boards actually lose bytes is NOT known: the same uart.c and the same priority 3 were there, so the same failure was possible.
+  Priority here is 1, not XREX's 2: the heavier HBRIDGE interrupts (ADC DMA, the software table refill on the FMAC vector) are at 2, so 2 would only tie with
+  them. 1 ties with HRTIM1_Master and the fault EXTI lines; the USART2 handler is a few microseconds, at most one per 87 us.
+
 2026-11-09  -  DEBUG:FAULT:BYPASS on the HBRIDGE controllers (Limiter, ECH-HVPS)  [host-tested, builds clean; NOT YET FLASHED]
 -----------------------------------------------------------------------
   Request: add the XREX fault bypass to the Limiter and ECH-HVPS controllers (both run this firmware). Bench boards with nothing wired to PC10 / the 12 GateDriverStatus pins latch FAULT at boot.

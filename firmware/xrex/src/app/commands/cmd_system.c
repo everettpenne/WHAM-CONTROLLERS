@@ -254,6 +254,22 @@ void cmd_diag_rstcause_query(uart_instance_t *inst, char *args)
     uart_send(inst, buf);
 }
 
+/* DIAGnostic:UART? -- serial receive errors since boot (see uart_error_callback() in uart.c). Any nonzero OVERRUN
+   means the serial interrupt was served too late and bytes were lost; REARMED counts the times reception had to be
+   restarted (before 2026-11-09 it stayed off until a power cycle). */
+void cmd_diag_uart_query(uart_instance_t *inst, char *args)
+{
+    char buf[96];
+    uart_rx_errors_t e;
+    (void)args;
+
+    uart_get_rx_errors(inst, &e);
+    snprintf(buf, sizeof(buf), "OK OVERRUN=%lu FRAMING=%lu NOISE=%lu PARITY=%lu REARMED=%lu\r\n",
+             (unsigned long)e.overrun, (unsigned long)e.framing, (unsigned long)e.noise,
+             (unsigned long)e.parity, (unsigned long)e.rearmed);
+    uart_send(inst, buf);
+}
+
 void cmd_diag_rstcause_clear(uart_instance_t *inst, char *args)
 {
     (void)args;

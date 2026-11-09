@@ -200,6 +200,7 @@ void cmd_pfmin_raw(uart_instance_t *inst, char *args);           /* PFMIN:RAW? <
 void cmd_diag_optbytes_query(uart_instance_t *inst, char *args);   /* DIAGnostic:OPTBytes? */
 void cmd_diag_rstcause_query(uart_instance_t *inst, char *args);   /* DIAGnostic:RSTCause? */
 void cmd_diag_rstcause_clear(uart_instance_t *inst, char *args);   /* DIAGnostic:RSTCause:CLEar */
+void cmd_diag_uart_query(uart_instance_t *inst, char *args);       /* DIAGnostic:UART? -- OK OVERRUN=.. FRAMING=.. NOISE=.. PARITY=.. REARMED=.. */
 
 /* FWUPdate:* -- in-application firmware update, see cmd_fwupdate.c */
 void cmd_fwup_begin(uart_instance_t *inst, char *args);     /* FWUPdate:BEGin <size> <crc32hex> */

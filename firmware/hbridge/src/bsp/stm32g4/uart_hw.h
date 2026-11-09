@@ -16,4 +16,10 @@ void uart_bind(uart_instance_t *inst, UART_HandleTypeDef *huart);
 /* Called from HAL_UART_RxCpltCallback() after each received byte. */
 void uart_rx_callback(uart_instance_t *inst);
 
+/* Called from HAL_UART_ErrorCallback() (stm32g4xx_it.c): counts the error, drops the partial line, re-arms. */
+void uart_error_callback(uart_instance_t *inst);
+
+/* Starts reception again if the HAL is not receiving (an overrun ends it). */
+void uart_rx_ensure_armed(uart_instance_t *inst);
+
 #endif /* UART_HW_H */

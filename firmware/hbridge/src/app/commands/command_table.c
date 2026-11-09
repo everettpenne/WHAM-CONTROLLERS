@@ -191,6 +191,7 @@ static const scpi_command_t command_table[] = {
     { "DIAGnostic:OPTBytes?",      cmd_diag_optbytes_query },
     { "DIAGnostic:RSTCause?",      cmd_diag_rstcause_query },
     { "DIAGnostic:RSTCause:CLEar", cmd_diag_rstcause_clear },
+    { "DIAGnostic:UART?",          cmd_diag_uart_query },
 
     { "FAULT?",              cmd_fault_query  },
     { "ARM",                 cmd_arm          },

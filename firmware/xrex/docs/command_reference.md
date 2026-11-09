@@ -992,6 +992,15 @@ coverage for all 4 channels (XR3/XR4 OCP were already covered by
   if the argument is missing.
 - **`DIAGnostic:GPOut10?`** — `OK <0|1>`, the pin's current level.
 
+### `DIAGnostic:UART?`
+
+`OK OVERRUN=<n> FRAMING=<n> NOISE=<n> PARITY=<n> REARMED=<n>` -- serial **receive** errors since boot (added
+2026-11-09). A nonzero `OVERRUN` means the serial interrupt was served too late and a byte was lost: the partial
+line is dropped and reception restarts (`REARMED` counts the restarts). Before 2026-11-09 an overrun switched
+reception off until a power cycle: the controller kept sending its own `!EVT` lines but never answered again, and
+the hub reported "the controller is not connected". Replies of `ERR 1 Unknown command` to a valid command are the
+other symptom of a lost byte. All zero on a healthy link; read it after a shot.
+
 ### `DIAGnostic:RSTCause?` / `DIAGnostic:RSTCause:CLEar`
 
 **TEMPORARY diagnostic**, added 2026-09-17 while investigating a
