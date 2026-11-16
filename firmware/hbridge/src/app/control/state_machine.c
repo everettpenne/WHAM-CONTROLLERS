@@ -3,6 +3,7 @@
  * fault policy.
  */
 #include "state_machine.h"
+#include "spark_gap.h"
 #include "pfm.h"
 #include "hrtim.h"
 #include "gate_driver.h"
@@ -44,7 +45,8 @@ static volatile uint8_t g_faultBypass = 0U;
 
 static uint8_t AnySourceLatched(void)
 {
-    uint8_t external = ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U)) ? 1U : 0U;
+    uint8_t external = ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) ||
+                        (SparkGap_FaultIsLatched() != 0U)) ? 1U : 0U;
 
     if (g_faultBypass != 0U)
     {
@@ -66,6 +68,7 @@ void SM_SetFaultBypassEnabled(uint8_t enabled)
     if ((wasEnabled != 0U) && (g_faultBypass == 0U))
     {
         GateDriver_CheckFault();
+        SparkGap_CheckFault();
     }
 }
 
@@ -175,6 +178,7 @@ uint8_t SM_GetFaultSources(void)
 
     if (HRTIM1_FaultIsTripped() != 0U)    { m |= SM_FAULT_SRC_PC10; }
     if (GateDriver_FaultIsLatched() != 0U) { m |= SM_FAULT_SRC_GATEDRV; }
+    if (SparkGap_FaultIsLatched() != 0U)   { m |= SM_FAULT_SRC_SPARKGAP; }
     if (PFM_UnderrunLatched() != 0U)       { m |= SM_FAULT_SRC_UNDERRUN; }
     if (g_softFaultLatched != 0U)          { m |= SM_FAULT_SRC_TEST; }
     m |= g_controlFaults;
@@ -220,6 +224,7 @@ uint8_t SM_ClearFault(void)
        pins; the HRTIM fault flag re-trips from the pin). */
     HRTIM1_FaultClear();
     GateDriver_FaultClear();
+    SparkGap_FaultClear();
     PFM_ClearUnderrun();
 
     Mcu_IrqDisable();
@@ -228,7 +233,8 @@ uint8_t SM_ClearFault(void)
     /* With DEBUG:FAULT:BYPASS on, an external input that is still bad no longer refuses the clear: the point of the
        bypass is to keep working with that fault present. (A physically tripped PC10 still holds the HRTIM outputs
        off in silicon whatever this says.) */
-    if ((g_faultBypass != 0U) || ((HRTIM1_FaultIsTripped() == 0U) && (GateDriver_FaultIsLatched() == 0U)))
+    if ((g_faultBypass != 0U) || ((HRTIM1_FaultIsTripped() == 0U) && (GateDriver_FaultIsLatched() == 0U) &&
+                            (SparkGap_FaultIsLatched() == 0U)))
     {
         SetState(SM_STATE_IDLE);
         g_faultType = SM_FAULT_NONE;

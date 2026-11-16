@@ -320,6 +320,7 @@ void cmd_gds_nickname_query(uart_instance_t *inst, char *args);   /* GDS:NICKnam
 /* External shot trigger (a rising edge on PF15 while ARMED starts the shot; shot_trigger.h) */
 void cmd_ext_trigger(uart_instance_t *inst, char *args);              /* EXTernal:TRIGger <0|1> */
 void cmd_ext_trigger_query(uart_instance_t *inst, char *args);        /* EXTernal:TRIGger? -- OK <0|1> */
+void cmd_spark_gap_input_query(uart_instance_t *inst, char *args);   /* SPARKgap:INPut? -- OK <0|1>, the raw PF13 level */
 void cmd_ext_trigger_input_query(uart_instance_t *inst, char *args);  /* EXTernal:TRIGger:INPut? -- OK <0|1>, the raw PF15 level */
 void cmd_ext_trigger_status_query(uart_instance_t *inst, char *args); /* EXTernal:TRIGger:STATus? -- counters and the last result */
 /* The CHARGE output: a 50 % square wave on PG0 (charge.h), independent of the state */

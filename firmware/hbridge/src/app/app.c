@@ -8,6 +8,7 @@
 #include "hrtim.h"
 #include "pfm.h"
 #include "gate_driver.h"
+#include "spark_gap.h"
 #include "qspi_test.h"
 #include "pfm_input.h"
 #include "state_machine.h"
@@ -52,6 +53,7 @@ void App_Init(void)
        exactly that case -- any fault already present at boot -- instead
        of depending on a future transition that might never come. */
     GateDriver_CheckFault();
+    SparkGap_CheckFault();        /* the same for the spark-gap input PF13: a pin already LOW at boot makes no edge */
 
     /* Operating state (state_machine.h): IDLE. A fault found by the check
        above is picked up by the first TaskFaults_Poll(), before any command

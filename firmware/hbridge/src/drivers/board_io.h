@@ -19,6 +19,11 @@ void BoardIo_Init(void);
    calls ShotTrigger_OnEdge() (shot_trigger.h). */
 uint8_t BoardIo_ReadExtTrigger(void);     /* 1 = the pin reads HIGH right now */
 
+/* The spark-gap fault input, PF13 (GPInput_12): a digital input, normally HIGH, with an interrupt on the FALLING edge only
+   (EXTI line 13, the EXTI15_10 vector) and the internal pull-up when SPARK_GAP_PULL_UP is set (ctrlr_config.h), so an
+   unwired pin reads HIGH. Configured by BoardIo_Init(); the vector's handler calls SparkGap_CheckFault() (spark_gap.h). */
+uint8_t BoardIo_ReadSparkGap(void);       /* 1 = the pin reads HIGH (healthy) right now */
+
 /* Raw bitwise read of GateDriverStatus_01..12 (bit 0 = _01 = PE0). No
    debounce and no polarity interpretation. */
 uint16_t BoardIo_ReadGateDriverStatus(void);

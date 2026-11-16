@@ -325,7 +325,7 @@ means it cleared. Reading the cause:
 
 | Command | Reply | Meaning |
 |---|---|---|
-| `FAULT:SOURces?` | `OK PC10=0 GATEDRV=0 TABLE=0 TEST=0 OVP=0 FB=0` | which source(s) hold the fault: the native hardware fault pin, a gate-driver status input, a table underrun, a test fault, overvoltage, feedback |
+| `FAULT:SOURces?` | `OK PC10=0 GATEDRV=0 TABLE=0 TEST=0 OVP=0 FB=0 SPARK=0` | which source(s) hold the fault: the native hardware fault pin, a gate-driver status input, a table underrun, a test fault, overvoltage, feedback, the spark-gap input (`SPARK=1`, added 2026-11-16: parse by field name, new fields can appear at the end) |
 | `PID:FAULT?` | `OK <loop 0-3> <NONE\|OVERVOLTAGE\|CLIPPED\|CLIPPED_LOW>` | which loop (phase) stopped the last closed-loop run, and why |
 | `GDS?` | `OK 01=LOW 02=HIGH ... 12=LOW` | live raw levels of the 12 gate-driver status inputs |
 | `GDS:LAST?` | `OK <pins> <checks>` | the raw 12 pin levels (hex, bit 0 = input 01) at the moment the last gate-driver fault latched, and a count of fault checks. Not cleared by `FAULT:CLEar` |

@@ -31,19 +31,21 @@ void cmd_fault_query(uart_instance_t *inst, char *args)
                         ? "OK 1\r\n" : "OK 0\r\n");
 }
 
-/* FAULT:SOURces? -- OK PC10=<0|1> GATEDRV=<0|1> TABLE=<0|1> TEST=<0|1>: which sources
+/* FAULT:SOURces? -- OK PC10=<0|1> GATEDRV=<0|1> TABLE=<0|1> TEST=<0|1> OVP=<0|1> FB=<0|1> SPARK=<0|1>: which sources
    hold a fault latched (all of them show as the single FAULT GENERAL state). TABLE is
-   the per-period table running empty before the shot was over (an underrun). */
+   the per-period table running empty before the shot was over (an underrun). SPARK is the spark-gap input (PF13) having
+   read LOW: a spark-gap fault. */
 void cmd_fault_sources_query(uart_instance_t *inst, char *args)
 {
     char buf[96];
     uint8_t m = SM_GetFaultSources();
     (void)args;
 
-    snprintf(buf, sizeof(buf), "OK PC10=%u GATEDRV=%u TABLE=%u TEST=%u OVP=%u FB=%u\r\n",
+    snprintf(buf, sizeof(buf), "OK PC10=%u GATEDRV=%u TABLE=%u TEST=%u OVP=%u FB=%u SPARK=%u\r\n",
              (unsigned)((m & SM_FAULT_SRC_PC10) != 0U), (unsigned)((m & SM_FAULT_SRC_GATEDRV) != 0U),
              (unsigned)((m & SM_FAULT_SRC_UNDERRUN) != 0U), (unsigned)((m & SM_FAULT_SRC_TEST) != 0U),
-             (unsigned)((m & SM_FAULT_SRC_OVERVOLT) != 0U), (unsigned)((m & SM_FAULT_SRC_FEEDBACK) != 0U));
+             (unsigned)((m & SM_FAULT_SRC_OVERVOLT) != 0U), (unsigned)((m & SM_FAULT_SRC_FEEDBACK) != 0U),
+             (unsigned)((m & SM_FAULT_SRC_SPARKGAP) != 0U));
     uart_send(inst, buf);
 }
 

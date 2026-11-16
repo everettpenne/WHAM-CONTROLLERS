@@ -1,5 +1,5 @@
 /*
- * cmd_io.c -- serial command handlers: DIAGnostic:LEDs?, EXTernal:TRIGger*.
+ * cmd_io.c -- serial command handlers: DIAGnostic:LEDs?, EXTernal:TRIGger*, SPARKgap:INPut?.
  * Split out of the old single commands.c (2026-09-29); the handlers are
  * unchanged. (GDS? and GDS:LAST? moved to cmd_gds.c, 2026-11-13.) See commands.h for the file map.
  */
@@ -9,6 +9,7 @@
 #include "ctrlr_config.h"
 #include "shot_trigger.h"
 #include "board_io.h"
+#include "spark_gap.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -80,6 +81,17 @@ void cmd_ext_trigger_input_query(uart_instance_t *inst, char *args)
     (void)args;
 
     snprintf(buf, sizeof(buf), "OK %u\r\n", (unsigned)BoardIo_ReadExtTrigger());
+    uart_send(inst, buf);
+}
+
+/* SPARKgap:INPut? -- OK <0|1>: the raw level of the spark-gap input PF13 right now, 1 = HIGH (healthy), 0 = LOW (a spark-gap
+   fault; whether or not the DEBUG:FAULT:BYPASS or a latch is in the way). FAULT:SOURces? shows SPARK=1 once one has latched. */
+void cmd_spark_gap_input_query(uart_instance_t *inst, char *args)
+{
+    char buf[16];
+    (void)args;
+
+    snprintf(buf, sizeof(buf), "OK %u\r\n", (unsigned)SparkGap_Read());
     uart_send(inst, buf);
 }
 

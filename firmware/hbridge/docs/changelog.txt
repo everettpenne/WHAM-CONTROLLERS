@@ -1,6 +1,18 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-16  -  Spark-gap fault input on PF13  [host-tested, builds clean; NOT flashed, not seen on a real signal]
+-----------------------------------------------------------------------
+  Request: use PF13 as a spark-gap fault: normally HIGH, bypassable like the other faults, and a LOW reading is a fault reported as a spark-gap fault.
+  New module src/app/protection/spark_gap.c/.h (hardware-independent, over board_io.h): SparkGap_CheckFault() stops the output (PFM_ForceStop) and latches when the pin reads LOW and DEBUG:FAULT:BYPASS is off;
+  FaultClear() clears and re-checks (a still-LOW pin re-latches). board_io.c: PF13 is an input with the falling-edge EXTI (line 13, routed to port F) and the internal pull-up (SPARK_GAP_PULL_UP, ctrlr_config.h:
+  an unwired pin reads HIGH, so the bench boards do not fault; a broken wire to a real sensor also reads HIGH -- the tradeoff, flip the define to 0 to float it); BoardIo_ReadSparkGap(). stm32g4xx_it.c: the shared EXTI15_10
+  handler checks line 13 (same priority tier as the gate-driver inputs). app.c: one check at boot (EXTI makes no edge for a pin already LOW).
+  state_machine: new source bit SM_FAULT_SRC_SPARKGAP (0x40) in SM_GetFaultSources(), the "any source latched" test, SM_ClearFault() (refused while LOW) and the bypass (and turning the bypass off re-checks the pin);
+  shot_start.c's ShotStart_FaultLatched() counts it. It is still the single FAULT GENERAL state: the cause is FAULT:SOURces? SPARK=1 (the reply gained a field at the end). New SPARKgap:INPut? = the raw level.
+  Not added: a per-input enable or polarity command, saving in profiles -- say if wanted.
+  Tests: test_spark_gap (new), test_state_machine (latch, clear refused while LOW, FIRING, bypass), test_shot_trigger (refuses; bypassed). Docs: command_reference, operators_guide, labview_interface, labview_commands, labview_state_and_faults, AGENTS.
+
 2026-11-16  -  Profiles also store the dead time and the phase choice  [host-tested; FLASHED to the ECH and the Limiter (c36f382e); save/change/recall checked on the Limiter]
 -----------------------------------------------------------------------
   Request: make sure the dead time, the Limiter's tables and the selected phases are saved, and look for anything else worth saving.

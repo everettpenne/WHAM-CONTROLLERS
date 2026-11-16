@@ -17,7 +17,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
 SCPI_UTIL := $(ROOT)/src/middleware/scpi/scpi_util.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_settings $(OUT)/test_closed_loop $(OUT)/test_shot_trigger $(OUT)/test_charge $(OUT)/test_gds_inputs
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_settings $(OUT)/test_closed_loop $(OUT)/test_shot_trigger $(OUT)/test_charge $(OUT)/test_gds_inputs $(OUT)/test_spark_gap
 
 .PHONY: all run clean
 all: run
@@ -53,6 +53,9 @@ $(OUT)/test_charge: test_charge.c $(ROOT)/src/app/control/charge.c $(ROOT)/src/a
 	$(CC) $(CFLAGS) -o $@ test_charge.c $(ROOT)/src/app/control/charge.c
 
 PROT := $(ROOT)/src/app/protection
+$(OUT)/test_spark_gap: test_spark_gap.c $(PROT)/spark_gap.c $(PROT)/spark_gap.h test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -o $@ test_spark_gap.c $(PROT)/spark_gap.c
+
 $(OUT)/test_gds_inputs: test_gds_inputs.c $(PROT)/gds_inputs.c $(PROT)/gds_inputs.h $(ROOT)/src/app/commands/cmd_gds.c fake_uart.c $(SCPI_UTIL) test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -I$(ROOT)/src/app/commands -I$(ROOT)/src/app/sim -o $@ test_gds_inputs.c $(PROT)/gds_inputs.c $(ROOT)/src/app/commands/cmd_gds.c fake_uart.c $(SCPI_UTIL)
 

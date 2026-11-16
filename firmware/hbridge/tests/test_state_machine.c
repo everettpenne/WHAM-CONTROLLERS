@@ -31,6 +31,11 @@ uint8_t GateDriver_FaultIsLatched(void) { return f_gdsLatched; }
 void GateDriver_FaultClear(void){ f_gdsLatched = f_gdsPin; }        /* re-checks the pins */
 static int f_gdsChecks;
 void GateDriver_CheckFault(void){ f_gdsChecks++; }
+static uint8_t f_sparkLatched, f_sparkPin;            /* the spark-gap input: latch, and the pin (1 = LOW, a fault) */
+static int f_sparkChecks;
+uint8_t SparkGap_FaultIsLatched(void) { return f_sparkLatched; }
+void SparkGap_FaultClear(void) { f_sparkLatched = f_sparkPin; }
+void SparkGap_CheckFault(void) { f_sparkChecks++; }
 void Mcu_IrqDisable(void)       { f_irqDepth++; if (f_irqDepth > f_irqMax) { f_irqMax = f_irqDepth; } }
 void Mcu_IrqEnable(void)        { f_irqDepth--; }
 
@@ -52,7 +57,7 @@ static void Reset(void)
     f_pfmState = PFM_STATE_STOPPED; f_entries = 10U;
     f_restarts = f_forceStops = f_irqDepth = f_irqMax = 0;
     f_hrtimTripped = f_hrtimPin = f_gdsLatched = f_gdsPin = 0U;
-    f_underrun = 0U; f_gdsChecks = 0;
+    f_underrun = 0U; f_gdsChecks = 0; f_sparkLatched = f_sparkPin = 0U; f_sparkChecks = 0;
     SM_SetFaultBypassEnabled(0U);
     f_gdsChecks = 0;
     SM_Init();
@@ -213,6 +218,42 @@ static void TestLedsFollowState(void)
     CHECK(f_ledUpdates > 0 && f_ledMismatch == 0);
 }
 
+/* The spark-gap input (PF13, spark_gap.h): a latched spark-gap fault is a FAULT GENERAL with its own source bit, refuses
+   ARM/FIRE, is cleared by FAULT:CLEar only when the pin is healthy again, and is bypassed like the other external inputs. */
+static void TestSparkGap(void)
+{
+    Reset();
+    f_sparkLatched = 1U; f_sparkPin = 1U;
+    CHECK(SM_Arm() == 0U);                                   /* refused while latched */
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_FAULT && SM_GetFaultType() == SM_FAULT_GENERAL);
+    CHECK((SM_GetFaultSources() & SM_FAULT_SRC_SPARKGAP) != 0U);
+    CHECK((SM_GetFaultSources() & (SM_FAULT_SRC_PC10 | SM_FAULT_SRC_GATEDRV | SM_FAULT_SRC_TEST)) == 0U);   /* only that source */
+    CHECK(SM_ClearFault() == 0U && SM_GetState() == SM_STATE_FAULT);        /* the pin is still LOW: the clear is refused */
+    f_sparkPin = 0U;
+    CHECK(SM_ClearFault() == 1U && SM_GetState() == SM_STATE_IDLE);
+    CHECK((SM_GetFaultSources() & SM_FAULT_SRC_SPARKGAP) == 0U);
+
+    /* a spark-gap fault while FIRING stops the shot's state: FAULT, not IDLE */
+    Reset();
+    CHECK(SM_Arm() == 1U && SM_Fire() == 1U);
+    f_sparkLatched = 1U;
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_FAULT && (SM_GetFaultSources() & SM_FAULT_SRC_SPARKGAP) != 0U);
+
+    /* DEBUG:FAULT:BYPASS ignores it, the truth is still reported, and turning the bypass off re-checks the pin once */
+    Reset();
+    SM_SetFaultBypassEnabled(1U);
+    f_sparkLatched = 1U; f_sparkPin = 1U;
+    SM_PollFaults();
+    CHECK(SM_GetState() == SM_STATE_IDLE && SM_Arm() == 1U);
+    CHECK((SM_GetFaultSources() & SM_FAULT_SRC_SPARKGAP) != 0U);
+    SM_Disarm();
+    f_sparkChecks = 0;
+    SM_SetFaultBypassEnabled(0U);
+    CHECK(f_sparkChecks == 1);
+}
+
 static void TestFaultBypass(void)
 {
     Reset();
@@ -278,5 +319,6 @@ int main(void)
     TestSoftFaultStaysUntilCleared();
     TestLedsFollowState();
     TestFaultBypass();
+    TestSparkGap();
     return test_report("test_state_machine");
 }

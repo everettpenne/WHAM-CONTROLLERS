@@ -3,6 +3,7 @@
  */
 #include "shot_start.h"
 #include "state_machine.h"
+#include "spark_gap.h"
 #include "pfm.h"
 #include "hrtim.h"
 #include "gate_driver.h"
@@ -16,7 +17,8 @@ uint8_t ShotStart_FaultLatched(void)
 {
     /* DEBUG:FAULT:BYPASS (state_machine.h) removes the two external inputs from this check; the controller's own
        faults (underrun, closed-loop overvoltage/feedback) always count. */
-    uint8_t external = ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U)) ? 1U : 0U;
+    uint8_t external = ((HRTIM1_FaultIsTripped() != 0U) || (GateDriver_FaultIsLatched() != 0U) ||
+                        (SparkGap_FaultIsLatched() != 0U)) ? 1U : 0U;
 
     if (SM_GetFaultBypassEnabled() != 0U)
     {

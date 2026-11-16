@@ -188,13 +188,14 @@ Only **enabled** channels (`SOURce:ENAble <ch> 1`) count: a disabled channel's o
 
 ```
 > FAULT:SOURces?
-< OK PC10=0 GATEDRV=1 TABLE=0 TEST=0 OVP=0 FB=0
+< OK PC10=0 GATEDRV=1 TABLE=0 TEST=0 OVP=0 FB=0 SPARK=0
 ```
 
 | Field | 1 means |
 |---|---|
 | `PC10` | the native hardware fault input tripped |
 | `GATEDRV` | one of the twelve gate-driver status inputs reads as a fault (these are **not** masked for disabled phases) |
+| `SPARK` | **spark-gap fault** (since 2026-11-16): the spark-gap input PF13, normally HIGH, read LOW. Raw level: `SPARKgap:INPut?` (`OK 1` healthy, `OK 0` LOW). `FAULT:CLEar` is refused while it still reads LOW. `DEBUG:FAULT:BYPASS` bypasses it like `PC10` and `GATEDRV` |
 | `TABLE` | the shot's period table ran empty before the shot ended (an internal overrun; the shot was stopped) |
 | `TEST` | a test fault from `GENERAL:TEST:FAULT` |
 | `OVP` | closed loop: the measured voltage went beyond the allowed limit (`CONFig:MAXVolts`) |

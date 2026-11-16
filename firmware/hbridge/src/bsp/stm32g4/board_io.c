@@ -3,6 +3,7 @@
  */
 #include "board_io.h"
 #include "main.h"
+#include "ctrlr_config.h"
 
 #define GDS_PIN_MASK   (GPIO_PIN_0  | GPIO_PIN_1  | GPIO_PIN_2  | GPIO_PIN_3  | \
                         GPIO_PIN_4  | GPIO_PIN_5  | GPIO_PIN_6  | GPIO_PIN_7  | \
@@ -94,6 +95,26 @@ void BoardIo_Init(void)
       HAL_GPIO_Init(GPIOF, &trigInit);
       __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_15);          /* an edge that came while the pin was being configured */
   }
+
+  /* Spark-gap fault input: PF13, normally HIGH, a LOW reading is a fault, so the interrupt is on the FALLING edge only
+     (EXTI line 13, routed to port F by HAL_GPIO_Init; no other pin uses it). The vector EXTI15_10 is enabled above at the
+     fault tier. A pin already LOW when this is configured makes no edge: app.c checks it once at boot. */
+  {
+      GPIO_InitTypeDef sparkInit = {0};
+
+      __HAL_RCC_GPIOF_CLK_ENABLE();
+      __HAL_RCC_SYSCFG_CLK_ENABLE();
+      sparkInit.Pin  = GPIO_PIN_13;
+      sparkInit.Mode = GPIO_MODE_IT_FALLING;
+      sparkInit.Pull = (SPARK_GAP_PULL_UP != 0U) ? GPIO_PULLUP : GPIO_NOPULL;
+      HAL_GPIO_Init(GPIOF, &sparkInit);
+      __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_13);
+  }
+}
+
+uint8_t BoardIo_ReadSparkGap(void)
+{
+    return ((GPIOF->IDR & GPIO_PIN_13) != 0U) ? 1U : 0U;
 }
 
 uint8_t BoardIo_ReadExtTrigger(void)

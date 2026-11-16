@@ -152,6 +152,7 @@ The HBRIDGE has one fault type, `FAULT GENERAL`. It is raised from **any** state
 |---|---|
 | `PC10` | the native hardware fault input tripped. This works in silicon, even if the processor has hung |
 | `GATEDRV` | any one of the 12 gate-driver status inputs read as a fault |
+| `SPARK` | **spark-gap fault**: the spark-gap input (PF13, normally HIGH) read LOW. The output was stopped at once. `SPARKgap:INPut?` shows its level now |
 | `TABLE` | the controller could not keep up while playing a shot (an internal overrun); the shot was stopped. Not an operator error |
 | `OVP` | closed loop: the measured voltage went beyond the overvoltage limit |
 | `FB` | closed loop: a feedback problem (the analog input stuck at the top or the bottom of its range for too long, or the loopback signal stopped) |
@@ -427,12 +428,13 @@ Nothing is recalled automatically at power-up. The **phase selection is not stor
 
 **Do not clear a fault just to make it go away.** A fault was raised for a reason. Find it first.
 
-1. **Read it.** `STATE?` gives `OK FAULT GENERAL`. `FAULT:SOURces?` says which kind (`OK PC10=0 GATEDRV=1 TABLE=0 TEST=0 OVP=0 FB=0`). Note it.
+1. **Read it.** `STATE?` gives `OK FAULT GENERAL`. `FAULT:SOURces?` says which kind (`OK PC10=0 GATEDRV=1 TABLE=0 TEST=0 OVP=0 FB=0 SPARK=0`). Note it.
 2. **The output has already stopped.** Make the supply safe by the facility's own means before touching anything.
 3. **Find the cause.**
    - `GATEDRV=1`: a gate-driver status input. `GDS:LAST?` replies `OK <hex> <count>`: the raw levels of the 12 inputs when the fault latched, as hex digits, lowest bit = input 01. In the current build a set bit is a faulted input
      (e.g. `101` = inputs 01 and 09). `GDS?` shows the live levels. **The firmware cannot tell you which phase or gate driver an input belongs to**: ask the maintainer, who has the wiring.
    - `PC10=1`: the hardware fault input: check what is wired to it.
+   - `SPARK=1`: a spark gap fired (the spark-gap input went LOW). Inspect the gap and the load. `FAULT:CLEar` is refused while the input still reads LOW (`SPARKgap:INPut? -> OK 0`).
    - `OVP=1` or `FB=1` (closed loop): `PID:FAULT?` names the loop (1 = U, 2 = V, 3 = W) and the kind: `OVERVOLTAGE`, `CLIPPED` (feedback at full scale) or `CLIPPED_LOW` (feedback at the bottom: a dead or disconnected feedback line).
    - `TABLE=1`: the controller overran while playing a very demanding shot (for example a step every period at 125 kHz). Simplify the shot and tell the controls team.
    - `TEST=1`: someone injected a test fault.

@@ -43,6 +43,8 @@ uint8_t SM_Fire(void)
 }
 uint8_t HRTIM1_FaultIsTripped(void)  { return f_hrtimTripped; }
 uint8_t GateDriver_FaultIsLatched(void) { return f_gdsLatched; }
+static uint8_t f_sparkLatched;
+uint8_t SparkGap_FaultIsLatched(void) { return f_sparkLatched; }
 uint8_t PFM_UnderrunLatched(void)    { return f_underrun; }
 void    PFM_RestoreOpenSource(void)  { f_restoreSrc++; }
 uint8_t PFM_ShotReady(void)          { return f_shotReady; }
@@ -65,7 +67,7 @@ uint8_t BoardIo_ReadExtTrigger(void) { return f_pin; }
 static void Reset(void)
 {
     f_state = SM_STATE_ARMED;
-    f_fireWorks = 1U; f_shotReady = 1U; f_closed = 0U; f_hrtimTripped = f_gdsLatched = f_underrun = f_srcMask = f_bypass = 0U;
+    f_fireWorks = 1U; f_shotReady = 1U; f_closed = 0U; f_hrtimTripped = f_gdsLatched = f_sparkLatched = f_underrun = f_srcMask = f_bypass = 0U;
     f_pin = 1U;
     f_prepareResult = CTL_OK;
     f_fires = f_prepares = f_goes = f_stops = f_restoreSrc = f_irqDepth = f_startIrqPends = 0;
@@ -94,6 +96,7 @@ static void TestStartOrderAndResults(void)
     f_state = SM_STATE_IDLE;
     CHECK(ShotStart_Run().code == SHOT_START_FAULT);
     Reset(); f_gdsLatched = 1U;   CHECK(ShotStart_Run().code == SHOT_START_FAULT);
+    Reset(); f_sparkLatched = 1U; CHECK(ShotStart_Run().code == SHOT_START_FAULT);       /* a spark-gap fault refuses too */
     Reset(); f_underrun = 1U;     CHECK(ShotStart_Run().code == SHOT_START_FAULT);
     Reset(); f_srcMask = SM_FAULT_SRC_OVERVOLT;  CHECK(ShotStart_Run().code == SHOT_START_FAULT);
     Reset(); f_srcMask = SM_FAULT_SRC_FEEDBACK;  CHECK(ShotStart_Run().code == SHOT_START_FAULT);
@@ -101,6 +104,7 @@ static void TestStartOrderAndResults(void)
     CHECK(f_fires == 1);
     /* DEBUG:FAULT:BYPASS removes the two external inputs from the start check, not the controller's own faults */
     Reset(); f_bypass = 1U; f_hrtimTripped = 1U; f_gdsLatched = 1U;  CHECK(ShotStart_Run().code == SHOT_START_OK);
+    Reset(); f_bypass = 1U; f_sparkLatched = 1U;                     CHECK(ShotStart_Run().code == SHOT_START_OK);      /* the spark-gap input is bypassed too */
     Reset(); f_bypass = 1U; f_underrun = 1U;                         CHECK(ShotStart_Run().code == SHOT_START_FAULT);
     Reset(); f_bypass = 1U; f_srcMask = SM_FAULT_SRC_OVERVOLT;       CHECK(ShotStart_Run().code == SHOT_START_FAULT);
 

@@ -515,7 +515,7 @@ Not bypassed, deliberately: the HRTIM's own PC10 gating of the outputs (silicon,
 controller finds in itself -- the closed-loop `OVERVOLTAGE` and `FEEDBACK` faults and a table underrun -- because the closed-loop
 run has already been torn down when those are reported, so ignoring them would leave the output running uncontrolled. `FAULT?` and
 `FAULT:SOURces?` keep reporting the true state of every source, so `FAULT? = 1` with `STATE? = IDLE` is normal under bypass. It is
-`0` at every boot, never saved in a profile, and turning it off re-scans the GateDriverStatus pins at once. **Never enable it where a
+`0` at every boot, never saved in a profile, and turning it off re-scans the GateDriverStatus pins and the spark-gap pin at once. It bypasses the spark-gap input (PF13) like the other two external inputs. **Never enable it where a
 real fault condition is physically possible.** (XREX returns `ERR 11` for a value that is not 0/1; here it is `ERR 12`, this
 product's convention for a bad flag.)
 
@@ -529,10 +529,26 @@ force-stops from its interrupt); the state machine keeps it latched until
 only if both are healthy — never straight back to `ARMED`. A fault already
 present at boot shows in the `!BOOT` banner as `STATE=FAULT`.
 
+### Spark-gap fault input: PF13, `SPARKgap:INPut?`
+
+Added 2026-11-16 (`src/app/protection/spark_gap.c`). **PF13** (`GPInput_12` in `docs/pin_mapping_v4.csv`) is the spark-gap input, **normally HIGH**. If it ever
+reads **LOW** the controller treats it as a **spark-gap fault**: the output is stopped at once from the pin's own interrupt (falling edge, EXTI line 13 --
+the same fault tier and the same unconditional stop as a gate-driver fault), the fault latches as `FAULT GENERAL`, and `FAULT:SOURces?` reports `SPARK=1`. It
+refuses `ARM`/`FIRE`/`SOURce:RUN`/the trigger while latched, and `FAULT:CLEar` releases it only if the pin reads HIGH again (a LOW pin re-latches before the
+`OK`). A pin already LOW at power-up is caught by a check at boot. **`DEBUG:FAULT:BYPASS 1` bypasses it** like `PC10` and the gate-driver inputs (a LOW pin then
+neither stops the output nor latches; `FAULT:SOURces?` still shows the truth; turning the bypass off re-checks the pin).
+
+`SPARKgap:INPut?` -> `OK <0|1>`: the raw level of PF13 right now, `1` = HIGH (healthy), `0` = LOW (a fault), whether or not it latched or the bypass is on.
+
+The pin has the **internal pull-up** (`SPARK_GAP_PULL_UP`, `ctrlr_config.h`), so an unwired input reads HIGH (healthy) and a bench board does not fault. The cost: a
+broken wire to a real spark-gap sensor also reads HIGH. There is no enable switch or polarity command for this input (use the bypass, or change the define).
+It is not stored in a profile.
+
 ### `FAULT?`, `FAULT:CLEAR`, `FAULT:SOURces?`
 
-`FAULT:SOURces?` — `OK PC10=<0|1> GATEDRV=<0|1> TABLE=<0|1> TEST=<0|1>`: which
-sources hold a fault latched behind the single `FAULT GENERAL` state. `TABLE`
+`FAULT:SOURces?` — `OK PC10=<0|1> GATEDRV=<0|1> TABLE=<0|1> TEST=<0|1> OVP=<0|1> FB=<0|1> SPARK=<0|1>`: which
+sources hold a fault latched behind the single `FAULT GENERAL` state. `SPARK=1` is a **spark-gap fault** (below).
+`PC10`, `GATEDRV` and `SPARK` are the external inputs; `OVP`/`FB`/`TABLE` are the controller's own. `TABLE`
 is the per-period table running empty before the shot was over (see `SHOT:*`).
 
 Status/clear for **two independent fault sources**, combined into one

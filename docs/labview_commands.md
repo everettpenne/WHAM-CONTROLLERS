@@ -240,6 +240,7 @@ CONFig:MODE HVPS ... upload ... ARM -> OK -> FIRE -> OK        (FIRE plays the u
 
 | Command | Reply | Notes |
 |---|---|---|
+| `SPARKgap:INPut?` (HBRIDGE) | `OK <0\|1>` | raw level of the spark-gap fault input PF13: `1` HIGH = healthy, `0` LOW = a spark-gap fault (`FAULT:SOURces?` then shows `SPARK=1` once it latched). Added 2026-11-16 |
 | `EXTernal:TRIGger <0\|1>` / `?`, `EXTernal:TRIGger:INPut?`, `EXTernal:TRIGger:STATus?` | `OK` / `OK <0\|1>` / `OK <0\|1>` / `OK enabled=... last=...` | a rising edge on PF15 while `ARMED` **starts the shot like `FIRE`**, from an interrupt (on by default). The state can go `ARMED` to `FIRING` with no command from you. `...STATus?` has the counters and why a trigger did not start a shot. HBRIDGE has no `EXTernal:ENAble` |
 | `CHARGE:FREQuency <hz>` **DANGEROUS if not 0** | `OK` | **HBRIDGE only.** A separate 50 % square wave on one pin for the capacitor-bank charger: `0` = off, otherwise 1 to 100000 Hz. **Any state; it stays on through a fault**, off after every reset, not stored in a profile. `ERR 12` for any other value |
 | `CHARGE:FREQuency?`, `CHARGE:STATus?` | `OK <hz>` / `OK freq=... running=... actual=... psc=... arr=... ccr=...` | the setpoint (`0` = off), and the frequency the timer really produces |

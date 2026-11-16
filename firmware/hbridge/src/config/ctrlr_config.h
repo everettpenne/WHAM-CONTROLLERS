@@ -120,6 +120,11 @@
    returns to this value. */
 #define GDS_DEFAULT_ENABLE_MASK   (0x0FFFU)
 
+/* The spark-gap fault input, PF13 (spark_gap.h, added 2026-11-16): normally HIGH, a LOW reading is a fault. 1 = the pin has
+   the internal pull-up, so an UNWIRED input reads HIGH (healthy) -- and so does a broken wire to a real sensor; 0 = no pull,
+   an unwired input floats. Not a runtime setting. */
+#define SPARK_GAP_PULL_UP   (1U)
+
 /* --------------------------------------------------------------------------
  * Supply modes and their limits (added 2026-09-29)
  *

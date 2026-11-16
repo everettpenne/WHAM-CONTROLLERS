@@ -26,6 +26,7 @@
 #include "hrtim_hw.h"
 #include "pfm.h"
 #include "gate_driver.h"
+#include "spark_gap.h"
 #include "shot_trigger.h"
 #include "pfm_input_hw.h"
 #include "adc_hw.h"
@@ -397,9 +398,8 @@ void EXTI15_10_IRQHandler(void)
     uint8_t  fired = 0U;
 
     /* Only PE10/PE11 belong to GateDriverStatus here; line 15 is the
-       external shot trigger (PF15), handled below. Lines 12..14 are
-       not checked/cleared (nothing uses them, and PE12 is unconnected
-       on this board, see docs/pin_mapping_v4.csv). */
+       external shot trigger (PF15) and line 13 the spark-gap input (PF13), both handled below. Lines 12 and 14 are
+       not checked/cleared (nothing uses them, and PE12 is unconnected on this board, see docs/pin_mapping_v4.csv). */
     for (pin = GPIO_PIN_10; pin <= GPIO_PIN_11; pin <<= 1U)
     {
         if (__HAL_GPIO_EXTI_GET_IT(pin) != 0U)
@@ -412,6 +412,14 @@ void EXTI15_10_IRQHandler(void)
     if (fired != 0U)
     {
         GateDriver_CheckFault();
+    }
+
+    /* PF13, the spark-gap fault input (falling edge only, board_io.c): a LOW reading stops the output and latches
+       (spark_gap.h). Same tier as the gate-driver inputs above. */
+    if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_13) != 0U)
+    {
+        __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_13);
+        SparkGap_CheckFault();
     }
 
     /* PF15, the external shot trigger (rising edge only, board_io.c): clear the line and hand the edge to

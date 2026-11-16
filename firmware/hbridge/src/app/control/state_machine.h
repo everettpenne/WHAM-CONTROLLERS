@@ -99,6 +99,7 @@ void SM_ReportGeneralFault(void);
 #define SM_FAULT_SRC_TEST       (0x08U)   /* GENERAL:TEST:FAULT */
 #define SM_FAULT_SRC_OVERVOLT   (0x10U)   /* closed loop: the feedback voltage above the hard limit */
 #define SM_FAULT_SRC_FEEDBACK   (0x20U)   /* closed loop: the feedback input at ADC full scale (the loop is blind) */
+#define SM_FAULT_SRC_SPARKGAP   (0x40U)   /* the spark-gap input PF13 read LOW (spark_gap.h) */
 uint8_t SM_GetFaultSources(void);
 
 /* A closed-loop fault (control_runtime.c): `src` is SM_FAULT_SRC_OVERVOLT or SM_FAULT_SRC_FEEDBACK.
@@ -108,8 +109,8 @@ void SM_ReportControlFault(uint8_t src);
 
 /* DEBUG:FAULT:BYPASS -- a BENCH-ONLY override, added 2026-11-09 (the XREX command of the same name, narrower: see
    below). Off at every boot, RAM-only, never saved in a profile. While ON:
-     - PC10/HRTIM1_FLT6 and the 12 GateDriverStatus inputs, as seen by the firmware, no longer put the machine in
-       FAULT, refuse ARM/FIRE/SOURce:RUN or the trigger, or stop the output (GateDriver_CheckFault() neither
+     - PC10/HRTIM1_FLT6, the 12 GateDriverStatus inputs and the spark-gap input PF13, as seen by the firmware, no longer put the machine in
+       FAULT, refuse ARM/FIRE/SOURce:RUN or the trigger, or stop the output (GateDriver_CheckFault() and SparkGap_CheckFault() neither
        force-stops nor latches);
      - FAULT:CLEar succeeds whatever those inputs read;
      - GENERAL:TEST:FAULT is ignored.
@@ -117,7 +118,7 @@ void SM_ReportControlFault(uint8_t src);
    finds in itself -- the closed-loop OVERVOLT and FEEDBACK faults and a table underrun -- because the closed-loop
    run is already torn down when they are reported, so ignoring them would leave the output running uncontrolled.
    FAULT:SOURces? and the FAULT? query still report the true state of every source.
-   Turning it OFF re-scans the GateDriverStatus pins at once. *** Never enable it where a real fault condition is
+   Turning it OFF re-scans the GateDriverStatus pins and the spark-gap pin at once. *** Never enable it where a real fault condition is
    physically possible (a gyrotron/HVPS or Limiter connected to a real load). *** */
 void SM_SetFaultBypassEnabled(uint8_t enabled);
 uint8_t SM_GetFaultBypassEnabled(void);

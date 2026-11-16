@@ -124,6 +124,7 @@ static const scpi_command_t command_table[] = {
     { "EXTernal:TRIGger",        cmd_ext_trigger              },
     { "EXTernal:TRIGger?",       cmd_ext_trigger_query        },
     { "EXTernal:TRIGger:INPut?", cmd_ext_trigger_input_query  },
+    { "SPARKgap:INPut?",         cmd_spark_gap_input_query    },
     { "EXTernal:TRIGger:STATus?", cmd_ext_trigger_status_query },
 
     /* The CHARGE output (PG0, 50 % duty): any state -- see charge.h and cmd_charge.c. */
