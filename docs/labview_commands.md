@@ -38,10 +38,11 @@ is the only way to find out that a value was clamped (several commands clamp sil
 | `STATE?`, `FAULT?`, `FAULT:CLEar`, `ARM`, `DISARM` | see part 2 | `ARM` and `FAULT:CLEar` are marked dangerous |
 | `SOURce:STOP` | `OK` | stops the output, back to `IDLE` |
 | `CONFig:CHANnels?` | `OK <n>` | number of drive channels the firmware was built with |
+| `CONFig:DEADtime <ns>` **DANGEROUS** / `CONFig:DEADtime?` | `OK` / `OK <ns>` | dead time between a leg's two switches, the same on every phase. Default **100 ns** at every boot; range 50-3000 ns (`ERR 12` outside it or not a whole number); rounded to the nearest 5.88 ns count, so the query can return a slightly different value (`120` reads back `118`). `ERR 13` while `FIRING`. **RAM only: not stored in a profile.** Changes shoot-through protection: a commissioning setting, not for an operator screen |
 | `GDS?` | `OK 01=HIGH 02=LOW ...` | raw gate-driver status pin levels; diagnostic only |
 | `GDS:POLarity?` (HBRIDGE) | `OK NORMALLY_HIGH` or `OK NORMALLY_LOW` | which level is a fault: fixed when the firmware was built (HBRIDGE: NORMALLY_HIGH, a LOW pin is the fault) |
-| `GDS:ENAble <input 0-12> <0\|1>` / `GDS:ENAble? [input]` (HBRIDGE) | `OK` / `OK <0\|1>` or `OK 01=1 ... 12=1` | switches a gate-driver fault input off (0) or on (1); input 0 = all. **Off removes a protection: marked dangerous, IDLE or FAULT only (`ERR 13`), RAM only (all on again after a reboot).** Not for a front-end |
-| `GDS:NICKname <input 1-12> <name>` / `?` (HBRIDGE) | `OK` / `OK <name>` (`OK -` none), all twelve without an input | cosmetic label: 1-15 characters of letters, digits and `_ . - +`; `-` clears. `ERR 14` if invalid. RAM only |
+| `GDS:ENAble <input 0-12> <0\|1>` / `GDS:ENAble? [input]` (HBRIDGE) | `OK` / `OK <0\|1>` or `OK 01=1 ... 12=1` | switches a gate-driver fault input off (0) or on (1); input 0 = all. **Off removes a protection: marked dangerous, IDLE or FAULT only (`ERR 13`). Not remembered across a reboot (all on again), but a stored profile holds it (section 6), so `*RCL` can switch inputs off again.** Not for a front-end |
+| `GDS:NICKname <input 1-12> <name>` / `?` (HBRIDGE) | `OK` / `OK <name>` (`OK -` none), all twelve without an input | cosmetic label: 1-15 characters of letters, digits and `_ . - +`; `-` clears. `ERR 14` if invalid. Lost at reboot unless saved in a profile (section 6) |
 | `DIAGnostic:RSTCause?` | `OK ...` | why the controller last reset; `DIAGnostic:RSTCause:CLEar` forgets it |
 | `DIAGnostic:LEDs?` | `OK ...` | what the front-panel LEDs are being driven to (cosmetic) |
 | `*SAV`, `*RCL`, `CONFig:PROFile:*` | section 6 | stored settings |
@@ -224,6 +225,7 @@ SHOT:END                                -> OK <setpoints> <duration_us>
 | The two forms | the one-duty form applies to all three phases; the three-duty form gives each phase its own duty; the forms can be mixed from one step to the next |
 | Errors | `ERR 10` frequency or duty outside the mode (the text names the phase for a per-phase duty); `ERR 4` ordering or format error, or a time beyond the longest shot; `ERR 3` full; `ERR 13` no mode selected, or the controller is `FIRING` |
 | Shot end | the shot ends at the first period that starts at or after the last setpoint's time, so it overshoots by less than one period; the last setpoint's value is approached, not held |
+| Output-off gap (HBRIDGE) | a setpoint with **frequency `0`** (duty `0`) switches the outputs **off** from its time until the next setpoint, which restarts them (no ramp out of off): `SHOT:STEP 1000 0 0`, then `SHOT:STEP 3000 25000 50`. The first setpoint cannot be off, the **last two must be on** (`ERR 4`), and an off setpoint is not checked against the mode's limits. Several gaps are allowed. The gap starts at the first period boundary at or after its time. **Closed loop:** `ERR 13` at `SOURce` start when an open-loop phase would follow a gapped shot while another phase is closed |
 | Query | `SHOT?` -> `OK <setpoints> <duration_us> PROFILE\|TABLE`; `SHOT:POINt? <i>` -> `OK <t_us> <freq_hz> <duty>` (or three duties if the phases differ); `SHOT:CLEar` drops it |
 
 Upload one `SHOT:STEP` per line and check each reply. Do not stream hundreds of steps without reading the replies: a refused step (`ERR 10`, `ERR 4`) would
@@ -352,14 +354,16 @@ use the commands below in both products.
 | Command | Reply |
 |---|---|
 | `*SAV <slot> [label]` | `OK`. Label 1-15 characters, no spaces. Overwrites a used slot |
-| `*RCL <slot>` | `OK APPLIED=<n> FAILED=<k> [<names refused>] [IGNORED=<m>]`. Every value goes through the normal limit checks; one that is refused is named and the rest still load. `FAILED` must be 0 for a clean recall; **check it** |
+| `*RCL <slot>` | `OK APPLIED=<n> FAILED=<k> [<names refused>] [GDSOFF=<j>] [IGNORED=<m>]`. Every value goes through the normal limit checks; one that is refused is named and the rest still load. `FAILED` must be 0 for a clean recall; **check it** |
 | `CONFig:PROFile:CATalog?` | `OK 1=<label>/<fw> 2=empty 3=corrupt ...` |
 | `CONFig:PROFile? <slot>` | the saved values, nothing applied |
 | `CONFig:PROFile:DIFF? <slot>` | what a recall would change, as `name=live>saved`, or `OK SAME`. Show this to the operator before a recall |
 | `CONFig:PROFile:CLEar <slot>` | `OK` |
 
+Recalling can switch protections off, so check the reply: HBRIDGE adds ` GDSOFF=<j>` (before `IGNORED`) when the recalled profile left `<j>` gate-driver inputs switched off. Show it to the operator.
+
 What is stored differs by product. XREX: control rates and calibration, fault polarities, shot timing, and per channel gains, loop mode, maximum current, demand current and nickname; **not**
-channel enables, the external-enable setting, setpoints or any run action (the two board enable outputs `GPOut:ENAble` and `PWMAlt:ENAble` are stored). HBRIDGE: the settings *and* the shot, target and HVPS-curve tables; **not** run state, the DAC outputs, the simulation settings or the phase choice.
+channel enables, the external-enable setting, setpoints or any run action (the two board enable outputs `GPOut:ENAble` and `PWMAlt:ENAble` are stored). HBRIDGE: the settings *and* the shot, target and HVPS-curve tables; the **gate-driver fault-pin configuration** (which `GDS:ENAble` inputs are on, the `GDS:NICKname` labels, and a check of the build's `GDS:POLarity`; since 2026-11-16, a polarity that differs from the saved one is reported in `FAILED` as `GDS:POLarity`); **not** run state, the DAC outputs, the simulation settings, the phase choice or `CONFig:DEADtime`.
 A profile saved by older firmware still recalls on newer firmware; `IGNORED` counts saved values the running firmware does not know.
 
 ---
