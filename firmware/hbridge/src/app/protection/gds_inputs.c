@@ -7,11 +7,14 @@
 
 /* Read from the EXTI interrupts (gate_driver.c), written from the main loop. */
 static volatile uint16_t g_enabledMask = (uint16_t)(GDS_DEFAULT_ENABLE_MASK & GDS_ALL_INPUTS_MASK);
+/* 1 = HIGH is a fault (NORMALLY_LOW). Starts at, and Reset() returns to, the compiled GDS_FAULT_POLARITY. */
+static volatile uint8_t g_normallyLow = (GDS_FAULT_POLARITY == GDS_NORMALLY_LOW) ? 1U : 0U;
 static char g_nick[GDS_INPUT_COUNT][GDS_NICKNAME_MAX_LEN + 1U];
 
 void GdsInputs_Reset(void)
 {
     g_enabledMask = (uint16_t)(GDS_DEFAULT_ENABLE_MASK & GDS_ALL_INPUTS_MASK);
+    g_normallyLow = (GDS_FAULT_POLARITY == GDS_NORMALLY_LOW) ? 1U : 0U;
     memset(g_nick, 0, sizeof(g_nick));
 }
 
@@ -80,6 +83,16 @@ uint16_t GdsInputs_RawFaultBits(uint16_t raw, uint8_t normallyLow)
 }
 
 uint8_t GdsInputs_PolarityIsNormallyLow(void)
+{
+    return g_normallyLow;
+}
+
+void GdsInputs_SetPolarityNormallyLow(uint8_t normallyLow)
+{
+    g_normallyLow = (normallyLow != 0U) ? 1U : 0U;
+}
+
+uint8_t GdsInputs_DefaultPolarityIsNormallyLow(void)
 {
     return (GDS_FAULT_POLARITY == GDS_NORMALLY_LOW) ? 1U : 0U;
 }

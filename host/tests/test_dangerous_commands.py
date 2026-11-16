@@ -48,7 +48,7 @@ class MatchingTests(unittest.TestCase):
             self.assertIsNone(dc.classify(cmd), cmd)
         for cmd in ("SOURce:ENAble 1 1", "SOUR:ENA 3 1", "XREX:CHANnel:ENAOut 2 1", "XREX:CHAN:CONT 1 1", "PHASe:ENAble UW 1",
                     "DAC:OUTPut 1 2.5", "DEBUG:FAULT:BYPASS 1", "EXTernal:ENAble 0", "EXT:ENA 0", "DIAGnostic:GPOut11 1",
-                    "GDS:ENAble 3 0", "GDS:ENA 0 0"):
+                    "GDS:ENAble 3 0", "GDS:ENA 0 0", "GDS:POLarity INVert", "GDS:POL NORMALLY_LOW", "GDS:POLarity"):
             self.assertIsNotNone(dc.classify(cmd), cmd)
 
     def test_missing_or_garbled_direction_counts_as_dangerous(self):

@@ -208,6 +208,7 @@ static const scpi_command_t command_table[] = {
     /* Raw GateDriverStatus_01..12 (PE0..PE11) diagnostic readback --
        see cmd_gds.c's own header comment on cmd_gds_query(). */
     { "GDS?",                cmd_gds_query    },
+    { "GDS:POLarity",        cmd_gds_polarity       },
     { "GDS:POLarity?",       cmd_gds_polarity_query },
     { "GDS:ENAble",          cmd_gds_enable         },
     { "GDS:ENAble?",         cmd_gds_enable_query   },

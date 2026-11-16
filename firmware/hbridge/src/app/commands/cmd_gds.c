@@ -1,6 +1,6 @@
 /*
  * cmd_gds.c -- serial command handlers for the 12 GateDriverStatus inputs (PE0..PE11): GDS?, GDS:LAST?,
- * GDS:POLarity?, GDS:ENAble, GDS:NICKname. GDS? and GDS:LAST? were in cmd_io.c until 2026-11-13; the handlers
+ * GDS:POLarity / GDS:POLarity?, GDS:ENAble, GDS:NICKname. GDS? and GDS:LAST? were in cmd_io.c until 2026-11-13; the handlers
  * are unchanged. See commands.h for the file map and gds_inputs.h for what the enable switch and nicknames are.
  */
 #include "commands.h"
@@ -63,12 +63,70 @@ void cmd_gds_last_query(uart_instance_t *inst, char *args)
     uart_send(inst, buf);
 }
 
-/* GDS:POLarity? -- OK NORMALLY_HIGH | NORMALLY_LOW: the fault polarity this firmware was BUILT with (GDS_FAULT_POLARITY in
-   ctrlr_config.h). NORMALLY_HIGH: the pins read HIGH when healthy, LOW is a fault. Read-only: it is a compile-time setting. */
+/* GDS:POLarity? -- OK NORMALLY_HIGH | NORMALLY_LOW: the fault polarity in force now, one setting for all twelve inputs.
+   NORMALLY_HIGH: the pins read HIGH when healthy, LOW is a fault. A board starts at the polarity it was built with
+   (GDS_FAULT_POLARITY, ctrlr_config.h; HBRIDGE: NORMALLY_HIGH) and GDS:POLarity changes it until the next reboot. */
 void cmd_gds_polarity_query(uart_instance_t *inst, char *args)
 {
     (void)args;
     uart_send(inst, (GdsInputs_PolarityIsNormallyLow() != 0U) ? "OK NORMALLY_LOW\r\n" : "OK NORMALLY_HIGH\r\n");
+}
+
+/* Case-insensitive whole-string compare of a token with an upper-case keyword. */
+static uint8_t IsWord(const char *tok, const char *word)
+{
+    while ((*tok != '\0') && (*word != '\0'))
+    {
+        char c = *tok++;
+        if ((c >= 'a') && (c <= 'z')) { c = (char)(c - 'a' + 'A'); }
+        if (c != *word++) { return 0U; }
+    }
+    return (uint8_t)((*tok == '\0') && (*word == '\0'));
+}
+
+/* --------------------------------------------------------------------------
+ * GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>      (added 2026-11-17)
+ *
+ * Flips which level on the GateDriverStatus pins is a fault, for ALL twelve inputs at once (not per pin).
+ *   NORMALLY_HIGH   pins read HIGH when healthy, LOW is a fault (the HBRIDGE build default)
+ *   NORMALLY_LOW    pins read LOW when healthy, HIGH is a fault
+ *   INVert          the opposite of what is in force now
+ * Allowed in IDLE or FAULT only (ERR 13 otherwise): the polarity decides which pin states count as faults, so it is not
+ * changed on an armed or running controller. The pins are re-checked at once, so a flip that leaves a switched-on input in
+ * its (new) fault state faults immediately, exactly as GDS:ENAble does; flipping does not clear an existing fault.
+ * Not remembered across a reboot (the compiled polarity returns); a profile stores it and *RCL restores it. The hub
+ * announces it as DANGEROUS ("interlock"): a wrong flip makes healthy pins read as faults, or faulted pins as healthy.
+ *
+ *   GDS:POLarity NORMALLY_LOW   OK        ERR 12 unknown keyword, ERR 13 outside IDLE/FAULT
+ *   GDS:POLarity INVert         OK
+ *   GDS:POLarity?               OK NORMALLY_HIGH | OK NORMALLY_LOW
+ * -------------------------------------------------------------------------- */
+void cmd_gds_polarity(uart_instance_t *inst, char *args)
+{
+    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    uint8_t want;
+
+    if (tok == NULL)
+    {
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "GDS:POLarity needs NORMALLY_HIGH, NORMALLY_LOW or INVert");
+        return;
+    }
+    if (IsWord(tok, "NORMALLY_HIGH"))     { want = 0U; }
+    else if (IsWord(tok, "NORMALLY_LOW")) { want = 1U; }
+    else if (IsWord(tok, "INVERT") || IsWord(tok, "INV")) { want = (uint8_t)(GdsInputs_PolarityIsNormallyLow() != 0U ? 0U : 1U); }
+    else
+    {
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "GDS:POLarity: use NORMALLY_HIGH, NORMALLY_LOW or INVert");
+        return;
+    }
+    if ((SM_GetState() != SM_STATE_IDLE) && (SM_GetState() != SM_STATE_FAULT))
+    {
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "the GateDriverStatus polarity can only be changed in IDLE or FAULT");
+        return;
+    }
+    GdsInputs_SetPolarityNormallyLow(want);
+    GateDriver_CheckFault();                 /* the pins may now read as faults */
+    Scpi_ReplyOk(inst);
 }
 
 /* The input argument of GDS:ENAble / GDS:NICKname: a whole-token integer 0..12 (minInput 0 for "all", else 1).

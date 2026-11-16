@@ -91,7 +91,7 @@ typedef enum
     SETF_X_KD             = 37,
 
     SETF_GDS_ENABLE_MASK  = 40,   /* GDS:ENAble as a bitmask, bit 0 = input 1 (2026-11-16) */
-    SETF_GDS_POLARITY     = 41,   /* the build's fault polarity when saved (1 NORMALLY_LOW, 0 NORMALLY_HIGH): checked on recall, not applied */
+    SETF_GDS_POLARITY     = 41,   /* the fault polarity in force when saved (1 NORMALLY_LOW, 0 NORMALLY_HIGH): applied on recall (since 2026-11-17; before that it was only checked against the build's) */
     SETF_GDS_NICKNAMES    = 42,   /* GDS:NICKname 1..12 as one string: "name1,name2,...", "-" for none */
 
     SETF_SHOT_COUNT       = 64,   /* tables: see above */

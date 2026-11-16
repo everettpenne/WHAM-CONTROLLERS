@@ -92,7 +92,7 @@ void Settings_Capture(settings_snapshot_t *s)
     MarkPresent(s, SETF_CL_BRANCH, 0U);
 
     /* the fault-pin configuration (2026-11-16): which GateDriverStatus inputs are switched on, what they are called, and
-       the polarity this build was compiled with (so a recall can tell it is on a different build) */
+       the polarity in force (2026-11-17: it can be flipped at runtime, so it is stored like the rest) */
     s->gdsEnableMask = (uint32_t)GdsInputs_EnabledMask();
     s->gdsPolarity   = GdsInputs_PolarityIsNormallyLow();
     {
@@ -354,13 +354,13 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
 
 /* The fault-pin configuration of a save. Switching an input OFF removes a protection: a recall is IDLE-only (cmd_profile.c),
    the reply counts the inputs left off (r->gdsOff, "GDSOFF=<n>") and the pins are re-checked at once, as GDS:ENAble does. A
-   save made under the other polarity is reported (GDS:POLarity) and its mask still applied: which inputs are in use does not
-   depend on the polarity. */
+   saved polarity is applied too (it used to be only checked, before GDS:POLarity existed as a runtime setting, 2026-11-17). */
 static void ApplyGds(const settings_snapshot_t *s, settings_apply_result_t *r)
 {
     if (Present(s, SETF_GDS_POLARITY, 0U) != 0U)
     {
-        Record(r, (uint8_t)(s->gdsPolarity == GdsInputs_PolarityIsNormallyLow()), "GDS:POLarity", SET_CHANNEL_SYSTEM);
+        GdsInputs_SetPolarityNormallyLow(s->gdsPolarity);
+        Record(r, 1U, "GDS:POLarity", SET_CHANNEL_SYSTEM);
     }
     if (Present(s, SETF_GDS_ENABLE_MASK, 0U) != 0U)
     {

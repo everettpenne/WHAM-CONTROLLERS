@@ -1,6 +1,17 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-17  -  GDS:POLarity: flip the fault polarity of all twelve gate-driver status inputs at runtime  [host-tested, builds clean; NOT flashed]
+-----------------------------------------------------------------------
+  Request: a command to invert the polarity of the fault pin readings, and a query; one global flip for all GDS inputs.
+  gds_inputs.c: the polarity is a runtime variable (g_normallyLow, volatile: read by the EXTI interrupts) that starts at, and GdsInputs_Reset() returns to, the compiled GDS_FAULT_POLARITY;
+  new GdsInputs_SetPolarityNormallyLow() and GdsInputs_DefaultPolarityIsNormallyLow(). cmd_gds.c: GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert> (case-insensitive; INV accepted; ERR 12 for any other
+  word, ERR 13 outside IDLE/FAULT, the pins re-checked at once like GDS:ENAble); GDS:POLarity? now reports the polarity in force. Profiles: the polarity saved by *SAV (field 41, unchanged encoding) is now
+  APPLIED by *RCL; before, it was only compared with the build's and a difference was a FAILED name. Profiles saved before this carry the build's NORMALLY_HIGH, so a recall resets any runtime flip to that.
+  Hub: GDS:POLarity (with any argument) is listed as dangerous ("interlock"); the query is not. Not remembered across a reboot.
+  Tests: test_gds_inputs (flip, invert, refusals by state, reset), test_settings (save, reboot, recall restores a flipped polarity), host test_dangerous_commands. Docs: command_reference, AGENTS, labview_commands.
+  Not flashed: the boards are on the bench; say when to reflash.
+
 2026-11-16  -  CONFig:DEADtime: the dead time of every phase is a runtime setting (default 100 ns)  [host-tested, builds clean; flashed: see the bench note below]
 -----------------------------------------------------------------------
   Request: one command to change the dead time, the same on all phases, default 100 ns, at runtime, for the Limiter, the ECH-HVPS and the XREX controller.

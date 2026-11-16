@@ -858,7 +858,7 @@ Reply: `OK <pins> <checks>`.
 
 - `<pins>`: the **raw levels of all 12 pins** at the instant the fault latched, as hex digits with no `0x` prefix and at least three digits
   (`%03X`). Bit 0 is `GateDriverStatus_01` (`PE0`) and bit 11 is `GateDriverStatus_12` (`PE11`). A set bit is a pin that read HIGH, **not**
-  necessarily one in its fault state: which level is the fault is the build's `GDS_FAULT_POLARITY` (`ctrlr_config.h`) -- ask with `GDS:POLarity?`.
+  necessarily one in its fault state: which level is the fault is the polarity in force (the build's `GDS_FAULT_POLARITY` unless `GDS:POLarity` changed it) -- ask with `GDS:POLarity?`.
   Under `NORMALLY_HIGH` (the HBRIDGE setting since 2026-11-13) a HIGH pin is healthy and the **faulted inputs are the cleared bits**: `FFB` means
   input 03 was LOW. Under `NORMALLY_LOW` a set bit is the faulted input (`101` = inputs 01 and 09 HIGH = faulted). A switched-off input
   (`GDS:ENAble`) is never what latched the fault, whatever it reads.
@@ -875,11 +875,17 @@ Reply: `OK <pins> <checks>`.
 Typical use after `STATE?` reports `FAULT GENERAL` with `FAULT:SOURces?` showing `GATEDRV=1`: send `GDS:LAST?`, then read `<pins>` as a bit mask,
 lowest bit = input 01.
 
-### `GDS:POLarity?`
+### `GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>` and `GDS:POLarity?`
 
-`OK NORMALLY_HIGH` or `OK NORMALLY_LOW`: the fault polarity this firmware was **built** with (`GDS_FAULT_POLARITY` in `ctrlr_config.h`, the supply
-config; added 2026-11-13). `NORMALLY_HIGH`: the 12 GateDriverStatus pins read HIGH when healthy and a LOW reading is a fault; `NORMALLY_LOW` is the opposite.
-There is no command to change it: set the define, rebuild and flash. HBRIDGE is built `NORMALLY_HIGH`. An input with nothing driving it reads LOW (the
+`GDS:POLarity?` -> `OK NORMALLY_HIGH` or `OK NORMALLY_LOW`: the fault polarity **in force now**. `NORMALLY_HIGH`: the 12 GateDriverStatus pins read HIGH when healthy and
+a LOW reading is a fault; `NORMALLY_LOW` is the opposite. A board boots at the polarity it was built with (`GDS_FAULT_POLARITY` in `ctrlr_config.h`; HBRIDGE is built
+`NORMALLY_HIGH`, 2026-11-13).
+
+`GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>` (added 2026-11-17) changes it, **one global setting for all twelve inputs** (there is no per-pin polarity). `INVert`
+(or `INV`) selects the opposite of what is in force; keywords are case-insensitive. `OK`; `ERR 12` for anything else; `ERR 13` unless the state is `IDLE` or `FAULT`.
+The pins are re-checked at once, so a flip that leaves a switched-on input in its new fault state faults immediately (as `GDS:ENAble` does); it never clears an
+existing fault. Not remembered across a reboot (the built-in polarity returns), but a stored profile holds it (`*SAV`/`*RCL`). The hub announces it as DANGEROUS
+("interlock"): a wrong flip turns healthy pins into faults, or faulted pins into healthy ones. `GDS?` stays raw and polarity-agnostic. An input with nothing driving it reads LOW (the
 pins have no pull-up), which under `NORMALLY_HIGH` is a fault: unused inputs must be wired, or switched off with `GDS:ENAble` (or for good in
 `GDS_DEFAULT_ENABLE_MASK`).
 
@@ -899,10 +905,10 @@ Switches individual GateDriverStatus fault inputs off and on (added 2026-11-13).
 - **Re-check.** After every change the pins are checked at once: switching on an input whose pin is in its fault state faults immediately. Switching one off
   does not clear a fault it already latched: send `FAULT:CLEar`, whose own re-check then ignores the switched-off input.
 - **Remembered only in a saved profile.** Every input is on at boot except those cleared in `GDS_DEFAULT_ENABLE_MASK` (`ctrlr_config.h`, default `0x0FFF` = all on): a reboot
-  returns to that. `*SAV` stores which inputs are on (and the nicknames, and this build's polarity) and `*RCL` puts them back -- including **switching inputs off**, so a
+  returns to that. `*SAV` stores which inputs are on (and the nicknames, and the polarity in force) and `*RCL` puts them back -- including **switching inputs off**, so a
   recall can remove protections: the reply carries `GDSOFF=<n>` (the number of inputs left off) whenever the saved profile switched any off, `*RCL` is IDLE-only, and the
-  pins are re-checked at once. A save made before 2026-11-16 has no fault-pin fields and leaves the live configuration alone. A save made under the other polarity reports
-  `GDS:POLarity` in the `FAILED` names (its mask is still applied). Use `GDS:ENAble?` to see what is off right now.
+  pins are re-checked at once. A save made before 2026-11-16 has no fault-pin fields and leaves the live configuration alone. A recall also restores the saved polarity (changed 2026-11-17: it used to be only checked against the build's), so it can
+  put the pins into a fault state at once. Use `GDS:ENAble?` to see what is off right now.
 - `DEBUG:FAULT:BYPASS` is separate and broader (PC10 and all twelve inputs at once).
 
 ### `GDS:NICKname <input> <name>` and `GDS:NICKname? [input]`
@@ -1130,7 +1136,7 @@ In `DIFF?` a table is compared by point count (`shot=500>500*` means the same co
 number or label, `ERR 13` when not IDLE. A recall that refuses a value still applies the rest; a table that fails
 part way is left empty.
 
-**Also saved (2026-11-16):** the fault-pin configuration -- `GDS:ENAble` (which inputs are on), `GDS:NICKname` and the build's `GDS:POLarity`. `*RCL` then replies `OK APPLIED=<n> FAILED=<k> [<names>] [GDSOFF=<j>] [IGNORED=<m>]`; `GDSOFF` counts inputs the recalled profile left switched off.
+**Also saved (2026-11-16):** the fault-pin configuration -- `GDS:ENAble` (which inputs are on), `GDS:NICKname` and the polarity in force (`GDS:POLarity`; applied on recall since 2026-11-17). `*RCL` then replies `OK APPLIED=<n> FAILED=<k> [<names>] [GDSOFF=<j>] [IGNORED=<m>]`; `GDSOFF` counts inputs the recalled profile left switched off.
 
 **Not saved:** run state (`ARM`, `FIRE`, `SOURce:*`), the DAC outputs, and the bench-simulation settings
 (`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`).

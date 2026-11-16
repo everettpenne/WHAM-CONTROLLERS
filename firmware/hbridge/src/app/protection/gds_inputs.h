@@ -10,7 +10,8 @@
  * Added 2026-11-13.
  *
  *   input numbers   1..12 = GateDriverStatus_01..12 (PE0..PE11), as in GDS?; 0 means "all" where noted.
- *   polarity        compile time: GDS_FAULT_POLARITY in ctrlr_config.h (the supply config, set before flashing).
+ *   polarity        one setting for all twelve inputs. Boots at the compiled GDS_FAULT_POLARITY (ctrlr_config.h) and can be
+ *                   flipped at runtime (GDS:POLarity, 2026-11-17); a reboot returns to the compiled one, a profile stores it.
  *   enabled         runtime. Every input is ON at boot except those cleared in GDS_DEFAULT_ENABLE_MASK
  *                   (ctrlr_config.h). A switched-off input is never evaluated: it cannot latch a fault or stop the
  *                   output. A reboot returns to the compiled default; only an explicit *RCL of a profile that holds a mask
@@ -49,10 +50,16 @@ const char *GdsInputs_Nickname(uint8_t input);
    whether switched on or not: normallyLow != 0 means HIGH is the fault. */
 uint16_t GdsInputs_RawFaultBits(uint16_t raw, uint8_t normallyLow);
 
-/* The pins that count: in fault under the compiled GDS_FAULT_POLARITY AND switched on. What gate_driver.c latches on. */
+/* The pins that count: in fault under the polarity now in force AND switched on. What gate_driver.c latches on. */
 uint16_t GdsInputs_FaultBits(uint16_t raw);
 
-/* 1 if the compiled polarity is NORMALLY_LOW (HIGH = fault), 0 if NORMALLY_HIGH (LOW = fault). */
+/* 1 if the polarity in force is NORMALLY_LOW (HIGH = fault), 0 if NORMALLY_HIGH (LOW = fault). */
 uint8_t  GdsInputs_PolarityIsNormallyLow(void);
+
+/* Sets the polarity in force for all twelve inputs (nonzero = NORMALLY_LOW). The caller re-checks the pins afterwards. */
+void     GdsInputs_SetPolarityNormallyLow(uint8_t normallyLow);
+
+/* The polarity this firmware was built with (what a reboot returns to), same encoding. */
+uint8_t  GdsInputs_DefaultPolarityIsNormallyLow(void);
 
 #endif /* GDS_INPUTS_H */

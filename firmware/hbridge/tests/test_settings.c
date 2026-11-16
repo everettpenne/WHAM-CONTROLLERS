@@ -661,13 +661,22 @@ static void TestGdsConfig(void)
     CHECK(res.apply.gdsOff == 2U);                      /* reported, so the reply says GDSOFF=2 */
     CHECK(g_fakeGdsChecks >= 1U);                       /* the pins are re-checked after the change */
 
-    /* a save made under the other polarity: the mask still applies, the mismatch is named */
+    /* the polarity in force is saved and a recall restores it (a runtime flip, 2026-11-17), whichever build it came from */
     {
-        uint8_t other = (uint8_t)(GdsInputs_PolarityIsNormallyLow() != 0U ? 0U : 1U);
+        uint8_t other = (uint8_t)(GdsInputs_DefaultPolarityIsNormallyLow() != 0U ? 0U : 1U);
 
+        GdsInputs_SetPolarityNormallyLow(other);
+        Settings_Capture(&snap);
+        CHECK(snap.gdsPolarity == other);
+        CHECK(Settings_Save(6U, "pol", "v0.11") == PROFILE_OK);
+        GdsInputs_Reset();                                          /* a reboot */
+        CHECK(GdsInputs_PolarityIsNormallyLow() == GdsInputs_DefaultPolarityIsNormallyLow());
+        CHECK(Settings_Recall(6U, &res) == PROFILE_OK && res.apply.failed == 0U);
+        CHECK(GdsInputs_PolarityIsNormallyLow() == other);
+        GdsInputs_Reset();
         insp.gdsPolarity = other;
         Settings_Apply(&insp, &res.apply, &res.modeChanged);
-        CHECK(res.apply.failed == 1U && strstr(res.apply.failedNames, "GDS:POLarity") != NULL);
+        CHECK(res.apply.failed == 0U && GdsInputs_PolarityIsNormallyLow() == other);
     }
 
     /* a save without any fault-pin field (an older firmware's) leaves the live configuration alone */

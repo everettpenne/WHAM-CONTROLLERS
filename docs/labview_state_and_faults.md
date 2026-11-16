@@ -252,7 +252,7 @@ Consequences for the front-end:
 ```
 
 The first number is **hexadecimal, with no `0x`**: the raw levels of the 12 gate-driver status inputs at the moment the fault latched, bit 0 =
-input 01 (the lowest digit's lowest bit), bit 11 = input 12. `101` is `0001 0000 0001` binary: inputs 01 and 09. Which level is the fault depends on the build's polarity (`GDS:POLarity?`): on HBRIDGE (built `NORMALLY_HIGH` since 2026-11-13) a HIGH pin is healthy and the
+input 01 (the lowest digit's lowest bit), bit 11 = input 12. `101` is `0001 0000 0001` binary: inputs 01 and 09. Which level is the fault depends on the polarity in force (`GDS:POLarity?`; built `NORMALLY_HIGH`, changeable with `GDS:POLarity`): on HBRIDGE (built `NORMALLY_HIGH` since 2026-11-13) a HIGH pin is healthy and the
 **faulted inputs are the cleared bits** (`FFB` = input 03 read LOW); under `NORMALLY_LOW` a set bit is the faulted input. Read the polarity from the controller
 rather than hard-coding the meaning. An input switched off with `GDS:ENAble` is never counted, and `GDS:NICKname?` gives each input's label. The second number counts fault checks since boot and is only a rough activity measure. Limits:
 it is kept in RAM (gone at reset), is **not** cleared by `FAULT:CLEar` (it still shows the previous latch until a new one overwrites it, so use it only when `FAULT:SOURces?`

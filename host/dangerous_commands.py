@@ -48,6 +48,7 @@ RULES = [
     # switches a protection off, or changes how faults are read or limited
     ("EXTernal:ENAble",         OFF, "interlock"),  # XREX: the PF13 interlock off
     ("DEBUG:FAULT:BYPASS",      ON,  "interlock"),  # XREX and HBRIDGE
+    ("GDS:POLarity",            ANY, "interlock"),  # HBRIDGE: flips which level on every gate-driver status input is a fault
     ("GDS:ENAble",              OFF, "interlock"),  # HBRIDGE: GDS:ENAble <input> 0 switches a gate-driver fault input off
     ("CONFig:FaultPolarity:WATER",   ANY, "interlock"),
     ("CONFig:FaultPolarity:TEMP",    ANY, "interlock"),

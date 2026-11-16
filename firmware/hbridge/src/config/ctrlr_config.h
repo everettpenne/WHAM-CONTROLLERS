@@ -87,8 +87,9 @@
 /* --------------------------------------------------------------------------
  * GateDriverStatus fault inputs (compile-time; the supply config)
  *
- * GDS_FAULT_POLARITY -- which level on PE0..PE11 is a fault. Set it here, before building and flashing; there is no
- * runtime command to change it (GDS:POLarity? reports what a board was built with).
+ * GDS_FAULT_POLARITY -- which level on PE0..PE11 is a fault, as the board BOOTS. All twelve share it. It can be flipped at
+ * runtime with GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert> (IDLE or FAULT only; GDS:POLarity? reports the one in
+ * force); a reboot returns to this value, a stored profile carries the runtime one.
  *
  *   GDS_NORMALLY_HIGH -- pins read HIGH in good operation; a LOW reading is a fault.
  *   GDS_NORMALLY_LOW  -- pins read LOW in good operation;  a HIGH reading is a fault.

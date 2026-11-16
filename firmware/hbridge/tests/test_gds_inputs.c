@@ -57,6 +57,38 @@ static void TestPolarity(void)
     CHECK(GdsInputs_FaultBits(0x0FFFU) == 0U);
     CHECK(GdsInputs_FaultBits(0x0FFBU) == 0x004U);
     Run(cmd_gds_polarity_query, NULL); CHECK_STR(fake_uart_out, "OK NORMALLY_HIGH\r\n");
+
+    /* the runtime flip (2026-11-17): all twelve at once, evaluation follows, pins re-checked */
+    CHECK(GdsInputs_DefaultPolarityIsNormallyLow() == 0U);
+    f_pins = 0x0FFFU; f_checks = 0;
+    Run(cmd_gds_polarity, "NORMALLY_LOW"); CHECK_STR(fake_uart_out, "OK\r\n");
+    Run(cmd_gds_polarity_query, NULL);     CHECK_STR(fake_uart_out, "OK NORMALLY_LOW\r\n");
+    CHECK(GdsInputs_PolarityIsNormallyLow() == 1U && f_checks == 1);
+    CHECK(GdsInputs_FaultBits(0x0FFFU) == 0x0FFFU);               /* all HIGH is now all faults */
+    CHECK(GdsInputs_FaultBits(0x0000U) == 0U);
+    CHECK(f_lastBadSeen == 0x0FFFU);                              /* the re-check saw them */
+    (void)GdsInputs_SetEnabled(5U, 0U);
+    CHECK(GdsInputs_FaultBits(0x0FFFU) == 0x0FEFU);               /* a switched-off input still never counts */
+    Run(cmd_gds_polarity, "invert");       CHECK_STR(fake_uart_out, "OK\r\n");
+    Run(cmd_gds_polarity_query, NULL);     CHECK_STR(fake_uart_out, "OK NORMALLY_HIGH\r\n");
+    Run(cmd_gds_polarity, "INV");          CHECK(GdsInputs_PolarityIsNormallyLow() == 1U);
+    Run(cmd_gds_polarity, "normally_high"); CHECK(GdsInputs_PolarityIsNormallyLow() == 0U);
+
+    /* refusals leave it alone */
+    Run(cmd_gds_polarity, NULL);           CHECK(strncmp(fake_uart_out, "ERR 12 ", 7) == 0);
+    Run(cmd_gds_polarity, "HIGH");         CHECK(strncmp(fake_uart_out, "ERR 12 ", 7) == 0);
+    Run(cmd_gds_polarity, "NORMALLY_LOWX"); CHECK(strncmp(fake_uart_out, "ERR 12 ", 7) == 0);
+    f_state = SM_STATE_ARMED;
+    Run(cmd_gds_polarity, "INVert");       CHECK(strncmp(fake_uart_out, "ERR 13 ", 7) == 0);
+    f_state = SM_STATE_FIRING;
+    Run(cmd_gds_polarity, "INVert");       CHECK(strncmp(fake_uart_out, "ERR 13 ", 7) == 0);
+    CHECK(GdsInputs_PolarityIsNormallyLow() == 0U);
+    f_state = SM_STATE_FAULT;
+    Run(cmd_gds_polarity, "INVert");       CHECK_STR(fake_uart_out, "OK\r\n");   /* allowed in FAULT */
+    CHECK(GdsInputs_PolarityIsNormallyLow() == 1U);
+
+    GdsInputs_Reset();                                            /* a reboot: back to the compiled one */
+    CHECK(GdsInputs_PolarityIsNormallyLow() == 0U);
 }
 
 static void TestEnableMask(void)

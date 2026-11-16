@@ -39,7 +39,7 @@ extern "C" {
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, DEBUG:FAULT:BYPASS, GENERAL:TEST:FAULT
  *   cmd_io.c       DIAGnostic:LEDs?, EXTernal:TRIGger*
- *   cmd_gds.c      GDS?, GDS:LAST?, GDS:POLarity?, GDS:ENAble, GDS:NICKname (the 12 GateDriverStatus fault inputs)
+ *   cmd_gds.c      GDS?, GDS:LAST?, GDS:POLarity, GDS:POLarity?, GDS:ENAble, GDS:NICKname (the 12 GateDriverStatus fault inputs)
  *   cmd_charge.c   CHARGE:FREQuency, CHARGE:STATus? (the PG0 frequency output)
  *   cmd_pfmin.c    PFMIN:*
  *   cmd_phase.c    PHASe:ENAble/SELect (which of U, V, W drive their gate drivers)
@@ -311,7 +311,8 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r);   /* ERR for
 void CmdTarget_Discard(void);                                      /* drops the target profile */
 
 void cmd_gds_last_query(uart_instance_t *inst, char *args);       /* GDS:LAST? -- pins at the last latched fault */
-void cmd_gds_polarity_query(uart_instance_t *inst, char *args);   /* GDS:POLarity? -- OK NORMALLY_HIGH|NORMALLY_LOW (compile time) */
+void cmd_gds_polarity_query(uart_instance_t *inst, char *args);   /* GDS:POLarity? -- OK NORMALLY_HIGH|NORMALLY_LOW (the one in force) */
+void cmd_gds_polarity(uart_instance_t *inst, char *args);         /* GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert> -- flip all twelve */
 void cmd_gds_enable(uart_instance_t *inst, char *args);           /* GDS:ENAble <input 0-12> <0|1> -- switch a fault input off/on */
 void cmd_gds_enable_query(uart_instance_t *inst, char *args);     /* GDS:ENAble? [input] -- OK <0|1> or OK 01=1 ... 12=1 */
 void cmd_gds_nickname(uart_instance_t *inst, char *args);         /* GDS:NICKname <input 1-12> <name|-> */
