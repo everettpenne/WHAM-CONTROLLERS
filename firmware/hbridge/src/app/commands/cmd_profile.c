@@ -223,6 +223,10 @@ static uint8_t Inspect(uart_instance_t *inst, uint8_t slot, settings_tables_t *t
     return 1U;
 }
 
+/* Text of one value (two for DIFF) and of one reply line: a value can be the 191-character nickname string. */
+static char g_valText[2][SET_GDS_NICK_BUF];
+static char g_lineText[SET_GDS_NICK_BUF * 2U + 48U];
+
 /* CONFig:PROFile? <slot> -- OK label=<l> fw=<v> <name>=<value> ... shot=<n> target=<n> curve=<n|LINEAR>;
    nothing is applied. */
 void cmd_profile_query(uart_instance_t *inst, char *args)
@@ -232,15 +236,15 @@ void cmd_profile_query(uart_instance_t *inst, char *args)
     profile_info_t info;
     settings_tables_t tables;
     char name[40];
-    char val[24];
-    char buf[96];
+    char *val = g_valText[0];                /* file scope: the nickname string is 191 characters, too much for the stack */
+    char *buf = g_lineText;
 
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
     if (ParseSlot(inst, tok, &slot) == 0U || Inspect(inst, slot, &tables, &info) == 0U)
     {
         return;
     }
-    snprintf(buf, sizeof(buf), "OK label=%s fw=%s", (info.label[0] != '\0') ? info.label : "-",
+    snprintf(buf, sizeof(g_lineText), "OK label=%s fw=%s", (info.label[0] != '\0') ? info.label : "-",
              (info.fw[0] != '\0') ? info.fw : "-");
     uart_send(inst, buf);
     for (uint8_t fi = 0U; fi < kSettingsFieldCount; fi++)
@@ -254,12 +258,12 @@ void cmd_profile_query(uart_instance_t *inst, char *args)
                 continue;
             }
             SettingsCodec_FormatName(fi, c, name, sizeof(name));
-            SettingsCodec_FormatValue(&g_saved, fi, c, val, sizeof(val));
-            snprintf(buf, sizeof(buf), " %s=%s", name, val);
+            SettingsCodec_FormatValue(&g_saved, fi, c, val, sizeof(g_valText[0]));
+            snprintf(buf, sizeof(g_lineText), " %s=%s", name, val);
             uart_send(inst, buf);
         }
     }
-    snprintf(buf, sizeof(buf), " shot=%u target=%u", (unsigned int)tables.shot.count, (unsigned int)tables.target.count);
+    snprintf(buf, sizeof(g_lineText), " shot=%u target=%u", (unsigned int)tables.shot.count, (unsigned int)tables.target.count);
     uart_send(inst, buf);
     if (tables.curve.count == 0U)
     {
@@ -267,7 +271,7 @@ void cmd_profile_query(uart_instance_t *inst, char *args)
     }
     else
     {
-        snprintf(buf, sizeof(buf), " curve=%u", (unsigned int)tables.curve.count);
+        snprintf(buf, sizeof(g_lineText), " curve=%u", (unsigned int)tables.curve.count);
         uart_send(inst, buf);
     }
     uart_send(inst, "\r\n");
@@ -300,9 +304,9 @@ void cmd_profile_diff(uart_instance_t *inst, char *args)
     settings_tables_t saved;
     settings_tables_t live;
     char name[40];
-    char lv[24];
-    char sv[24];
-    char buf[96];
+    char *lv = g_valText[0];
+    char *sv = g_valText[1];
+    char *buf = g_lineText;
     uint16_t differing = 0U;
 
     tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
@@ -326,9 +330,9 @@ void cmd_profile_diff(uart_instance_t *inst, char *args)
                 continue;
             }
             SettingsCodec_FormatName(fi, c, name, sizeof(name));
-            SettingsCodec_FormatValue(&g_live, fi, c, lv, sizeof(lv));
-            SettingsCodec_FormatValue(&g_saved, fi, c, sv, sizeof(sv));
-            snprintf(buf, sizeof(buf), " %s=%s>%s", name, lv, sv);
+            SettingsCodec_FormatValue(&g_live, fi, c, lv, sizeof(g_valText[0]));
+            SettingsCodec_FormatValue(&g_saved, fi, c, sv, sizeof(g_valText[1]));
+            snprintf(buf, sizeof(g_lineText), " %s=%s>%s", name, lv, sv);
             uart_send(inst, buf);
             differing++;
         }
