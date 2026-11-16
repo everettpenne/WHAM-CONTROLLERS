@@ -98,6 +98,10 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
   and `shot_start.c` (the one start routine FIRE and the trigger share; host-tested in `tests/test_shot_trigger.c`). Not ported yet:
   the external ENABLE interlock (PF13), telemetry events (Phase 5). DEBUG:FAULT:BYPASS was ported 2026-11-09 (narrower than XREX: it
   ignores PC10 and GateDriverStatus in the state machine, not the closed-loop OVERVOLT/FEEDBACK faults or a table underrun; `state_machine.h`).
+- **GateDriverStatus inputs** (2026-11-13; `src/app/protection/gds_inputs.c`, `gate_driver.c`, `src/app/commands/cmd_gds.c`): polarity is the compile-time
+  `GDS_FAULT_POLARITY` in `ctrlr_config.h` (the supply config; HBRIDGE is `GDS_NORMALLY_HIGH`, a LOW pin is a fault, so an undriven input is a fault) with
+  `GDS_DEFAULT_ENABLE_MASK` for inputs not wired on a supply. At runtime, `GDS:ENAble <0-12> <0|1>` switches inputs off/on (off only in IDLE/FAULT, DANGEROUS
+  to the hub; a reboot returns to the default) and `GDS:NICKname` labels them; `*SAV` now stores the mask, nicknames and polarity and `*RCL` restores them (settings ids 40-42; the reply carries `GDSOFF=<n>`); `GDS:POLarity?` reports the build's polarity. Host-tested (`tests/test_gds_inputs.c`). Not yet run on hardware.
 - **Output-off gaps in a shot (2026-11-16)**: a `SHOT:STEP` with frequency 0 turns the outputs off until the next setpoint (the counters keep running; `HRTIM1_GapEnter()`/`GapExit()` in `hrtim.c`, hooked
   into `ApplyStep()` in `pfm.c`; off steps have every compare 0, `PFM_STEP_OFF_CMP`). The first setpoint cannot be off and the last two must be on. Host-tested and built; NOT yet run on hardware. Read the
   2026-11-16 changelog entry before touching the generator's off segments or the gap enter/exit order (write-after-disable on entry, write-before-reconnect on exit matters).

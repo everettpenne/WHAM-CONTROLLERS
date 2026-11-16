@@ -43,14 +43,17 @@ class MatchingTests(unittest.TestCase):
 
     def test_the_safe_direction_is_not_listed(self):
         for cmd in ("SOURce:ENAble 1 0", "XREX:CHANnel:ENAOut 2 0", "PHASe:ENAble UW 0", "DAC:OUTPut 1 0",
-                    "DAC:OUTPut 2 0.0", "DEBUG:FAULT:BYPASS 0", "EXTernal:ENAble 1", "DIAG:GPO 0"):
+                    "DAC:OUTPut 2 0.0", "DEBUG:FAULT:BYPASS 0", "EXTernal:ENAble 1", "DIAG:GPO 0",
+                    "GDS:ENAble 3 1", "GDS:ENAble 0 1", "GDS:ENAble? 3", "GDS:ENAble?", "GDS:NICKname 3 PhaseU_Hi", "GDS:POL?"):
             self.assertIsNone(dc.classify(cmd), cmd)
         for cmd in ("SOURce:ENAble 1 1", "SOUR:ENA 3 1", "XREX:CHANnel:ENAOut 2 1", "XREX:CHAN:CONT 1 1", "PHASe:ENAble UW 1",
-                    "DAC:OUTPut 1 2.5", "DEBUG:FAULT:BYPASS 1", "EXTernal:ENAble 0", "EXT:ENA 0", "DIAGnostic:GPOut11 1"):
+                    "DAC:OUTPut 1 2.5", "DEBUG:FAULT:BYPASS 1", "EXTernal:ENAble 0", "EXT:ENA 0", "DIAGnostic:GPOut11 1",
+                    "GDS:ENAble 3 0", "GDS:ENA 0 0"):
             self.assertIsNotNone(dc.classify(cmd), cmd)
 
     def test_missing_or_garbled_direction_counts_as_dangerous(self):
-        for cmd in ("SOURce:ENAble", "SOURce:ENAble 1 on", "EXTernal:ENAble", "EXTernal:ENAble off", "DAC:OUTPut 1 x"):
+        for cmd in ("SOURce:ENAble", "SOURce:ENAble 1 on", "EXTernal:ENAble", "EXTernal:ENAble off", "DAC:OUTPut 1 x",
+                    "GDS:ENAble", "GDS:ENAble 3 off"):
             self.assertIsNotNone(dc.classify(cmd), cmd)
 
     def test_firmware_update_is_announced_once_not_per_data_line(self):

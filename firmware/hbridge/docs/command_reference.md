@@ -844,8 +844,10 @@ Reply: `OK <pins> <checks>`.
 
 - `<pins>`: the **raw levels of all 12 pins** at the instant the fault latched, as hex digits with no `0x` prefix and at least three digits
   (`%03X`). Bit 0 is `GateDriverStatus_01` (`PE0`) and bit 11 is `GateDriverStatus_12` (`PE11`). A set bit is a pin that read HIGH, **not**
-  necessarily one in its fault state: which level is the fault is the build's `GDS_FAULT_POLARITY` (`ctrlr_config.h`), currently
-  `GDS_NORMALLY_LOW`, so under the current build a set bit **is** a faulted input. `101` above means inputs 01 (`PE0`) and 09 (`PE8`) were HIGH.
+  necessarily one in its fault state: which level is the fault is the build's `GDS_FAULT_POLARITY` (`ctrlr_config.h`) -- ask with `GDS:POLarity?`.
+  Under `NORMALLY_HIGH` (the HBRIDGE setting since 2026-11-13) a HIGH pin is healthy and the **faulted inputs are the cleared bits**: `FFB` means
+  input 03 was LOW. Under `NORMALLY_LOW` a set bit is the faulted input (`101` = inputs 01 and 09 HIGH = faulted). A switched-off input
+  (`GDS:ENAble`) is never what latched the fault, whatever it reads.
 - `<checks>`: how many times the fault check has run since boot (every edge interrupt on the 12 pins, plus the explicit calls at boot and from
   `FAULT:CLEAR`), a rough measure of how active the pins have been.
 - A `<pins>` of `000` means no gate-driver fault has latched since boot (`OK 000 <checks>`). The value is **not** cleared by `FAULT:CLEAR`: it keeps the
@@ -858,6 +860,48 @@ Reply: `OK <pins> <checks>`.
 
 Typical use after `STATE?` reports `FAULT GENERAL` with `FAULT:SOURces?` showing `GATEDRV=1`: send `GDS:LAST?`, then read `<pins>` as a bit mask,
 lowest bit = input 01.
+
+### `GDS:POLarity?`
+
+`OK NORMALLY_HIGH` or `OK NORMALLY_LOW`: the fault polarity this firmware was **built** with (`GDS_FAULT_POLARITY` in `ctrlr_config.h`, the supply
+config; added 2026-11-13). `NORMALLY_HIGH`: the 12 GateDriverStatus pins read HIGH when healthy and a LOW reading is a fault; `NORMALLY_LOW` is the opposite.
+There is no command to change it: set the define, rebuild and flash. HBRIDGE is built `NORMALLY_HIGH`. An input with nothing driving it reads LOW (the
+pins have no pull-up), which under `NORMALLY_HIGH` is a fault: unused inputs must be wired, or switched off with `GDS:ENAble` (or for good in
+`GDS_DEFAULT_ENABLE_MASK`).
+
+### `GDS:ENAble <input> <0|1>` and `GDS:ENAble? [input]`
+
+Switches individual GateDriverStatus fault inputs off and on (added 2026-11-13). `input` is `1`-`12` (`GateDriverStatus_01`..`_12`, as in `GDS?`), or
+`0` for all twelve. A switched-**off** input is not evaluated at all: it cannot latch a fault, refuse `ARM`/`FIRE`, or stop the output, whatever its pin reads.
+
+| Command | Reply |
+|---|---|
+| `GDS:ENAble 5 0` / `GDS:ENAble 0 1` | `OK`. `ERR 12` for a missing argument, an input outside 0-12, a number with trailing characters, or a value other than `0`/`1`. `ERR 13` when switching **off** in `ARMED` or `FIRING` |
+| `GDS:ENAble? 5` | `OK 0` or `OK 1` (`ERR 12` unless 1-12) |
+| `GDS:ENAble?` | `OK 01=1 02=1 03=1 ... 12=0`, all twelve |
+
+- **Safety.** This switches a protection off, so the hub announces `GDS:ENAble ... 0` as DANGEROUS (category `interlock`). It is only for an input that is
+  not wired on this supply or is known faulty. Switching **off** needs `IDLE` or `FAULT`; switching **on** is allowed in any state.
+- **Re-check.** After every change the pins are checked at once: switching on an input whose pin is in its fault state faults immediately. Switching one off
+  does not clear a fault it already latched: send `FAULT:CLEar`, whose own re-check then ignores the switched-off input.
+- **Remembered only in a saved profile.** Every input is on at boot except those cleared in `GDS_DEFAULT_ENABLE_MASK` (`ctrlr_config.h`, default `0x0FFF` = all on): a reboot
+  returns to that. `*SAV` stores which inputs are on (and the nicknames, and this build's polarity) and `*RCL` puts them back -- including **switching inputs off**, so a
+  recall can remove protections: the reply carries `GDSOFF=<n>` (the number of inputs left off) whenever the saved profile switched any off, `*RCL` is IDLE-only, and the
+  pins are re-checked at once. A save made before 2026-11-16 has no fault-pin fields and leaves the live configuration alone. A save made under the other polarity reports
+  `GDS:POLarity` in the `FAILED` names (its mask is still applied). Use `GDS:ENAble?` to see what is off right now.
+- `DEBUG:FAULT:BYPASS` is separate and broader (PC10 and all twelve inputs at once).
+
+### `GDS:NICKname <input> <name>` and `GDS:NICKname? [input]`
+
+A label for each GateDriverStatus input, so an input can be talked about by function instead of number (added 2026-11-13). `input` is `1`-`12`. `name` is 1-15
+characters from letters, digits and `_ . - +` (no spaces; `-` alone is reserved). `GDS:NICKname 3 -` clears a nickname. Cosmetic only: it has no effect on any fault
+logic. Lost at reboot unless saved: `*SAV` keeps the nicknames (all twelve, one `GDS:NICKname` field) and `*RCL` restores them.
+
+| Command | Reply |
+|---|---|
+| `GDS:NICKname 3 PhaseU_Hi` | `OK`. `ERR 12` for a missing argument or an input outside 1-12. `ERR 14` for an invalid nickname |
+| `GDS:NICKname? 3` | `OK PhaseU_Hi`; `OK -` when none is set |
+| `GDS:NICKname?` | `OK 01=- 02=- 03=PhaseU_Hi ... 12=-`, all twelve (at most 12 x 19 + 4 = 232 characters) |
 
 ### `DIAGnostic:LEDs?`
 
@@ -1071,6 +1115,8 @@ In `DIFF?` a table is compared by point count (`shot=500>500*` means the same co
 `curve=0` is the linear default. `ERR 18` for an empty or corrupt slot or a flash failure, `ERR 12` for a bad slot
 number or label, `ERR 13` when not IDLE. A recall that refuses a value still applies the rest; a table that fails
 part way is left empty.
+
+**Also saved (2026-11-16):** the fault-pin configuration -- `GDS:ENAble` (which inputs are on), `GDS:NICKname` and the build's `GDS:POLarity`. `*RCL` then replies `OK APPLIED=<n> FAILED=<k> [<names>] [GDSOFF=<j>] [IGNORED=<m>]`; `GDSOFF` counts inputs the recalled profile left switched off.
 
 **Not saved:** run state (`ARM`, `FIRE`, `SOURce:*`), the DAC outputs, and the bench-simulation settings
 (`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`).

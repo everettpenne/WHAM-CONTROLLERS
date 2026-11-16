@@ -5,13 +5,16 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/app/protection/gate_driver.c
+../src/app/protection/gate_driver.c \
+../src/app/protection/gds_inputs.c
 
 OBJS += \
-./src/app/protection/gate_driver.o
+./src/app/protection/gate_driver.o \
+./src/app/protection/gds_inputs.o
 
 C_DEPS += \
-./src/app/protection/gate_driver.d
+./src/app/protection/gate_driver.d \
+./src/app/protection/gds_inputs.d
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -21,7 +24,7 @@ src/app/protection/%.o src/app/protection/%.su src/app/protection/%.cyclo: ../sr
 clean: clean-src-2f-app-2f-protection
 
 clean-src-2f-app-2f-protection:
-	-$(RM) ./src/app/protection/gate_driver.cyclo ./src/app/protection/gate_driver.d ./src/app/protection/gate_driver.o ./src/app/protection/gate_driver.su
+	-$(RM) ./src/app/protection/gate_driver.cyclo ./src/app/protection/gate_driver.d ./src/app/protection/gate_driver.o ./src/app/protection/gate_driver.su ./src/app/protection/gds_inputs.cyclo ./src/app/protection/gds_inputs.d ./src/app/protection/gds_inputs.o ./src/app/protection/gds_inputs.su
 
 .PHONY: clean-src-2f-app-2f-protection
 

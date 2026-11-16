@@ -106,7 +106,7 @@ void cmd_sav(uart_instance_t *inst, char *args)
     Scpi_ReplyOk(inst);
 }
 
-/* *RCL <slot> -- apply a saved profile. Reply: OK APPLIED=<n> FAILED=<k> [<names>] [IGNORED=<m>]. */
+/* *RCL <slot> -- apply a saved profile. Reply: OK APPLIED=<n> FAILED=<k> [<names>] [GDSOFF=<j>] [IGNORED=<m>]. */
 void cmd_rcl(uart_instance_t *inst, char *args)
 {
     char *tok;
@@ -150,6 +150,10 @@ void cmd_rcl(uart_instance_t *inst, char *args)
     if (res.apply.failed != 0U && n > 0 && (size_t)n < sizeof(buf))
     {
         n += snprintf(&buf[n], sizeof(buf) - (size_t)n, " %s", res.apply.failedNames);
+    }
+    if (res.apply.gdsOff != 0U && n > 0 && (size_t)n < sizeof(buf))
+    {
+        n += snprintf(&buf[n], sizeof(buf) - (size_t)n, " GDSOFF=%u", (unsigned int)res.apply.gdsOff);
     }
     if (res.ignored != 0U && n > 0 && (size_t)n < sizeof(buf))
     {

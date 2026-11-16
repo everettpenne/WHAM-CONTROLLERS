@@ -8,6 +8,8 @@
 #include "target_profile.h"
 #include "hvps_curve.h"
 #include "pfm.h"
+#include "gds_inputs.h"
+#include "gate_driver.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -88,6 +90,30 @@ void Settings_Capture(settings_snapshot_t *s)
     MarkPresent(s, SETF_CL_VPEAK, 0U);
     MarkPresent(s, SETF_CL_VSCALE, 0U);
     MarkPresent(s, SETF_CL_BRANCH, 0U);
+
+    /* the fault-pin configuration (2026-11-16): which GateDriverStatus inputs are switched on, what they are called, and
+       the polarity this build was compiled with (so a recall can tell it is on a different build) */
+    s->gdsEnableMask = (uint32_t)GdsInputs_EnabledMask();
+    s->gdsPolarity   = GdsInputs_PolarityIsNormallyLow();
+    {
+        size_t pos = 0U;
+
+        for (uint8_t i = 1U; i <= GDS_INPUT_COUNT; i++)
+        {
+            const char *name = GdsInputs_Nickname(i);
+            size_t n;
+
+            if (name[0] == '\0') { name = "-"; }
+            n = strlen(name);
+            if (i != 1U) { s->gdsNicks[pos++] = ','; }
+            memcpy(&s->gdsNicks[pos], name, n);
+            pos += n;
+        }
+        s->gdsNicks[pos] = '\0';
+    }
+    MarkPresent(s, SETF_GDS_ENABLE_MASK, 0U);
+    MarkPresent(s, SETF_GDS_POLARITY, 0U);
+    MarkPresent(s, SETF_GDS_NICKNAMES, 0U);
 
     for (uint8_t p = 0U; p < SET_PLANT_COUNT; p++)
     {
@@ -201,6 +227,8 @@ static void ApplyTiming(const settings_snapshot_t *s, settings_apply_result_t *r
     if (hasA != 0U) { Record(r, okA, "ADC:AVERage", SET_CHANNEL_SYSTEM); }
     if (hasR != 0U) { Record(r, okR, "PIDRate", SET_CHANNEL_SYSTEM); }
 }
+
+static void ApplyGds(const settings_snapshot_t *s, settings_apply_result_t *r);
 
 void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, uint8_t *modeChanged)
 {
@@ -321,6 +349,57 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
             Record(r, 1U, "LOOPMODE", tag);
         }
     }
+    ApplyGds(s, r);
+}
+
+/* The fault-pin configuration of a save. Switching an input OFF removes a protection: a recall is IDLE-only (cmd_profile.c),
+   the reply counts the inputs left off (r->gdsOff, "GDSOFF=<n>") and the pins are re-checked at once, as GDS:ENAble does. A
+   save made under the other polarity is reported (GDS:POLarity) and its mask still applied: which inputs are in use does not
+   depend on the polarity. */
+static void ApplyGds(const settings_snapshot_t *s, settings_apply_result_t *r)
+{
+    if (Present(s, SETF_GDS_POLARITY, 0U) != 0U)
+    {
+        Record(r, (uint8_t)(s->gdsPolarity == GdsInputs_PolarityIsNormallyLow()), "GDS:POLarity", SET_CHANNEL_SYSTEM);
+    }
+    if (Present(s, SETF_GDS_ENABLE_MASK, 0U) != 0U)
+    {
+        for (uint8_t i = 1U; i <= GDS_INPUT_COUNT; i++)
+        {
+            uint8_t on = (uint8_t)((s->gdsEnableMask >> (i - 1U)) & 1U);
+
+            (void)GdsInputs_SetEnabled(i, on);
+            if (on == 0U) { r->gdsOff++; }
+        }
+        Record(r, 1U, "GDS:ENAble", SET_CHANNEL_SYSTEM);
+    }
+    if (Present(s, SETF_GDS_NICKNAMES, 0U) != 0U)
+    {
+        const char *p = s->gdsNicks;
+        uint8_t ok = 1U;
+        uint8_t i = 0U;
+
+        while ((i < GDS_INPUT_COUNT) && (ok != 0U))
+        {
+            const char *end = strchr(p, ',');
+            size_t n = (end != NULL) ? (size_t)(end - p) : strlen(p);
+            char name[GDS_NICKNAME_MAX_LEN + 2U];
+
+            if ((n == 0U) || (n > GDS_NICKNAME_MAX_LEN))
+            {
+                ok = 0U;
+                break;
+            }
+            memcpy(name, p, n);
+            name[n] = '\0';
+            ok = GdsInputs_SetNickname((uint8_t)(i + 1U), name);
+            i++;
+            p = (end != NULL) ? end + 1 : p + n;
+        }
+        if (i != GDS_INPUT_COUNT) { ok = 0U; }
+        Record(r, ok, "GDS:NICKname", SET_CHANNEL_SYSTEM);
+    }
+    GateDriver_CheckFault();                  /* an input just switched on may already be in fault */
 }
 
 /* ---- the tables ---- */

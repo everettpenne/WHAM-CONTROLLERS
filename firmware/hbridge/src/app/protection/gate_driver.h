@@ -23,8 +23,9 @@ extern "C" {
  *     from the 7 EXTI IRQ handlers (stm32g4xx_it.c) that PE0..PE11's
  *     interrupt lines span (EXTI0..EXTI4 individually, EXTI9_5 and
  *     EXTI15_10 shared). Re-reads all 12 pins on every edge and
- *     evaluates them against GDS_FAULT_POLARITY (ctrlr_config.h): if
- *     ANY pin is in its fault state, immediately calls PFM_ForceStop()
+ *     evaluates them (gds_inputs.h: GDS_FAULT_POLARITY from ctrlr_config.h, and
+ *     only the inputs switched on with GDS:ENAble): if
+ *     ANY such pin is in its fault state, immediately calls PFM_ForceStop()
  *     (pfm.h -- stops HRTIM output AND keeps PFM_GetState() truthful)
  *     and latches a software fault, queried/cleared via
  *     GateDriver_FaultIsLatched()/GateDriver_FaultClear() -- unified
@@ -35,9 +36,10 @@ extern "C" {
  *     already configured as plain inputs before this.
  *
  * Deliberately narrow, unlike the sibling PFM-STM32G474 project's
- * gate_driver.c/fault_pins.c: no debounce, no per-pin polarity/callback
- * table, no fault logging -- one polarity setting for the whole group,
- * one shared latch. These 12 pins remain distinct from, and independent
+ * gate_driver.c/fault_pins.c: no debounce, no per-pin callback
+ * table, no fault logging -- one polarity setting for the whole group (compile
+ * time), a per-input on/off switch and nickname (gds_inputs.h, runtime), one
+ * shared latch. These 12 pins remain distinct from, and independent
  * of, the PC10/HRTIM1_FLT6 native hardware fault mechanism: that one
  * protects autonomously in silicon even if the CPU is hung; this one
  * needs the EXTI interrupt to actually run.
@@ -49,8 +51,8 @@ extern "C" {
    legitimately differ if a pin is toggling. */
 uint16_t GateDriver_Read(void);
 
-/* Re-reads all 12 pins and evaluates them against GDS_FAULT_POLARITY
-   (ctrlr_config.h). If any pin is in its fault state, immediately
+/* Re-reads all 12 pins and evaluates them (gds_inputs.h: the compiled
+   polarity, switched-on inputs only). If any such pin is in its fault state, immediately
    force-stops HRTIM output (PFM_ForceStop()) and latches the fault.
    Called from the 7 EXTI IRQ handlers that share PE0..PE11's
    interrupt lines (stm32g4xx_it.c) -- safe to call from ISR context,

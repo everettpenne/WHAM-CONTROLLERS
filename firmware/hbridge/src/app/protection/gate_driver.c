@@ -10,14 +10,12 @@
  */
 
 #include "gate_driver.h"
+#include "gds_inputs.h"
 #include "ctrlr_config.h"
 #include "hrtim.h"
 #include "pfm.h"
 #include "board_io.h"
 #include "state_machine.h"
-
-/* GateDriverStatus_01..12 = bits 0..11 of BoardIo_ReadGateDriverStatus(). */
-#define GDS_PIN_MASK   (0x0FFFU)
 
 /* Set only from GateDriver_CheckFault() (ISR context, EXTI0..EXTI4,
    EXTI9_5, EXTI15_10 -- see stm32g4xx_it.c), cleared only from
@@ -42,17 +40,9 @@ void GateDriver_CheckFault(void)
 
     g_dbgEdges++;
 
-    /* See ctrlr_config.h's GDS_FAULT_POLARITY comment -- exactly the
-       "bitwise read PE0..PE11, fault on HIGH if normally-low / fault
-       on LOW if normally-high" logic requested when this was added. */
-    if (GDS_FAULT_POLARITY == GDS_NORMALLY_LOW)
-    {
-        badBits = raw & GDS_PIN_MASK;
-    }
-    else
-    {
-        badBits = (uint16_t)(~raw) & GDS_PIN_MASK;
-    }
+    /* Which pins are in their fault state is gds_inputs.c's call: the compiled polarity (GDS_FAULT_POLARITY,
+       ctrlr_config.h) applied to the pins that are switched on (GDS:ENAble). A switched-off input never counts. */
+    badBits = GdsInputs_FaultBits(raw);
 
     /* DEBUG:FAULT:BYPASS (state_machine.h): with the bypass on, a bad pin neither force-stops the output nor latches --
        otherwise this EXTI path would kill a shot the state machine has been told to ignore this input for, and

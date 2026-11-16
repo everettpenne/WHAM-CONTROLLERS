@@ -51,13 +51,14 @@ does not have are left alone on recall, so an older and a newer firmware can rea
 | Shot table, per phase | count (70), points (71) | 14 bytes per point (t_us, freq_mHz, a duty per phase U, V, W), 18 per record |
 | Target table | count (66), points (67) | 8 bytes per point (t_us, millivolts), 30 per record: one voltage for every phase |
 | Target table, per phase | count (72), points (73) | 16 bytes per point (t_us, a millivolts per phase), 15 per record |
+| Fault pins (2026-11-16) | GDS:ENAble mask (40, u32, bit 0 = input 1), the build's polarity (41, u8), the twelve nicknames as one string `a,-,b,...` (42) | **recall switches inputs off**: see `*RCL`'s `GDSOFF=`; the polarity is checked, not applied |
 | HVPS curve | count (68), points (69) | 8 bytes per point (Hz, volts as floats), 30 per record; count 0 = the linear default |
 
 **Which table format a save uses.** A shot or target whose phases all have the same value at every point is saved in
 the original format (ids 64-67), byte for byte as before the three loops, so ordinary profiles are the same size and
 older firmware can read them; one whose phases differ is saved in the per-phase format (ids 70-73). A recall accepts
 either, and an original-format table gives every phase that value. The worst case -- both series at their full 500
-points with different values on every phase, plus the HVPS curve -- is 15,656 of the 16,336 bytes a slot holds
+points with different values on every phase, plus the HVPS curve -- is 15,693 of the 16,336 bytes a slot holds
 (a host test saves and recalls exactly that). Older firmware reading a newer save skips the records it does not know
 (loops 2 and 3, the per-phase tables), so a per-phase profile recalls there with that table missing.
 
@@ -101,7 +102,7 @@ last 4 KiB       QSPI:SELFtest scratch sector
 * **Product magic.** HBRIDGE writes `HSPF`, XREX `WSPF`. The two controllers share this board and chip; each
   reads the other's data as "corrupt" in its catalog and never decodes it (the field ids overlap).
 * **Streaming.** A full profile is about 5.5 KB with a 500-point shot and about 9.5 KB with both tables full
-  (15,656 bytes with per-phase tables full),
+  (15,693 bytes with per-phase tables full),
   and free RAM is about 14 KB, so tables are never copied: they are encoded straight from the live table into
   flash (a counting pass first, because the header needs the length) and decoded straight from flash into the
   live table, with the whole payload's CRC verified before anything is applied.

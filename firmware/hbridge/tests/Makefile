@@ -17,7 +17,7 @@ CFLAGS  := -std=gnu11 -Wall -Wextra -Werror -g -I. -I$(ROOT)/src/drivers \
 
 SCPI    := $(ROOT)/src/middleware/scpi/scpi_parser.c
 SCPI_UTIL := $(ROOT)/src/middleware/scpi/scpi_util.c
-TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_settings $(OUT)/test_closed_loop $(OUT)/test_shot_trigger $(OUT)/test_charge
+TESTS   := $(OUT)/test_scpi_parser $(OUT)/test_scpi_util $(OUT)/test_command_table $(OUT)/test_state_machine $(OUT)/test_supply_mode $(OUT)/test_shot_profile $(OUT)/test_pid_core $(OUT)/test_feedback $(OUT)/test_target_profile $(OUT)/test_hvps_curve $(OUT)/test_phase_mask $(OUT)/test_settings_codec $(OUT)/test_profile_store $(OUT)/test_device_identity $(OUT)/test_settings $(OUT)/test_closed_loop $(OUT)/test_shot_trigger $(OUT)/test_charge $(OUT)/test_gds_inputs
 
 .PHONY: all run clean
 all: run
@@ -51,6 +51,10 @@ $(OUT)/test_shot_trigger: test_shot_trigger.c $(ROOT)/src/app/control/shot_start
 
 $(OUT)/test_charge: test_charge.c $(ROOT)/src/app/control/charge.c $(ROOT)/src/app/control/charge.h $(ROOT)/src/drivers/charge_out.h test_util.h | $(OUT)
 	$(CC) $(CFLAGS) -o $@ test_charge.c $(ROOT)/src/app/control/charge.c
+
+PROT := $(ROOT)/src/app/protection
+$(OUT)/test_gds_inputs: test_gds_inputs.c $(PROT)/gds_inputs.c $(PROT)/gds_inputs.h $(ROOT)/src/app/commands/cmd_gds.c fake_uart.c $(SCPI_UTIL) test_util.h | $(OUT)
+	$(CC) $(CFLAGS) -I$(ROOT)/src/app/commands -I$(ROOT)/src/app/sim -o $@ test_gds_inputs.c $(PROT)/gds_inputs.c $(ROOT)/src/app/commands/cmd_gds.c fake_uart.c $(SCPI_UTIL)
 
 $(OUT)/test_supply_mode: test_supply_mode.c $(ROOT)/src/app/control/supply_mode.c \
                          $(ROOT)/src/app/control/supply_mode.h test_util.h | $(OUT)
@@ -94,6 +98,7 @@ $(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(
 
 # the saved-profile glue against a fake control layer and the real tables, supply modes and flash store
 SET_SRC := $(SETTINGS)/settings.c $(SETTINGS)/settings_codec.c $(SETTINGS)/profile_store.c fake_nvstore.c fake_control.c \
+           $(ROOT)/src/app/protection/gds_inputs.c \
            $(SCPI_UTIL) fake_uart.c \
            $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
            $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/shot_profile.c \

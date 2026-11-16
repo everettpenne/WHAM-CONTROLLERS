@@ -90,6 +90,10 @@ typedef enum
     SETF_X_KI             = 36,
     SETF_X_KD             = 37,
 
+    SETF_GDS_ENABLE_MASK  = 40,   /* GDS:ENAble as a bitmask, bit 0 = input 1 (2026-11-16) */
+    SETF_GDS_POLARITY     = 41,   /* the build's fault polarity when saved (1 NORMALLY_LOW, 0 NORMALLY_HIGH): checked on recall, not applied */
+    SETF_GDS_NICKNAMES    = 42,   /* GDS:NICKname 1..12 as one string: "name1,name2,...", "-" for none */
+
     SETF_SHOT_COUNT       = 64,   /* tables: see above */
     SETF_SHOT_POINTS      = 65,
     SETF_TARGET_COUNT     = 66,
@@ -114,7 +118,9 @@ typedef enum
 #define SET_SHOT3_CHUNK_POINTS  (255U / SET_SHOT3_POINT_BYTES)
 #define SET_TARGET3_CHUNK_POINTS (255U / SET_TARGET3_POINT_BYTES)
 
-typedef enum { SETK_U8, SETK_U32, SETK_F32 } settings_kind_t;
+typedef enum { SETK_U8, SETK_U32, SETK_F32, SETK_STR } settings_kind_t;
+
+#define SET_GDS_NICK_BUF  (192U)   /* 12 names of up to 15 characters, 11 commas, and the terminator */
 
 /* What a field has one value PER (the channel byte of its records is that index) */
 typedef enum
@@ -175,6 +181,9 @@ typedef struct
     float    clVpeak;
     float    clVscale;
     uint8_t  clBranch;
+    uint32_t gdsEnableMask;
+    uint8_t  gdsPolarity;
+    char     gdsNicks[SET_GDS_NICK_BUF];
     settings_plant_t plant[SET_PLANT_COUNT];
     settings_xloop_t xloop[SET_XLOOPS];
     settings_plant_t xplant[SET_MAX_INSTANCES];     /* [extra loop * SET_PLANT_COUNT + plant] */

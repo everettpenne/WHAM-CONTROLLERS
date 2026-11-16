@@ -4,6 +4,7 @@
  * partial-failure rules, and a power cut during a save. The control layer is fake_control.c.
  */
 #include "settings.h"
+#include "gds_inputs.h"
 #include "fake_nvstore.h"
 #include "control_runtime.h"
 #include "supply_mode.h"
@@ -596,6 +597,93 @@ static void TestPerChannelTables(void)
 
 /* the largest profile there can be -- both series full with a different value on every phase, and the HVPS curve --
    still fits a slot */
+/* A shot with an output-off gap (a 0 Hz setpoint, 2026-11-16) is saved as an ordinary uniform point (freq 0, duty 0) and
+   recalls through ShotProfile_Append, which accepts it (never as the first point). */
+static void TestShotWithGap(void)
+{
+    settings_snapshot_t s1;
+    settings_tables_t t1, t2;
+    settings_recall_result_t res;
+    shot_setpoint_t sp;
+
+    ResetAll();
+    SetLiveState();
+    CHECK(ShotProfile_AppendUniform(0U, 20000000UL, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_AppendUniform(3000U, 0U, 0U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_AppendUniform(5000U, 25000000UL, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_AppendUniform(8000U, 25000000UL, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_IsComplete() != 0U && ShotProfile_HasGaps() != 0U && ShotProfile_IsUniform() != 0U);
+    Settings_Capture(&s1);
+    Settings_LiveTables(&t1);
+    CHECK(Settings_Save(6U, "gap", "v0.11") == PROFILE_OK);
+
+    ShotProfile_Clear();
+    CHECK(Settings_Recall(6U, &res) == PROFILE_OK && res.apply.failed == 0U);
+    Settings_LiveTables(&t2);
+    CHECK(t1.shot.count == 4U && t2.shot.count == 4U && t1.shot.crc == t2.shot.crc);
+    CHECK(ShotProfile_IsComplete() != 0U && ShotProfile_HasGaps() != 0U);
+    CHECK(ShotProfile_Get(1U, &sp) == 1U && sp.tUs == 3000U && sp.freqMilliHz == 0U && sp.dutyHundredths[0] == 0U);
+    CHECK(PFM_GetSource() == PFM_SOURCE_PROFILE);
+}
+
+/* The fault-pin configuration travels with a save (2026-11-16): which inputs are on, their nicknames, the build's polarity. */
+extern unsigned int g_fakeGdsChecks;
+
+static void TestGdsConfig(void)
+{
+    settings_snapshot_t snap, insp;
+    settings_tables_t t;
+    settings_decode_info_t dinfo;
+    profile_info_t info;
+    settings_recall_result_t res;
+
+    ResetAll();
+    SetLiveState();
+    GdsInputs_Reset();
+    (void)GdsInputs_SetEnabled(3U, 0U);
+    (void)GdsInputs_SetEnabled(12U, 0U);
+    CHECK(GdsInputs_SetNickname(1U, "PhaseU_Hi") == 1U && GdsInputs_SetNickname(7U, "Water.3") == 1U);
+    Settings_Capture(&snap);
+    CHECK(snap.gdsEnableMask == 0x7FBU && snap.gdsPolarity == GdsInputs_PolarityIsNormallyLow());
+    CHECK_STR(snap.gdsNicks, "PhaseU_Hi,-,-,-,-,-,Water.3,-,-,-,-,-");
+    CHECK(Settings_Save(7U, "gds", "v0.11") == PROFILE_OK);
+    CHECK(Settings_Inspect(7U, &insp, &t, &dinfo, &info) == PROFILE_OK && SnapEqual(&snap, &insp));
+    CHECK(dinfo.unknown == 0U);
+
+    GdsInputs_Reset();                                  /* a reboot: everything on, no names */
+    CHECK(GdsInputs_EnabledMask() == 0x0FFFU && GdsInputs_Nickname(1U)[0] == '\0');
+    g_fakeGdsChecks = 0U;
+    CHECK(Settings_Recall(7U, &res) == PROFILE_OK && res.apply.failed == 0U);
+    CHECK(GdsInputs_EnabledMask() == 0x7FBU && GdsInputs_IsEnabled(3U) == 0U && GdsInputs_IsEnabled(12U) == 0U);
+    CHECK_STR(GdsInputs_Nickname(1U), "PhaseU_Hi");
+    CHECK_STR(GdsInputs_Nickname(7U), "Water.3");
+    CHECK(GdsInputs_Nickname(2U)[0] == '\0');
+    CHECK(res.apply.gdsOff == 2U);                      /* reported, so the reply says GDSOFF=2 */
+    CHECK(g_fakeGdsChecks >= 1U);                       /* the pins are re-checked after the change */
+
+    /* a save made under the other polarity: the mask still applies, the mismatch is named */
+    {
+        uint8_t other = (uint8_t)(GdsInputs_PolarityIsNormallyLow() != 0U ? 0U : 1U);
+
+        insp.gdsPolarity = other;
+        Settings_Apply(&insp, &res.apply, &res.modeChanged);
+        CHECK(res.apply.failed == 1U && strstr(res.apply.failedNames, "GDS:POLarity") != NULL);
+    }
+
+    /* a save without any fault-pin field (an older firmware's) leaves the live configuration alone */
+    {
+        uint8_t payload[2U] = { 0U, 0U };
+        settings_snapshot_t old;
+
+        (void)payload;
+        SettingsCodec_Clear(&old);
+        (void)GdsInputs_SetEnabled(5U, 0U);
+        Settings_Apply(&old, &res.apply, &res.modeChanged);
+        CHECK(GdsInputs_IsEnabled(5U) == 0U && res.apply.gdsOff == 0U);
+    }
+    GdsInputs_Reset();
+}
+
 static void TestWorstCaseFits(void)
 {
     settings_recall_result_t res;
@@ -634,6 +722,8 @@ int main(void)
     TestTimingOrder();
     TestSaveCut();
     TestPerChannelTables();
+    TestShotWithGap();
+    TestGdsConfig();
     TestWorstCaseFits();
     return test_report("test_settings");
 }

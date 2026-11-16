@@ -190,3 +190,7 @@ ctl_set_result_t Control_SetLimiterVscale(float v) { if (v <= 0.0f) { return CTL
 float Control_GetLimiterVscale(void) { return Control_Loop()->cfg.limiterVscale; }
 ctl_set_result_t Control_SetHvpsAbove(uint8_t a) { Control_Loop()->cfg.hvpsAbove = (a != 0U) ? 1U : 0U; return CTL_SET_OK; }
 uint8_t Control_GetHvpsAbove(void) { return Control_Loop()->cfg.hvpsAbove; }
+
+/* the gate-driver fault re-check a recalled fault-pin configuration asks for: counted, no hardware */
+unsigned int g_fakeGdsChecks = 0U;
+void GateDriver_CheckFault(void) { g_fakeGdsChecks++; }

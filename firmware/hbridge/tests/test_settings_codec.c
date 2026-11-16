@@ -6,7 +6,7 @@
 #include "test_util.h"
 
 /* every record a fully populated snapshot encodes: 18 system fields, loop 1's gains, and the extra loops' */
-#define ALL_RECORDS (18U + 3U * SET_PLANT_COUNT + SET_XLOOPS * (4U + 3U * SET_PLANT_COUNT))
+#define ALL_RECORDS (21U + 3U * SET_PLANT_COUNT + SET_XLOOPS * (4U + 3U * SET_PLANT_COUNT))
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +38,9 @@ static void FillAll(settings_snapshot_t *s)
     s->clVpeak = 1.5f;
     s->clVscale = 900.0f;
     s->clBranch = 0U;
+    s->gdsEnableMask = 0x7FBU;
+    s->gdsPolarity = 0U;
+    strcpy(s->gdsNicks, "PhaseU_Hi,-,-,-,-,-,Water.3,-,-,-,-,A.B-c+d_1");
     s->plant[SET_PLANT_HVPS].kp = 4000.0f;
     s->plant[SET_PLANT_HVPS].ki = 200000.0f;
     s->plant[SET_PLANT_HVPS].kd = 0.001f;

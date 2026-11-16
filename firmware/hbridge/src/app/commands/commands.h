@@ -38,7 +38,8 @@ extern "C" {
  *   cmd_adc.c      ADC:* (the four analog inputs, PA0/PA1/PC0/PB0)
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, DEBUG:FAULT:BYPASS, GENERAL:TEST:FAULT
- *   cmd_io.c       GDS?, GDS:LAST?, DIAGnostic:LEDs?, EXTernal:TRIGger*
+ *   cmd_io.c       DIAGnostic:LEDs?, EXTernal:TRIGger*
+ *   cmd_gds.c      GDS?, GDS:LAST?, GDS:POLarity?, GDS:ENAble, GDS:NICKname (the 12 GateDriverStatus fault inputs)
  *   cmd_charge.c   CHARGE:FREQuency, CHARGE:STATus? (the PG0 frequency output)
  *   cmd_pfmin.c    PFMIN:*
  *   cmd_phase.c    PHASe:ENAble/SELect (which of U, V, W drive their gate drivers)
@@ -128,7 +129,7 @@ void cmd_config_channels(uart_instance_t *inst, char *args); /* CONFig:CHANnels?
  * -- a pure diagnostic snapshot, unaffected by and independent of
  * GDS_FAULT_POLARITY/the GateDriverStatus fault interrupt (same 12
  * pins, but a separate mechanism -- see gate_driver.h). One HIGH/LOW
- * state per pin, on a single OK line -- see commands.c for the exact
+ * state per pin, on a single OK line -- see cmd_gds.c for the exact
  * format. */
 void cmd_gds_query(uart_instance_t *inst, char *args); /* GDS? -- OK 01=HIGH|LOW ... 12=HIGH|LOW */
 void cmd_sys_id_query(uart_instance_t *inst, char *args); /* SYS:ID? -- OK serial= uid= flashuid= product= hw= fw= commit= label= verified= */
@@ -308,6 +309,11 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r);   /* ERR for
 void CmdTarget_Discard(void);                                      /* drops the target profile */
 
 void cmd_gds_last_query(uart_instance_t *inst, char *args);       /* GDS:LAST? -- pins at the last latched fault */
+void cmd_gds_polarity_query(uart_instance_t *inst, char *args);   /* GDS:POLarity? -- OK NORMALLY_HIGH|NORMALLY_LOW (compile time) */
+void cmd_gds_enable(uart_instance_t *inst, char *args);           /* GDS:ENAble <input 0-12> <0|1> -- switch a fault input off/on */
+void cmd_gds_enable_query(uart_instance_t *inst, char *args);     /* GDS:ENAble? [input] -- OK <0|1> or OK 01=1 ... 12=1 */
+void cmd_gds_nickname(uart_instance_t *inst, char *args);         /* GDS:NICKname <input 1-12> <name|-> */
+void cmd_gds_nickname_query(uart_instance_t *inst, char *args);   /* GDS:NICKname? [input] -- OK <name|-> or OK 01=- ... 12=- */
 /* External shot trigger (a rising edge on PF15 while ARMED starts the shot; shot_trigger.h) */
 void cmd_ext_trigger(uart_instance_t *inst, char *args);              /* EXTernal:TRIGger <0|1> */
 void cmd_ext_trigger_query(uart_instance_t *inst, char *args);        /* EXTernal:TRIGger? -- OK <0|1> */

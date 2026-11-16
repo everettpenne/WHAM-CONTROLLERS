@@ -26,7 +26,7 @@ typedef enum
     ERR_INVALID_CHANNEL     = 11,  /* channel (XREX: 1-N) or control loop (HBRIDGE: 1) not valid */
     ERR_INVALID_ARGS        = 12,  /* wrong argument count, not a number, or out of range */
     ERR_INVALID_STATE       = 13,  /* not allowed in the current state */
-    ERR_INVALID_NICKNAME    = 14,  /* XREX only: CHANnel:NICKname rules */
+    ERR_INVALID_NICKNAME    = 14,  /* nickname rules: XREX CHANnel:NICKname, HBRIDGE GDS:NICKname */
     ERR_EXT_ENABLE_LOW      = 15,  /* XREX only: EXTernal:ENAble on and the PF13 interlock reads LOW */
     /* 16: retired (an old XREX external-trigger coupling) -- do not reuse */
     ERR_FWUPDATE            = 17,  /* FWUPdate:* flash/CRC/image/option-byte failure */

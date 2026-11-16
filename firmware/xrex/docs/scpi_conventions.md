@@ -66,7 +66,7 @@ one; a product simply never sends a code it has no use for. `src/middleware/scpi
 | 11 | `ERR_INVALID_CHANNEL` | XREX: channel not 1-N. HBRIDGE: control loop not 1 (the only loop; 0 = all where accepted) | yes | yes |
 | 12 | `ERR_INVALID_ARGS` | wrong argument count, not a number, or out of range | yes | yes |
 | 13 | `ERR_INVALID_STATE` | not allowed in the current state (`ARM` when not IDLE, `FIRE` when not ARMED, settings changed while running, ...) | yes | yes |
-| 14 | `ERR_INVALID_NICKNAME` | channel nickname rules | yes | -- |
+| 14 | `ERR_INVALID_NICKNAME` | nickname rules: XREX `CHANnel:NICKname`, HBRIDGE `GDS:NICKname` (gate-driver input) | yes | yes |
 | 15 | `ERR_EXT_ENABLE_LOW` | `EXTernal:ENAble` is on and the PF13 interlock reads LOW | yes | -- |
 | 16 | (retired) | an old XREX external-trigger coupling; do not reuse | -- | -- |
 | 17 | `ERR_FWUPDATE` | `FWUPdate:*` flash/CRC/image/option-byte failure | yes | yes |

@@ -31,6 +31,7 @@ typedef struct
     uint16_t applied;
     uint16_t failed;
     char     failedNames[96];   /* comma-separated, truncated if long */
+    uint16_t gdsOff;            /* GateDriverStatus inputs the applied save left switched OFF (0 when it had no fault-pin settings) */
 } settings_apply_result_t;
 
 /* Applies every scalar marked present in *s. *modeChanged is set if the supply mode was changed. */

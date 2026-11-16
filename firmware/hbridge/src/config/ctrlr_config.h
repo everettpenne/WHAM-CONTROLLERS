@@ -85,49 +85,39 @@
 #endif
 
 /* --------------------------------------------------------------------------
- * GateDriverStatus fault polarity (compile-time)
+ * GateDriverStatus fault inputs (compile-time; the supply config)
  *
- * GDS_NORMALLY_HIGH -- pins read HIGH in good operation;
- *                      a LOW reading is a fault.
- * GDS_NORMALLY_LOW  -- pins read LOW in good operation;
- *                      a HIGH reading is a fault.
+ * GDS_FAULT_POLARITY -- which level on PE0..PE11 is a fault. Set it here, before building and flashing; there is no
+ * runtime command to change it (GDS:POLarity? reports what a board was built with).
  *
- * Governs both gate_driver.c's GateDriver_CheckFault() (the EXTI-driven
- * fault interrupt on PE0..PE11, see gate_driver.h) and nothing else --
- * GDS? (commands.c) is a raw, polarity-agnostic HIGH/LOW readback and
- * does not consult this value.
+ *   GDS_NORMALLY_HIGH -- pins read HIGH in good operation; a LOW reading is a fault.
+ *   GDS_NORMALLY_LOW  -- pins read LOW in good operation;  a HIGH reading is a fault.
  *
- * Set to NORMALLY_LOW per direct confirmation against this board's
- * actual gate driver ICs, 2026-09-08 -- matching the sibling
- * PFM-STM32G474 project's own configured default (GDS_FAULT_POLARITY =
- * GDS_NORMALLY_LOW in supply_config.h), even though that project's own
- * comment calls NORMALLY_HIGH "the safest" choice in the abstract (a
- * disconnected pin reads LOW and immediately trips) -- the actual wiring
- * on real hardware is the deciding fact here, not the abstract argument.
+ * NORMALLY_HIGH for the HBRIDGE supplies, per direct instruction 2026-11-13 (it had been NORMALLY_LOW since
+ * 2026-09-08, inherited from the sibling projects). Consequence, known before choosing it: an input with nothing
+ * driving it reads LOW (or floats, the pins have no pull-up: GPIO_NOPULL) and so is a fault. A bench board, or a
+ * supply with fewer than 12 gate-driver status signals wired, will latch FAULT at boot until the unused inputs are
+ * either wired or switched off -- at runtime with GDS:ENAble <n> 0 (RAM only, lost at reboot), or for good by clearing
+ * their bits in GDS_DEFAULT_ENABLE_MASK below.
  *
- * Known consequence, confirmed before choosing this value, not
- * discovered by surprise: a GDS? snapshot taken earlier this session
- * showed GateDriverStatus_03 (PE2) already reading HIGH while the other
- * 11 pins read LOW. Under NORMALLY_LOW, that pin is *already* a fault
- * condition -- expect GateDriver_CheckFault() to latch a fault on it as
- * soon as this interrupt is live (very possibly immediately at boot, if
- * that pin is still HIGH by then). That may well be surfacing a real,
- * previously-invisible fault condition, which is the whole point of
- * this feature -- see docs/changelog.txt.
- *
- * Single source of truth, unlike the sibling project's own documented
- * history (supply_config.h's own comment describes GDS_FAULT_POLARITY
- * once being defined twice -- once there, once in gate_driver.h -- with
- * gate_driver.h's #ifndef silently winning the race every time,
- * making the copy in supply_config.h dead). Not a risk here structurally:
- * gate_driver.h includes THIS file rather than defining anything
- * itself, and this is the only place GDS_NORMALLY_HIGH/LOW/
- * GDS_FAULT_POLARITY are ever defined.
+ * Governs gate_driver.c's GateDriver_CheckFault() (the EXTI-driven fault interrupt on PE0..PE11, via gds_inputs.c)
+ * and nothing else -- GDS? is a raw, polarity-agnostic HIGH/LOW readback. Defined only here: gate_driver.h and
+ * gds_inputs.c include this file and define nothing of their own.
  * -------------------------------------------------------------------------- */
 #define GDS_NORMALLY_HIGH    (0U)
 #define GDS_NORMALLY_LOW     (1U)
 
-#define GDS_FAULT_POLARITY   GDS_NORMALLY_LOW
+#define GDS_FAULT_POLARITY   GDS_NORMALLY_HIGH
+
+#if (GDS_FAULT_POLARITY != GDS_NORMALLY_HIGH) && (GDS_FAULT_POLARITY != GDS_NORMALLY_LOW)
+#error "GDS_FAULT_POLARITY must be GDS_NORMALLY_HIGH or GDS_NORMALLY_LOW"
+#endif
+
+/* Which GateDriverStatus inputs are switched ON at every boot: bit 0 = GateDriverStatus_01 ... bit 11 = _12. 0x0FFF = all
+   twelve (the safe default). A cleared bit means that input is not evaluated from power-up, until GDS:ENAble <n> 1 --
+   only for an input that is genuinely not wired on this supply. GDS:ENAble changes it at runtime; a reboot
+   returns to this value. */
+#define GDS_DEFAULT_ENABLE_MASK   (0x0FFFU)
 
 /* --------------------------------------------------------------------------
  * Supply modes and their limits (added 2026-09-29)

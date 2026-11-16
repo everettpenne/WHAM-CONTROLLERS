@@ -252,9 +252,9 @@ Consequences for the front-end:
 ```
 
 The first number is **hexadecimal, with no `0x`**: the raw levels of the 12 gate-driver status inputs at the moment the fault latched, bit 0 =
-input 01 (the lowest digit's lowest bit), bit 11 = input 12. `101` is `0001 0000 0001` binary: inputs 01 and 09. In the current build a set bit
-means the input is in its fault state (the polarity is normally low); the build's polarity setting decides this, so show it as "input 01 and 09 read HIGH"
-rather than hard-coding the meaning if the firmware may change. The second number counts fault checks since boot and is only a rough activity measure. Limits:
+input 01 (the lowest digit's lowest bit), bit 11 = input 12. `101` is `0001 0000 0001` binary: inputs 01 and 09. Which level is the fault depends on the build's polarity (`GDS:POLarity?`): on HBRIDGE (built `NORMALLY_HIGH` since 2026-11-13) a HIGH pin is healthy and the
+**faulted inputs are the cleared bits** (`FFB` = input 03 read LOW); under `NORMALLY_LOW` a set bit is the faulted input. Read the polarity from the controller
+rather than hard-coding the meaning. An input switched off with `GDS:ENAble` is never counted, and `GDS:NICKname?` gives each input's label. The second number counts fault checks since boot and is only a rough activity measure. Limits:
 it is kept in RAM (gone at reset), is **not** cleared by `FAULT:CLEar` (it still shows the previous latch until a new one overwrites it, so use it only when `FAULT:SOURces?`
 currently reports `GATEDRV=1`), says nothing about the other sources, and **cannot name a phase** because the firmware has no map from input number to phase or gate driver.
 XREX has no `GDS:LAST?`; it names the channel and category in `STATE?` instead.

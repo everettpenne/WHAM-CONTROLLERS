@@ -39,6 +39,9 @@ is the only way to find out that a value was clamped (several commands clamp sil
 | `SOURce:STOP` | `OK` | stops the output, back to `IDLE` |
 | `CONFig:CHANnels?` | `OK <n>` | number of drive channels the firmware was built with |
 | `GDS?` | `OK 01=HIGH 02=LOW ...` | raw gate-driver status pin levels; diagnostic only |
+| `GDS:POLarity?` (HBRIDGE) | `OK NORMALLY_HIGH` or `OK NORMALLY_LOW` | which level is a fault: fixed when the firmware was built (HBRIDGE: NORMALLY_HIGH, a LOW pin is the fault) |
+| `GDS:ENAble <input 0-12> <0\|1>` / `GDS:ENAble? [input]` (HBRIDGE) | `OK` / `OK <0\|1>` or `OK 01=1 ... 12=1` | switches a gate-driver fault input off (0) or on (1); input 0 = all. **Off removes a protection: marked dangerous, IDLE or FAULT only (`ERR 13`), RAM only (all on again after a reboot).** Not for a front-end |
+| `GDS:NICKname <input 1-12> <name>` / `?` (HBRIDGE) | `OK` / `OK <name>` (`OK -` none), all twelve without an input | cosmetic label: 1-15 characters of letters, digits and `_ . - +`; `-` clears. `ERR 14` if invalid. RAM only |
 | `DIAGnostic:RSTCause?` | `OK ...` | why the controller last reset; `DIAGnostic:RSTCause:CLEar` forgets it |
 | `DIAGnostic:LEDs?` | `OK ...` | what the front-panel LEDs are being driven to (cosmetic) |
 | `*SAV`, `*RCL`, `CONFig:PROFile:*` | section 6 | stored settings |
@@ -331,7 +334,7 @@ Codes are the same in both products and never renumbered. Show the text to the o
 | 11 | invalid channel or loop number | a programming error |
 | 12 | wrong number of arguments, not a number, or out of range, or a precondition such as `SHOT:TIMing` not set | the text says which |
 | 13 | **not allowed in the current state** (`ARM` when not `IDLE`, a start when not `ARMED`, settings while running, an upload with no supply mode selected, an enabled channel's outputs not ready) | read `STATE?`; do not retry |
-| 14 | XREX: invalid nickname | fix the name |
+| 14 | invalid nickname (XREX `CHANnel:NICKname`, HBRIDGE `GDS:NICKname`) | fix the name |
 | 15 | XREX: the external-enable interlock is on and its input is LOW | satisfy the interlock, or the operator decides |
 | 17 | firmware update failed | not a front-end concern |
 | 18 | saved profile slot empty or corrupt, or the flash failed | choose another slot |

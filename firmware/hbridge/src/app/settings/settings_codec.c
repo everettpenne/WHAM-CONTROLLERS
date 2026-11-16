@@ -31,6 +31,9 @@ const settings_field_t kSettingsFields[] =
     { SETF_CL_VPEAK,        "CLOSEDloop:VPEAK", SETK_F32, SETS_SYSTEM, SYS_OFF(clVpeak)       },
     { SETF_CL_VSCALE,       "CLOSEDloop:VSCALE", SETK_F32, SETS_SYSTEM, SYS_OFF(clVscale)     },
     { SETF_CL_BRANCH,       "CLOSEDloop:BRANCH", SETK_U8, SETS_SYSTEM, SYS_OFF(clBranch)      },
+    { SETF_GDS_ENABLE_MASK, "GDS:ENAble",      SETK_U32, SETS_SYSTEM, SYS_OFF(gdsEnableMask) },
+    { SETF_GDS_POLARITY,    "GDS:POLarity",    SETK_U8,  SETS_SYSTEM, SYS_OFF(gdsPolarity)   },
+    { SETF_GDS_NICKNAMES,   "GDS:NICKname",    SETK_STR, SETS_SYSTEM, SYS_OFF(gdsNicks)      },
 
     { SETF_KP,              "kp",               SETK_F32, SETS_PLANT, PL_OFF(kp)             },
     { SETF_KI,              "ki",               SETK_F32, SETS_PLANT, PL_OFF(ki)             },
@@ -87,8 +90,13 @@ static uint16_t PresentBit(uint8_t fieldIdx, uint8_t ch)
     return (uint16_t)((uint16_t)fieldIdx * SET_MAX_INSTANCES + ch);
 }
 
-static uint8_t ValueLen(const settings_field_t *f)
+/* Bytes of a value as stored in a record: fixed for numbers; a string is its length without the terminator. */
+static uint8_t ValueLen(const settings_field_t *f, const uint8_t *value)
 {
+    if (f->kind == SETK_STR)
+    {
+        return (uint8_t)strlen((const char *)value);
+    }
     return (f->kind == SETK_U8) ? 1U : 4U;
 }
 
@@ -164,7 +172,7 @@ uint8_t SettingsCodec_EncodeScalars(const settings_snapshot_t *s, settings_sink_
                 continue;
             }
             if (SettingsCodec_EmitRecord(sink, ctx, f->id, (f->scope != SETS_SYSTEM) ? c : SET_CHANNEL_SYSTEM,
-                                         ValuePtrC(s, f, c), ValueLen(f)) == 0U)
+                                         ValuePtrC(s, f, c), ValueLen(f, ValuePtrC(s, f, c))) == 0U)
             {
                 return 0U;
             }
@@ -255,7 +263,18 @@ uint8_t SettingsCodec_StoreRecord(settings_snapshot_t *s, const settings_record_
         return 1U;
     }
     /* Known field: its shape must match exactly. */
-    if ((f->scope != SETS_SYSTEM) == (rec->ch == SET_CHANNEL_SYSTEM) || rec->len != ValueLen(f))
+    if ((f->scope != SETS_SYSTEM) == (rec->ch == SET_CHANNEL_SYSTEM))
+    {
+        return 0U;
+    }
+    if (f->kind == SETK_STR)
+    {
+        if ((rec->len == 0U) || (rec->len >= SET_GDS_NICK_BUF))     /* the one string field: nicknames */
+        {
+            return 0U;
+        }
+    }
+    else if (rec->len != ValueLen(f, NULL))
     {
         return 0U;
     }
@@ -266,6 +285,10 @@ uint8_t SettingsCodec_StoreRecord(settings_snapshot_t *s, const settings_record_
     }
     c = (f->scope != SETS_SYSTEM) ? rec->ch : 0U;
     memcpy(ValuePtr(s, f, c), rec->value, rec->len);
+    if (f->kind == SETK_STR)
+    {
+        ValuePtr(s, f, c)[rec->len] = 0U;
+    }
     SettingsCodec_SetPresent(s, fi, c);
     info->records++;
     return 1U;
@@ -321,6 +344,9 @@ void SettingsCodec_FormatValue(const settings_snapshot_t *s, uint8_t fieldIdx, u
     case SETK_U8:
         snprintf(out, n, "%u", (unsigned int)*p);
         break;
+    case SETK_STR:
+        snprintf(out, n, "%s", (const char *)p);
+        break;
     case SETK_U32:
     {
         uint32_t v;
@@ -366,7 +392,11 @@ uint8_t SettingsCodec_ValueEqual(const settings_snapshot_t *a, const settings_sn
     const settings_field_t *f = &kSettingsFields[fieldIdx];
     uint8_t c = (f->scope != SETS_SYSTEM) ? ch : 0U;
 
-    return (uint8_t)(memcmp(ValuePtrC(a, f, c), ValuePtrC(b, f, c), ValueLen(f)) == 0);
+    if (f->kind == SETK_STR)
+    {
+        return (uint8_t)(strcmp((const char *)ValuePtrC(a, f, c), (const char *)ValuePtrC(b, f, c)) == 0);
+    }
+    return (uint8_t)(memcmp(ValuePtrC(a, f, c), ValuePtrC(b, f, c), ValueLen(f, NULL)) == 0);
 }
 
 uint32_t SettingsCodec_Crc32(uint32_t crc, const uint8_t *data, size_t len)
