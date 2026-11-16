@@ -179,6 +179,9 @@ void cmd_shot_step(uart_instance_t *inst, char *args)
             Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, msg);
             break;
         }
+        case SHOT_APPEND_FIRST_OFF:
+            Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "The first setpoint (t=0) cannot be an off (0 Hz) one");
+            break;
         default:
             SendLimitErr(inst, res);
             break;
@@ -201,7 +204,8 @@ void cmd_shot_end(uart_instance_t *inst, char *args)
     }
     if (ShotProfile_IsComplete() == 0U)
     {
-        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID, "A shot needs at least two setpoints: t=0 and the end of the shot");
+        Scpi_SendErr(inst, ERR_TABLE_STEP_INVALID,
+                     "A shot needs at least two setpoints (t=0 and the end of the shot), the last two not 0 Hz");
         return;
     }
     g_shotUploadActive = 0U;

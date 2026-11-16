@@ -12,6 +12,7 @@
 #include "hrtim.h"
 #include "test_util.h"
 #include <string.h>
+#include <stdio.h>
 
 static shot_append_result_t Add(uint32_t t, uint32_t fHz, uint16_t dutyHund)
 {
@@ -459,6 +460,128 @@ static void TestStepForHalves(void)
     CHECK(ShotProfile_PeriodFor(0U, &(uint16_t){0}) == 0U);
 }
 
+/* Output-off gaps: a 0 Hz setpoint (2026-11-16). */
+static void TestGaps(void)
+{
+    uint16_t per, cmp[HRTIM_NUM_CHANNELS];
+    uint8_t last;
+    uint32_t n, onBefore = 0U, onAfter = 0U, offN = 0U;
+    uint64_t tick = 0U, offStart = 0U, offEnd = 0U;
+    uint8_t seenOff = 0U, seenOn2 = 0U, offBeforeOn = 0U;
+    uint16_t lastOffPer = 0U, firstOnAfterPer = 0U;
+
+    SupplyMode_Set(SUPPLY_MODE_HVPS);
+    ShotProfile_Clear();
+    /* the first cannot be off; nothing is stored for the refusal */
+    CHECK(ShotProfile_AppendUniform(0U, 0U, 5000U) == SHOT_APPEND_FIRST_OFF);
+    CHECK(ShotProfile_Count() == 0U);
+    CHECK(Add(0U, 20000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_AppendUniform(1000U, 0U, 0U) == SHOT_APPEND_OK);          /* off: no limits to meet, duty ignored */
+    CHECK(ShotProfile_AppendUniform(1500U, 0U, 9999U) == SHOT_APPEND_OK);       /* off again */
+    CHECK(ShotProfile_Count() == 3U && ShotProfile_HasGaps() == 1U);
+    CHECK(!ShotProfile_IsComplete());                                            /* ends in a gap */
+    CHECK(Add(3000U, 25000U, 4500U) == SHOT_APPEND_OK);                          /* back on */
+    CHECK(!ShotProfile_IsComplete());                                            /* the last two are not both on */
+    CHECK(Add(4000U, 25000U, 4500U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_IsComplete());
+    shot_setpoint_t sp;
+    CHECK(ShotProfile_Get(1U, &sp) == 1U && sp.freqMilliHz == 0U && sp.dutyHundredths[0] == 0U);
+    CHECK(ShotProfile_Get(2U, &sp) == 1U && sp.dutyHundredths[1] == 0U);          /* an off setpoint keeps no duty */
+
+    /* generator: on at 20 kHz (hold, on -> off) until 1000 us, off to 3000 us, then 25 kHz */
+    CHECK(ShotGen_Start(1U) == 1U);
+    while (ShotGen_Next(&per, cmp, &last) != 0U)
+    {
+        uint8_t off = (cmp[0] == 0U) ? 1U : 0U;
+
+        for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            CHECK(((cmp[ch] == 0U) ? 1U : 0U) == off);                          /* off means every channel */
+        }
+        if (off != 0U)
+        {
+            if (seenOff == 0U) { offStart = tick; }
+            seenOff = 1U;
+            offN++;
+            CHECK(per >= 1359U && per < 60000U);                                 /* >= the mode's shortest period (per1Min - 1) */
+            lastOffPer = per;
+            offEnd = tick + (uint64_t)per + 1U;
+        }
+        else if (seenOff == 0U)
+        {
+            onBefore++;
+            CHECK(per == 8499U);                                                 /* 170e6/20e3 - 1: held, not ramped toward 0 */
+        }
+        else
+        {
+            if (seenOn2 == 0U) { firstOnAfterPer = per; offBeforeOn = 1U; }
+            seenOn2 = 1U;
+            onAfter++;
+            CHECK(per == 6799U);                                                 /* 170e6/25e3 - 1 */
+        }
+        tick += (uint64_t)per + 1U;
+        if (last != 0U) { break; }
+    }
+    CHECK(onBefore > 0U && offN > 0U && onAfter > 0U && offBeforeOn == 1U);
+    printf("GOLDEN gap    n %lu off %lu start %llu end %llu\n", (unsigned long)(onBefore + offN + onAfter),
+           (unsigned long)offN, (unsigned long long)offStart, (unsigned long long)offEnd);
+    /* the gap starts at the first period boundary at or after 1000 us and ends within a period of 3000 us */
+    CHECK(offStart >= 1000ULL * 170U && offStart < 1000ULL * 170U + 8500U);
+    CHECK(offEnd >= 3000ULL * 170U && offEnd < 3000ULL * 170U + 6800U + 1360U);
+    CHECK(lastOffPer == 6799U);                                                  /* the gap ends with one period of the NEXT frequency */
+    CHECK(firstOnAfterPer == 6799U);
+    /* a gap of 2 ms at <= 60000 clocks per entry: at least 6 entries (2 ms = 340000 clocks), not one per period */
+    CHECK(offN >= 6U && offN < 20U);
+
+    /* the evaluator: off segments read 0 Hz, on -> off holds the start values */
+    ShotEval_Rewind();
+    uint32_t f; uint16_t d[HRTIM_NUM_CHANNELS];
+    CHECK(ShotEval_At(500U, &f, d) == 1U && f == 20000000U && d[0] == 5000U);   /* held, not ramped toward 0 */
+    CHECK(ShotEval_At(1200U, &f, d) == 1U && f == 0U && d[0] == 0U);
+    CHECK(ShotEval_At(2000U, &f, d) == 1U && f == 0U);
+    CHECK(ShotEval_At(3500U, &f, d) == 1U && f == 25000000U && d[0] == 4500U);
+
+    /* a gap that falls entirely inside one period (here 1 us in a 50 us period) is swallowed: the generator is
+       already past it when the period ends. It must still produce a valid shot. */
+    ShotProfile_Clear();
+    CHECK(Add(0U, 20000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(Add(100U, 20000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_AppendUniform(101U, 0U, 0U) == SHOT_APPEND_OK);            /* 1 us gap */
+    CHECK(Add(102U, 20000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(Add(300U, 20000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_IsComplete() && ShotGen_Start(1U) == 1U);
+    n = 0U; offN = 0U; uint8_t gapOpen = 0U, reopened = 0U;
+    while (ShotGen_Next(&per, cmp, &last) != 0U)
+    {
+        n++;
+        if (cmp[0] == 0U) { offN++; gapOpen = 1U; }
+        else if (gapOpen != 0U) { reopened = 1U; }
+        if (last != 0U) { break; }
+    }
+    CHECK(offN == 0U && reopened == 0U && n > 5U);
+
+    /* and a gap that follows a ramp: on -> on ramps up to the point before the gap */
+    ShotProfile_Clear();
+    CHECK(Add(0U, 20000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(Add(500U, 10000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotProfile_AppendUniform(600U, 0U, 0U) == SHOT_APPEND_OK);
+    CHECK(Add(700U, 10000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(Add(900U, 10000U, 5000U) == SHOT_APPEND_OK);
+    CHECK(ShotGen_Start(1U) == 1U);
+    uint16_t minOnPer = 0xFFFFU, maxOnPer = 0U;
+    while (ShotGen_Next(&per, cmp, &last) != 0U)
+    {
+        if (cmp[0] != 0U)
+        {
+            if (per < minOnPer) { minOnPer = per; }
+            if (per > maxOnPer) { maxOnPer = per; }
+        }
+        if (last != 0U) { break; }
+    }
+    CHECK(minOnPer == 8499U && maxOnPer == 16999U);       /* 20 kHz ... 10 kHz, nothing outside (the hold at 10 kHz, no ramp to 0) */
+    ShotProfile_Clear();
+}
+
 int main(void)
 {
     TestUploadRules();
@@ -471,5 +594,6 @@ int main(void)
     TestPerChannelGenerator();
     TestShotEval();
     TestStepForHalves();
+    TestGaps();
     return test_report("test_shot_profile");
 }

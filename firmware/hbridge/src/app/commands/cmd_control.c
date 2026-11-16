@@ -109,6 +109,9 @@ uint8_t Cmd_ReportCtlResult(uart_instance_t *inst, ctl_result_t r)
         case CTL_NO_SHOT:
             Scpi_SendErr(inst, ERR_TABLE_EMPTY, "An open-loop phase has no shot: upload one (SHOT:*), close its loop (PID:LOOPMODE) or disable it (PHASe:ENAble)");
             break;
+        case CTL_SHOT_HAS_GAPS:
+            Scpi_SendErr(inst, ERR_INVALID_STATE, "The shot has 0 Hz (output-off) setpoints, which an open-loop phase cannot follow while another is closed: remove them, close every phase, or disable the open ones");
+            break;
         case CTL_NEED_CLOSED:
             Scpi_SendErr(inst, ERR_INVALID_STATE, "SOURce:RUN needs every enabled phase closed (PID:LOOPMODE 0 1) or the open ones disabled (PHASe:ENAble)");
             break;

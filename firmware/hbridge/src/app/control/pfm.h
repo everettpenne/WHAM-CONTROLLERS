@@ -95,11 +95,21 @@ extern "C" {
  * them from `per` at apply time; the same principle applies here --
  * phase is still never stored, only per-channel duty).
  * -------------------------------------------------------------------------- */
+/* An output-off step (a 0 Hz gap of a shot, shot_profile.h): every compare is 0, which no on step ever has (the
+   compare is clamped to at least HRTIM_COMPARE_MIN). The playback disconnects the outputs for it and reconnects
+   them at the next on step; `per` of an off step is only how long the counters run until the next entry. */
+#define PFM_STEP_OFF_CMP   (0U)
+
 typedef struct
 {
     uint16_t per;
     uint16_t cmp[HRTIM_NUM_CHANNELS];
 } PFM_Step_t;
+
+static inline uint8_t PFM_StepIsOff(const PFM_Step_t *step)
+{
+    return (step->cmp[0] == PFM_STEP_OFF_CMP) ? 1U : 0U;
+}
 
 /* Pure function of `per` and a channel index: the Master-timer phase
  * offset (in HRTIM counts) for that channel at this period, evenly

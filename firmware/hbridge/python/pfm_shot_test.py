@@ -109,11 +109,18 @@ def make_setpoints(start_hz, end_hz, duty_start, duty_end, duration_ms):
             (t_us, int(round(end_hz * 1000)), int(round(duty_end * 100)))]
 
 
+OFF_PERIOD_MAX_CLOCKS = 60_000       # shot_profile.c: the longest period of an output-off gap
+
+
 def generate_profile(setpoints, mode, periods_per_entry=1):
     """Exact port of the firmware's generator (src/app/control/shot_profile.c,
     ShotGen_Next): the {per, cmp} of every switching period of a time-series
     shot, linear in time between setpoints, all in integer arithmetic. Returns
-    (per, cmp) as int arrays. setpoints = [(t_us, freq_mHz, duty_hundredths)]."""
+    (per, cmp) as int arrays. setpoints = [(t_us, freq_mHz, duty_hundredths)].
+
+    A setpoint with frequency 0 is an output-off gap (2026-11-16): off from its time to the next setpoint's;
+    on -> off holds the start values until the gap; the entries of a gap have cmp 0 and end with one period of
+    the NEXT setpoint's frequency (see the firmware's comment)."""
     fmin, fmax, dmin, dmax = MODE_LIMITS[mode]
     per1_min = -(-CLK_HZ // fmax)
     per1_max = CLK_HZ // fmin
@@ -122,14 +129,35 @@ def generate_profile(setpoints, mode, periods_per_entry=1):
     per, cmp_ = [], []
     tick, seg = 0, -1
     seg_start = seg_end = f0 = d0 = slope_f = slope_d = 0
+    off = False
     while tick < end:
         while seg < 0 or tick >= seg_end:
             seg += 1
             (ta, fa, da), (tb, fb, db) = setpoints[seg], setpoints[seg + 1]
             seg_start, seg_end, f0, d0 = ta * tpu, tb * tpu, fa, da
             dt = seg_end - seg_start
-            slope_f = _tdiv((fb - fa) * (1 << 32), dt)
-            slope_d = _tdiv((db - da) * (1 << 32), dt)
+            off = fa == 0
+            if fb == 0:
+                slope_f = slope_d = 0                    # on -> off: hold
+            else:
+                slope_f = _tdiv((fb - fa) * (1 << 32), dt)
+                slope_d = _tdiv((db - da) * (1 << 32), dt)
+        if off:
+            fb = setpoints[seg + 1][1]
+            final = 0
+            if fb != 0:
+                final = min(max((CLK_HZ * 1000 + fb // 2) // fb, per1_min), per1_max)
+            remaining = seg_end - tick
+            if final and remaining <= final + per1_min:
+                length = final
+            else:
+                r = remaining - final
+                chunks = -(-r // OFF_PERIOD_MAX_CLOCKS)
+                length = max(r // chunks, per1_min)
+            per.append(length - 1)
+            cmp_.append(0)
+            tick += length * periods_per_entry
+            continue
         elapsed = tick - seg_start
         f = f0 + ((slope_f * elapsed) >> 32)            # arithmetic shift = floor, as in C
         d = d0 + ((slope_d * elapsed) >> 32)
@@ -540,6 +568,15 @@ def selftest():
     per2, cmp2 = generate_profile([(0, 20_000_000, 4000), (5000, 20_000_000, 6000)], "HVPS")
     check(len(per2) == 100 and abs(cmp2[0] / per2[0] - .4) < 2e-4 and abs(cmp2[-1] / per2[-1] - .6) < 3e-3, "duty ramp 40 -> 60 % at constant frequency")
     check(make_setpoints(20000, 15000, 40, 60, 10) == ramp, "the CLI's two setpoints")
+    gap_sp = [(0, 20_000_000, 5000), (1000, 0, 0), (1500, 0, 9999), (3000, 25_000_000, 4500), (4000, 25_000_000, 4500)]
+    gp, gc = generate_profile(gap_sp, "HVPS")
+    off_i = [i for i, v in enumerate(gc) if v == 0]
+    gstart = int(sum(gp[:off_i[0]] + 1))
+    gend = int(sum(gp[:off_i[-1] + 1] + 1))
+    check(len(gp) == 53 and len(off_i) == 8 and gstart == 170_000 and gend == 510_000,
+          "gap shot: 53 entries, 8 off, gap from 170000 to 510000 clocks (C 'GOLDEN gap')")
+    check(gp[off_i[-1]] == 6799 and (gp[:off_i[0]] == 8499).all() and (gp[off_i[-1] + 1:] == 6799).all(),
+          "gap shot: held 20 kHz before, one 25 kHz period closes the gap, 25 kHz after")
     print("one duty per phase (tests/test_shot_profile.c 'GOLDEN perch' lines):")
     pc_sp = [(0, 125_000_000, [1000, 5000, 9000]), (6000, 100_000_000, [9000, 5000, 1000]), (10_000, 80_000_000, [2500, 7500, 9500])]
     pper, pcmp = generate_profile_channels(pc_sp, "LIMITER")

@@ -137,6 +137,16 @@ void HRTIM1_ApplyPfmStep(uint16_t per,
                          const uint16_t *cmp,
                          const uint16_t *phase);
 
+/* Output-off gaps inside a shot (pfm.c, added 2026-11-16). The counters keep running; only the outputs are
+   gated. GapEnter() disconnects every enabled channel's outputs at the end of one of its own periods, in channel order
+   (per/cmp = the ACTIVE step, so the last pulse is whole and every phase is off for the same time; waits up to about 1.7
+   periods); GapExit() reconnects them phase-locked at the next period boundaries (the new
+   period's registers must already be written; masks interrupts for at most about 1.7 periods) and returns 0, or
+   1 if the counters were not running. Both are called from the per-period interrupt. */
+void    HRTIM1_GapEnter(const uint8_t *channelEnabled, uint16_t per, const uint16_t *cmp);
+void    HRTIM1_ClearMasterPeriodFlag(void);   /* consumes the period interrupt that came due during GapEnter() */
+uint8_t HRTIM1_GapExit(const uint8_t *channelEnabled);
+
 #ifdef __cplusplus
 }
 #endif

@@ -466,6 +466,10 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
     {
         return CTL_NO_SHOT;
     }
+    if ((open != 0U) && (ShotProfile_HasGaps() != 0U))
+    {
+        return CTL_SHOT_HAS_GAPS;       /* gaps are played by the open-loop engine (pfm.c); a closed loop would wind up across one */
+    }
     if (g_fbSim != 1U)
     {
         uint16_t code = 0U;

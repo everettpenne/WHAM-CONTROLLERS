@@ -24,6 +24,15 @@
  * overshoots by less than one period, and the last setpoint's own values are
  * approached, not held).
  *
+ * OUTPUT-OFF GAPS (added 2026-11-16): a setpoint with frequency 0 means "output off from this time until the
+ * next setpoint's time"; the output comes back at the next setpoint's frequency and duty, as a step (no ramp out
+ * of off). A segment that runs from an ON setpoint into an OFF one holds the ON setpoint's values until the OFF
+ * time (to ramp first, put an ON setpoint just before it). The first setpoint cannot be off, and the last two
+ * must be on (a shot cannot end in, or inside the last segment as, a gap): ShotProfile_IsComplete() checks it.
+ * The generator marks an off period with every compare = 0 (PFM_STEP_OFF_CMP, pfm.h); pfm.c gates the HRTIM
+ * outputs for it. A gap starts at the first period at or after its time and ends within a period of its end.
+ * The duties of an off setpoint are not checked or used.
+ *
  * Units: time in microseconds; frequency in millihertz; duty in hundredths of
  * a percent (so 47.5 % is 4750). The wire takes Hz and percent with decimals
  * (Scpi_ParseScaled(), scpi_util.h).
@@ -56,7 +65,8 @@ typedef enum
     SHOT_APPEND_FREQ_LOW,       /* below the mode's minimum */
     SHOT_APPEND_FREQ_HIGH,      /* above the mode's maximum */
     SHOT_APPEND_DUTY_LOW,
-    SHOT_APPEND_DUTY_HIGH
+    SHOT_APPEND_DUTY_HIGH,
+    SHOT_APPEND_FIRST_OFF       /* the first setpoint (t = 0) cannot be an "off" (0 Hz) one */
 } shot_append_result_t;
 
 /* Drops every setpoint. */
@@ -73,12 +83,15 @@ uint8_t ShotProfile_BadChannel(void);
 /* 1 if every setpoint has the same duty on every channel (saved profiles keep the older, smaller format then). */
 uint8_t ShotProfile_IsUniform(void);
 
+/* 1 if any setpoint is an off (0 Hz) one. The closed-loop shot (control_runtime.c) does not support gaps. */
+uint8_t ShotProfile_HasGaps(void);
+
 uint16_t ShotProfile_Count(void);
 /* Time of the last setpoint = the shot's length; 0 with no setpoints. */
 uint32_t ShotProfile_DurationUs(void);
 /* 1 and *out filled for index < ShotProfile_Count(), else 0. */
 uint8_t  ShotProfile_Get(uint16_t index, shot_setpoint_t *out);
-/* A usable shot: at least two setpoints (the first is t = 0 by construction). */
+/* A usable shot: at least two setpoints (the first is t = 0 by construction), the last two on (not 0 Hz). */
 uint8_t  ShotProfile_IsComplete(void);
 
 /* ---- generator ---- */
@@ -90,7 +103,7 @@ uint8_t  ShotProfile_IsComplete(void);
 uint8_t ShotGen_Start(uint8_t periodsPerEntry);
 
 /* Produces the next entry. Returns 0 when the shot is over (nothing written);
-   otherwise 1, with `*per` and one compare per channel in `cmp[]` set,
+   otherwise 1, with `*per` and one compare per channel in `cmp[]` set (all compares 0 = an output-off period),
    and `*last` = 1 if no entry follows this one. The values satisfy
    SupplyMode_CheckStep() by construction (clamped onto the mode's limits). */
 uint8_t ShotGen_Next(uint16_t *per, uint16_t cmp[HRTIM_NUM_CHANNELS], uint8_t *last);
@@ -112,7 +125,8 @@ uint16_t ShotProfile_CompareFor(uint16_t per, uint32_t dutyHundredths);
 
 /* The shot's carrier frequency and per-channel duties at `tUs` into it: linear between setpoints, the
    last setpoint's values beyond the end -- the same integer interpolation the generator uses. Call with
-   non-decreasing times after ShotEval_Rewind(). Returns 0 (nothing written) without a complete shot. */
+   non-decreasing times after ShotEval_Rewind(). Returns 0 (nothing written) without a complete shot.
+   In an off segment *freqMilliHz is 0. */
 void    ShotEval_Rewind(void);
 uint8_t ShotEval_At(uint32_t tUs, uint32_t *freqMilliHz, uint16_t duty[HRTIM_NUM_CHANNELS]);
 

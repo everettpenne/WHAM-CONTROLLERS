@@ -1,6 +1,42 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-16  -  Shot: a 0 Hz setpoint is an output-off gap inside a shot  [host-tested; CONFIRMED ON HARDWARE (ECH, DSLogic)]
+-----------------------------------------------------------------------
+  Request: for the ECH-HVPS, allow a frequency point of 0 as "output off" at that time and a later non-zero point to turn it back on in the SAME shot (until now a shot was one continuous pulse train).
+  Design (option A, chosen with the operator): the HRTIM counters keep running through the gap; only the output pins are gated, with the same ODISR/OENR registers the cold start and PFM stop use.
+  - shot_profile.c: SHOT:STEP accepts frequency 0 (not as the first setpoint: SHOT_APPEND_FIRST_OFF; no limits or duty checked, duty stored as 0). ShotProfile_IsComplete() now also needs the last two on.
+    Segment kinds: ramp (on-on), hold (on-off: start values held until the gap, no ramp toward 0), off. The generator emits off entries with every compare 0 (PFM_STEP_OFF_CMP, pfm.h): chunks of at most
+    60000 clocks (the 16-bit period register), the last of them as long as the FIRST on period after the gap, so the period the playback sits in when the next on entry arrives is short. ShotEval_At() returns 0 Hz in a gap.
+  - hrtim.c: HRTIM1_GapEnter(): per channel, ODISR only once output 1 has fallen for this period (and the counter is past the SET compare), so the last pulse before a gap is whole, never a sliver; both outputs
+    low from then on. HRTIM1_GapExit(): the cold start's wait-and-connect inside the period interrupt, interrupts masked, channel 0 at the Master rollover where the new registers take effect, channel k at its
+    MASTER_CMPk, each force-ACTIVE as in HRTIM1_PWM_Start(). Spin bounded (1,000,000 loops per event, as the cold start); returns 1 on a timeout and pfm.c stops the shot.
+  - pfm.c: ApplyStep() wraps the old step write: into a gap = GapEnter THEN write the off step (written first, its compare of 2 < the SET at 16 would leave the output stuck high); out of a gap = write the step,
+    THEN GapExit. g_gated is cleared by PFM_Restart(). A gap is invisible to everything else (ring, refill, hold counter).
+  - Closed loop: gaps are refused (CTL_SHOT_HAS_GAPS, ERR 13) when an open-loop phase would follow a gapped shot while another phase is closed: a PID would wind up across the gap.
+  - Host: python/pfm_shot_test.py generate_profile() ported (selftest holds it to the C 'GOLDEN gap' line: 53 entries, 8 off, gap 170000..510000 clocks); new python/pfm_gap_test.py (bench test through the PFM
+    inputs: one long period = the gap, periods before/after, pulse counts, STATE IDLE); the practice controller (wham_sim.py) accepts 0 Hz like the firmware and shows the gap as one long captured period
+    (host/tests/test_sim_gaps.py). docs/command_reference.md SHOT section updated.
+  Known behaviour, by design: the gap starts at the first period boundary at or after its time and ends within a period of its end; reconnecting takes 1-2 periods (the masked spin is bounded by one period plus
+  two-thirds, ~170 us at 10 kHz: a UART byte can be lost then at 115200); the shot after a gap runs about 1-2 periods later than its table. A gap shorter than the period before it can be swallowed.
+  Tests: make -C tests passes (test_shot_profile 48050 checks incl. TestGaps); selftests pass; host UI tests pass; wham_build.py builds with no warnings (110836 bytes).
+  ON HARDWARE (ECH-HVPS WB-0001-8, flashed 2026-11-16 by fw_update.py through the hub, swap booted clean, bank 2; outputs looped to PFM_Input_1..4): python/pfm_gap_test.py PASS for gaps of 0.3 ms, 2 ms and
+  20 ms (HVPS 20 kHz -> 25 kHz): the pulse train before/after is exact (8499 / 6799 clocks), the gap is one missing stretch, input 1 (U) measures it to within 19 clocks (0.1 us) of the generator
+  (capture stamps are 16-bit: gaps are compared modulo 65536 clocks), V/W/UN about 0.9 period later (their last pulse before the gap is one period earlier: they are phase-shifted and GapEnter disables a
+  channel as soon as its pulse has fallen), 24-25 pulses after the gap as planned; no fault; the firmware's own interrupt spacing (PFM:GAPLOG?) sums to the planned gap and shows the one doubled spacing
+  where the reconnect spin swallows an interrupt (e.g. 13672 vs 6800 clocks). Test limitation: when a gap's wrapped value happens to look like a normal period (the 20 ms run, W) the test reports "found 0".
+  An earlier all-zero capture was the loopback cable not plugged in. Still NOT checked: pulse widths at the reconnect and the complement output during/around a gap (needs the logic analyzer), the Limiter modes.
+  Bench state left: the ECH runs this image with GDS:ENAble 0 0 (RAM only) and CONFig:MODE HVPS; the old v0.11 7577bf7d stays in bank 1 (fw_update.py --rollback).
+  DSLOGIC FINDINGS AND FIX (same day, DSLogic Plus, 20 MHz, 3 ms 19 kHz / 2 ms off / 5 ms 20 kHz, three captures): (1) capture 1 showed the last pulses before the gap cut short (U 3.4 us, W 21.5 us) -- GapEnter()
+  polled each timer's O1STAT flag, which does NOT track the pin. (2) Second version (disconnect when the counter is late in the period) gave whole main-output pulses but each phase was cut at its first period end, so the gap
+  differed by about 50 us between phases and by about 260 us between runs. (3) FINAL (build 474BFAC4, bank 2): HRTIM1_GapEnter() disconnects each phase at the end of one of ITS OWN periods, in channel order 0,1,2 (the order
+  HRTIM1_GapExit() reconnects in), and pfm.c consumes the Master period interrupt that came due while it waited (HRTIM1_ClearMasterPeriodFlag()) so no off entry is lost. Capture 110951: last main-output pulse before the gap
+  26.10/26.15/26.10 us (U/V/W, whole), complements 25.1-25.45 us (about 1 us truncated, accepted), no pulse narrower than 24.6 us anywhere, no shoot-through (0 samples with both outputs of a pair high), gap
+  start-to-start U 2051.0, UN 2049.5, V 2050.2, VN 2048.7, W 2049.2, WN 2047.8 us (spread 3.2 us; firmware interrupt spacing 2102 us: the 2 ms plus about one period of wait). pfm_gap_test.py PASS (4 inputs).
+  LIMITER: the gap is available there too (not tested at 75-125 kHz), but is not expected to be used: a Limiter at 50 % duty is about 0 V output, so the operator turns it down rather than off.
+  Earlier (pre-flash) note, superseded above: not checked on hardware (the ECH bridge refused TCP on 2026-11-16, see below): the reconnect timing and glitch behaviour at gap end (a narrow first pulse is possible: the cold start shortens it by up to the
+  SET offset), the complement output during a gap, ISR load on long gaps, the Limiter modes at 75-125 kHz. The ECH was running v0.11 commit 7577bf7d before this; revert image firmware/hbridge/build/revert/.
+
 2026-11-09  -  Same fix as XREX: serial receive can no longer be switched off by an overrun; USART2 priority 3 -> 1; DIAGnostic:UART?
 -----------------------------------------------------------------------
   Found from the hub's log of a LabVIEW shot on the bench XREX (WB-0003-4), 16:02: LabVIEW polled ~10 commands/s during FIRING; valid polls started

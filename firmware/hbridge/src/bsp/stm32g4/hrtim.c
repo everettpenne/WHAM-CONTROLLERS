@@ -811,6 +811,133 @@ void HRTIM1_PWM_Start(const uint8_t *channelEnabled)
        so no output is exactly correct here. */
 }
 
+/* ---- output-off gaps inside a shot (added 2026-11-16) ----------------------------------------------------
+   The counters keep running through a gap; only the output pins are gated, with the same OENR/ODISR registers
+   HRTIM1_PWM_Start()/Stop() use. Both functions are called from the per-period interrupt (pfm.c). */
+
+/* Disconnects the outputs of every enabled channel at the END of one of ITS OWN periods, so the last pulse of
+   each phase is a whole one, and in channel order 0, 1, 2 -- the order HRTIM1_GapExit() reconnects them in -- so
+   every phase is off for the same length of time (DSLogic capture 2026-11-16: disconnecting each phase at its
+   first period end instead cut V and W one period before U and left U's gap one period shorter than theirs).
+   `per` and `cmp` are the ACTIVE period and compares (the step written one interrupt ago, i.e. the one being
+   played now). A channel's timer counter is polled and its outputs disabled once the counter is in the last
+   stretch of its period (after the duty compare has fallen, before the wrap and the next SET): the complement
+   output 2, high from the fall of output 1 to the end of the period, loses at most the last ~200 clocks (~1 us).
+   The stretch ends 100 clocks before the wrap on purpose: the caller writes the off step right after this
+   returns, and that write must land BEFORE the Master rollover or the next period-interrupt overwrites it (a whole
+   off chunk of the gap was lost that way in the first version of this fix). Waits up to about 1.7 periods (channel
+   0 at its period end, channel 1 and 2 at the next ones). First version polled the timers' O1STAT flag instead:
+   it does not track the pin (docs/changelog.txt, 2026-11-16). */
+void HRTIM1_GapEnter(const uint8_t *channelEnabled, uint16_t per, const uint16_t *cmp)
+{
+    uint32_t pending = 0U;
+    uint32_t spins = 0U;
+    uint32_t lo[HRTIM_NUM_CHANNELS];
+    const uint32_t hi = (per > 260U) ? ((uint32_t)per - 100U) : 0U;
+
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        uint32_t afterDuty = (uint32_t)cmp[ch] + 24U;                   /* past the fall and the dead time */
+        uint32_t nearEnd   = (per > 200U) ? ((uint32_t)per - 200U) : 0U;
+
+        lo[ch] = (afterDuty > nearEnd) ? afterDuty : nearEnd;
+        if (lo[ch] + 40U > hi)
+        {
+            lo[ch] = (hi > 40U) ? (hi - 40U) : 0U;                      /* a very high duty leaves a narrow window */
+        }
+        if (channelEnabled[ch] != 0U)
+        {
+            pending |= (1UL << ch);
+        }
+    }
+    while ((pending != 0U) && (spins < 400000U))
+    {
+        /* only the lowest pending channel is considered: the others wait for it */
+        uint8_t ch = 0U;
+
+        while ((pending & (1UL << ch)) == 0U)
+        {
+            ch++;
+        }
+        {
+            uint32_t cnt = hhrtim1.Instance->sTimerxRegs[kTimerIndex[ch]].CNTxR;
+
+            if ((cnt >= lo[ch]) && (cnt <= hi))
+            {
+                hhrtim1.Instance->sCommonRegs.ODISR = kOutput1[ch] | kOutput2[ch];
+                pending &= ~(1UL << ch);
+                continue;               /* the next channel's window is a third of a period away: no need to wait */
+            }
+        }
+        spins++;
+    }
+    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)       /* a channel that never settled is cut anyway */
+    {
+        if ((pending & (1UL << ch)) != 0U)
+        {
+            hhrtim1.Instance->sCommonRegs.ODISR = kOutput1[ch] | kOutput2[ch];
+        }
+    }
+}
+
+/* Clears the Master repetition (period) flag: the period interrupt that came due while GapEnter() waited is
+   consumed by the caller, which has just written the next step (pfm.c) -- running it afterwards would overwrite that
+   step before it ever played, losing one entry (a whole off chunk of the gap). */
+void HRTIM1_ClearMasterPeriodFlag(void)
+{
+    __HAL_HRTIM_MASTER_CLEAR_IT(&hhrtim1, HRTIM_MASTER_IT_MREP);
+}
+
+/* Reconnects the outputs after a gap, phase-locked: the same wait-and-connect HRTIM1_PWM_Start() uses, run inside
+   the period interrupt with interrupts masked. The new period's registers must already be written (they become
+   active at the next rollover): channel 0 connects at that rollover (the Master repetition event), channel k at
+   its MASTER_CMPk event, each with its output force-ACTIVE as in the cold start. Returns 0, or 1 if an event
+   never came (the counters are not running). Masked for at most about one period plus a two-thirds. */
+uint8_t HRTIM1_GapExit(const uint8_t *channelEnabled)
+{
+    uint8_t timedOut = 0U;
+
+    __disable_irq();
+    __HAL_HRTIM_MASTER_DISABLE_IT(&hhrtim1, HRTIM_MASTER_IT_MREP);
+    __HAL_HRTIM_MASTER_CLEAR_IT(&hhrtim1, HRTIM_MASTER_IT_MREP);
+    for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        __HAL_HRTIM_MASTER_CLEAR_IT(&hhrtim1, kMasterIT[ch]);
+    }
+
+    /* channel 0 at the rollover the new registers come in at */
+    if (HRTIM1_WaitForPhaseAndConnect(HRTIM_MASTER_FLAG_MREP, kTimerIndex[0],
+                                      (channelEnabled[0] != 0U) ? (kOutput1[0] | kOutput2[0]) : 0U, 1U) != 0U)
+    {
+        timedOut = 1U;
+    }
+    /* compare events of the old period are stale: only the ones after this rollover count */
+    for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        __HAL_HRTIM_MASTER_CLEAR_IT(&hhrtim1, kMasterIT[ch]);
+    }
+    for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        if (channelEnabled[ch] != 0U)
+        {
+            if (HRTIM1_WaitForPhaseAndConnect(kMasterFlag[ch], kTimerIndex[ch],
+                                              kOutput1[ch] | kOutput2[ch], 1U) != 0U)
+            {
+                timedOut = 1U;
+            }
+        }
+    }
+
+    __HAL_HRTIM_MASTER_CLEAR_IT(&hhrtim1, HRTIM_MASTER_IT_MREP);
+    __HAL_HRTIM_MASTER_ENABLE_IT(&hhrtim1, HRTIM_MASTER_IT_MREP);
+    for (uint8_t ch = 1U; ch < HRTIM_NUM_CHANNELS; ch++)
+    {
+        __HAL_HRTIM_MASTER_CLEAR_IT(&hhrtim1, kMasterIT[ch]);
+    }
+    __enable_irq();
+    return timedOut;
+}
+
 void HRTIM1_EnableMasterInterrupt(void)
 {
     /* Priority scheme, originally matching the sibling PFM-STM32G474

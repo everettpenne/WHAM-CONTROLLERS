@@ -42,7 +42,8 @@ typedef enum
     CTL_NO_METER,       /* the loopback source needs a free PFM_Input_01 duty meter (no PFMIN capture running) */
     CTL_BUSY,           /* a closed-loop run is in progress */
     CTL_NO_SHOT,        /* an enabled phase is open loop and there is no shot to follow */
-    CTL_NEED_CLOSED     /* a hold (SOURce:RUN) needs every enabled phase closed loop */
+    CTL_NEED_CLOSED,    /* a hold (SOURce:RUN) needs every enabled phase closed loop */
+    CTL_SHOT_HAS_GAPS   /* an open-loop phase follows a shot with 0 Hz (output-off) setpoints: not supported with a closed loop */
 } ctl_result_t;
 
 typedef enum

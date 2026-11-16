@@ -53,24 +53,35 @@ shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz,
     {
         return SHOT_APPEND_TOO_LONG;
     }
-    if (freqMilliHz < (uint32_t)lim.freqMinHz * 1000UL)
+    if (freqMilliHz == 0U)
     {
-        return SHOT_APPEND_FREQ_LOW;
-    }
-    if ((uint64_t)freqMilliHz > (uint64_t)lim.freqMaxHz * 1000U)
-    {
-        return SHOT_APPEND_FREQ_HIGH;
-    }
-    for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
-    {
-        g_badChannel = ch;
-        if (dutyHundredths[ch] < (uint16_t)(lim.dutyMinPct * 100U))
+        /* an off setpoint (a gap): no frequency or duty to check -- but never the first one */
+        if (g_count == 0U)
         {
-            return SHOT_APPEND_DUTY_LOW;
+            return SHOT_APPEND_FIRST_OFF;
         }
-        if (dutyHundredths[ch] > (uint16_t)(lim.dutyMaxPct * 100U))
+    }
+    else
+    {
+        if (freqMilliHz < (uint32_t)lim.freqMinHz * 1000UL)
         {
-            return SHOT_APPEND_DUTY_HIGH;
+            return SHOT_APPEND_FREQ_LOW;
+        }
+        if ((uint64_t)freqMilliHz > (uint64_t)lim.freqMaxHz * 1000U)
+        {
+            return SHOT_APPEND_FREQ_HIGH;
+        }
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            g_badChannel = ch;
+            if (dutyHundredths[ch] < (uint16_t)(lim.dutyMinPct * 100U))
+            {
+                return SHOT_APPEND_DUTY_LOW;
+            }
+            if (dutyHundredths[ch] > (uint16_t)(lim.dutyMaxPct * 100U))
+            {
+                return SHOT_APPEND_DUTY_HIGH;
+            }
         }
     }
 
@@ -78,7 +89,7 @@ shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz,
     g_sp[g_count].freqMilliHz = freqMilliHz;
     for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {
-        g_sp[g_count].dutyHundredths[ch] = dutyHundredths[ch];
+        g_sp[g_count].dutyHundredths[ch] = (freqMilliHz == 0U) ? 0U : dutyHundredths[ch];   /* an off setpoint keeps no duty */
     }
     g_count++;
     return SHOT_APPEND_OK;
@@ -115,6 +126,18 @@ uint8_t ShotProfile_IsUniform(void)
     return 1U;
 }
 
+uint8_t ShotProfile_HasGaps(void)
+{
+    for (uint16_t i = 0U; i < g_count; i++)
+    {
+        if (g_sp[i].freqMilliHz == 0U)
+        {
+            return 1U;
+        }
+    }
+    return 0U;
+}
+
 uint16_t ShotProfile_Count(void)
 {
     return g_count;
@@ -137,7 +160,8 @@ uint8_t ShotProfile_Get(uint16_t index, shot_setpoint_t *out)
 
 uint8_t ShotProfile_IsComplete(void)
 {
-    return (g_count >= 2U) ? 1U : 0U;
+    /* the first setpoint is on by Append(); the last two must be on: the shot cannot end in a gap */
+    return ((g_count >= 2U) && (g_sp[g_count - 1U].freqMilliHz != 0U) && (g_sp[g_count - 2U].freqMilliHz != 0U)) ? 1U : 0U;
 }
 
 /* ---- generator ---- */
@@ -182,6 +206,7 @@ typedef struct
 {
     uint8_t  active;
     uint8_t  periodsPerEntry;
+    uint8_t  off;            /* this segment is a gap: its start setpoint is off */
     uint8_t  uniform;        /* every channel has the same duty and slope in this segment: one compare serves all */
     uint16_t seg;            /* current segment = setpoints seg .. seg+1 */
     uint64_t tick;           /* start of the next entry, in HRTIM clocks since t = 0 */
@@ -197,6 +222,10 @@ typedef struct
     uint8_t  dutyMinPct;
     uint8_t  dutyMaxPct;
 } gen_t;
+
+/* An off period is at most this long, in clocks: a gap is played as a run of off entries, and the longest the
+   16-bit period register takes is 65535 (some margin kept). */
+#define OFF_PERIOD_MAX_CLOCKS  (60000U)
 
 static gen_t g;      /* the generator (the refill interrupt) */
 static gen_t e;      /* the evaluator (ShotEval_At(), the control interrupt): its own state, the same math */
@@ -215,10 +244,17 @@ static void LoadSegment(gen_t *s, uint16_t seg)
     /* slope = delta * 2^32 / dt, truncated toward zero (the host port does the same) */
     s->slopeF   = ((int64_t)b->freqMilliHz - (int64_t)a->freqMilliHz) * 4294967296LL / dt;
     s->uniform  = 1U;
+    s->off      = (a->freqMilliHz == 0U) ? 1U : 0U;
+    if (b->freqMilliHz == 0U)
+    {
+        s->slopeF = 0;                    /* on -> off: hold the start setpoint's values until the gap begins */
+    }
     for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {
         s->d0[ch]     = a->dutyHundredths[ch];
-        s->slopeD[ch] = ((int64_t)b->dutyHundredths[ch] - (int64_t)a->dutyHundredths[ch]) * 4294967296LL / dt;
+        s->slopeD[ch] = (b->freqMilliHz == 0U)
+                          ? 0
+                          : ((int64_t)b->dutyHundredths[ch] - (int64_t)a->dutyHundredths[ch]) * 4294967296LL / dt;
         if ((s->d0[ch] != s->d0[0]) || (s->slopeD[ch] != s->slopeD[0]))
         {
             s->uniform = 0U;
@@ -308,6 +344,52 @@ uint8_t ShotGen_Next(uint16_t *per, uint16_t cmp[HRTIM_NUM_CHANNELS], uint8_t *l
     while (g.tick >= g.segEnd)
     {
         LoadSegment(&g, (uint16_t)(g.seg + 1U));   /* g.tick < end, so a next segment exists */
+    }
+
+    if (g.off != 0U)
+    {
+        /* A gap: a run of off entries (every compare 0) that ends with one short off period as long as the
+           first period after the gap, so that the output-off period the playback sits in when the next on
+           entry arrives is no longer than one on period (the output comes back at the next period boundary,
+           pfm.c). `len` is the entry's length in clocks. */
+        const shot_setpoint_t *nb = &g_sp[g.seg + 1U];
+        uint64_t remaining = g.segEnd - g.tick;
+        uint64_t r;
+        uint32_t len;
+        uint32_t finalLen = 0U;
+
+        if (nb->freqMilliHz != 0U)
+        {
+            finalLen = PeriodFromClocks(PeriodClocks(nb->freqMilliHz), g.per1Min, g.per1Max) + 1U;
+        }
+        if ((finalLen != 0U) && (remaining <= (uint64_t)finalLen + g.per1Min))
+        {
+            len = finalLen;
+        }
+        else
+        {
+            uint64_t chunks;
+
+            r = remaining - finalLen;
+            chunks = (r + OFF_PERIOD_MAX_CLOCKS - 1U) / OFF_PERIOD_MAX_CLOCKS;   /* r > 0 here, so at least 1 */
+            len = (uint32_t)(r / chunks);
+            if (len < g.per1Min)
+            {
+                len = g.per1Min;
+            }
+        }
+        *per = (uint16_t)(len - 1U);
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            cmp[ch] = 0U;
+        }
+        g.tick += (uint64_t)len * g.periodsPerEntry;
+        *last = (g.tick >= end) ? 1U : 0U;
+        if (*last != 0U)
+        {
+            g.active = 0U;
+        }
+        return 1U;
     }
 
     elapsed = g.tick - g.segStart;
@@ -422,6 +504,15 @@ uint8_t ShotEval_At(uint32_t tUs, uint32_t *freqMilliHz, uint16_t duty[HRTIM_NUM
         LoadSegment(&e, (uint16_t)(e.seg + 1U));
     }
     elapsed = tick - e.segStart;
+    if (e.off != 0U)
+    {
+        *freqMilliHz = 0U;
+        for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
+        {
+            duty[ch] = 0U;
+        }
+        return 1U;
+    }
     *freqMilliHz = (uint32_t)((int64_t)e.f0 + ((e.slopeF * (int64_t)elapsed) >> 32));
     for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {

@@ -214,7 +214,7 @@ static uint8_t    g_lastAppliedValid = 0U;
    at -O0 it cost ~800 cycles of a 1,360-cycle period at 125 kHz, starving the
    refill interrupt (docs/changelog.txt, 2026-10-01). */
 __attribute__((optimize("O2")))
-static void ApplyStep(const PFM_Step_t *pStep)
+static void WriteStep(const PFM_Step_t *pStep)
 {
     uint16_t phase[HRTIM_NUM_CHANNELS];
 
@@ -239,6 +239,43 @@ static void ApplyStep(const PFM_Step_t *pStep)
     }
 
     HRTIM1_ApplyPfmStep(pStep->per, pStep->cmp, phase);
+}
+
+/* 1 while the outputs are disconnected for an output-off gap of the shot (a step with PFM_STEP_OFF). Cleared by
+   PFM_Restart(), before the outputs are started. */
+static uint8_t g_gated = 0U;
+
+/* Applies one playback entry, gating the outputs around an output-off gap (shot_profile.h, "OUTPUT-OFF GAPS"):
+   - into a gap (an off step while connected): disconnect the outputs at the end of the period in progress
+     (HRTIM1_GapEnter(), with the active step so the pulse is whole), THEN write the off step -- written first, its compare would cut that pulse short or
+     leave the output stuck high;
+   - out of a gap (an on step while disconnected): write the step, then reconnect phase-locked at the period
+     boundaries (HRTIM1_GapExit()). If that fails the shot is stopped. */
+__attribute__((optimize("O2")))
+static void ApplyStep(const PFM_Step_t *pStep)
+{
+    uint8_t off = (PFM_StepIsOff(pStep) != 0U) ? 1U : 0U;
+
+    if ((off != 0U) && (g_gated == 0U))
+    {
+        HRTIM1_GapEnter(g_channelEnabled, g_lastAppliedStep.per, g_lastAppliedStep.cmp);   /* the step being played now */
+        g_gated = 1U;
+        WriteStep(pStep);
+        /* GapEnter() waited past a Master rollover: the period interrupt for it is pending. This step is written
+           and will play from the next rollover; running that interrupt first would overwrite it with the entry
+           after it, so it is consumed here (the generator's entries stay in order, the gap keeps its length). */
+        HRTIM1_ClearMasterPeriodFlag();
+        return;
+    }
+    WriteStep(pStep);
+    if ((off == 0U) && (g_gated != 0U))
+    {
+        g_gated = 0U;
+        if (HRTIM1_GapExit(g_channelEnabled) != 0U)
+        {
+            PFM_ForceStop();
+        }
+    }
 }
 
 void PFM_ApplyCurrentStep(void)
@@ -552,6 +589,7 @@ void PFM_Restart(void)
     /* Every shot must write HRTIM on its first period, no matter what a
        previous shot left in the registers. */
     g_lastAppliedValid = 0U;
+    g_gated = 0U;             /* the outputs are connected by HRTIM1_PWM_Start() below */
 
     PFM_ApplyCurrentStep();   /* preload step 0 before starting */
 

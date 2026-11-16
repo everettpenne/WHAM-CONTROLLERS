@@ -205,6 +205,28 @@ period at a time. Open-loop shots run from about 10 ms to 1 s.
   setpoint's time is the end of the shot and may be at most
   `SHOT_MAX_DURATION_US` (1 s); at least two setpoints are needed
   (`SHOT:END` refuses otherwise); at most `SHOT_SETPOINT_MAX` (500).
+- **Output-off gaps -- a frequency of `0` (2026-11-16):** a setpoint with frequency 0 means "output **off** from this
+  time until the next setpoint's time"; the output comes back at the next setpoint's frequency and duty, as a step
+  (no ramp out of off). One shot can have several gaps.
+  ```
+  SHOT:STEP 0 20000 50          on at 20 kHz
+  SHOT:STEP 1000 0 0            1 ms: off (the duty is ignored and not checked)
+  SHOT:STEP 3000 25000 50       3 ms: back on at 25 kHz, 50 %
+  SHOT:STEP 4000 25000 50       4 ms: end
+  ```
+  Rules: the first setpoint cannot be off (`ERR 4`), and the **last two must be on** (a shot cannot end in a gap;
+  `SHOT:END` refuses with `ERR 4`). A segment that runs from an **on** setpoint into an **off** one **holds** the
+  on setpoint's frequency and duty until the off time (it does not ramp toward 0; put an on setpoint just before
+  the gap to ramp first). An off setpoint is not checked against the mode's limits. Gaps are open-loop only: a
+  shot with a gap cannot be followed by an open-loop phase while another phase is closed loop (`ERR 13`, `SOURce`
+  start).
+  How it plays: the HRTIM keeps running; the outputs are disconnected for the gap and reconnected, phase-locked,
+  at its end. The gap starts at the **first period boundary at or after its time** (the pulse in progress is
+  finished, never cut short) and ends **within about a period** of its end (the first pulses come back one
+  to two periods after the nominal end, and the shot after the gap runs that much later than its table). A gap
+  shorter than the period just before it can vanish. While gated, both outputs of every phase are low. The PFM_Input
+  capture sees a gap as ONE long measured period (last pulse before to first pulse after), `python/pfm_gap_test.py`
+  checks exactly that on a controller whose outputs are wired to its own inputs.
 - **Limits are checked at upload, per setpoint**, against the selected supply
   mode (`CONFig:LIMits?`): `ERR 10` for a frequency or duty (of any phase) outside the mode,
   `ERR 4` for an ordering/format error or a time beyond the longest shot,
