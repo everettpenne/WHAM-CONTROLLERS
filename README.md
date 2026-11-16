@@ -10,7 +10,11 @@ firmware/
 hardware/    board files, pin map, hardware notes (see hardware/README.md)
 host/        host-side software that talks to the boards: the per-controller service (see docs/)
 docs/        design documents that span products (identity, host service, repo layout)
+handoff/     project handoff: overview, decisions, workflow, operations, known issues, open items (start here)
 ```
+
+**New to the project?** Start with [`handoff/README.md`](handoff/README.md). It summarises the requirements, settled design decisions,
+working conventions, safe operating practice, known hardware and software problems and unfinished work, and points to the detailed records.
 
 Each firmware directory is a complete, self-contained project (its own AGENTS.md, build, tests, docs) and keeps its own
 history, imported from the former standalone repositories. Code that both products share is still copied byte-for-byte
