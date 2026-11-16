@@ -1,7 +1,7 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
-2026-11-16  -  Saved profiles keep the fault-pin configuration (GDS:ENAble mask, GDS:NICKname, polarity)  [host-tested, builds clean; NOT flashed, NOT run on hardware]
+2026-11-16  -  Saved profiles keep the fault-pin configuration (GDS:ENAble mask, GDS:NICKname, polarity)  [host-tested; FLASHED to the ECH (WB-0001-8) and the Limiter (WB-0002-6), 524382fb; save/recall checked on the ECH]
 -----------------------------------------------------------------------
   Request: "a save also remembers the fault pin configuration, and accepts the new zero points". The zero (0 Hz gap) points already round-trip: ShotProfile_Append accepts them and a gapped shot is stored as an
   ordinary point (freq 0, duty 0) in the existing table format (tests/test_settings.c TestShotWithGap). An older firmware refuses the 0 Hz point (below the frequency limit), so the shot recalls EMPTY there (the rule for a
@@ -15,6 +15,9 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
   DANGEROUS (it cannot know a slot's contents), so a recall that switches protections off is announced only by the GDSOFF= in the reply.
   Worst-case profile: 15,693 of 16,336 bytes (was 15,656; +37 = three records). Tests: test_settings TestGdsConfig (mask, names, polarity mismatch, an older save), test_settings_codec updated (21 scalar records). make -C tests passes.
   Docs: command_reference.md (GDS:ENAble/NICKname, *RCL reply), saved_profiles.md, AGENTS.md.
+  ON HARDWARE (ECH, empty slot 8, cleared afterwards): *SAV, CONFig:PROFile? (shows GDS:ENAble=0 GDS:POLarity=0 and the nickname string), DIFF? (full nickname string after a fix to its 24-byte buffers), *RCL -> OK APPLIED=37 FAILED=0
+  GDSOFF=12, nicknames restored. Both boards boot in FAULT GENERAL on the bench now: all 12 inputs read LOW, a fault under NORMALLY_HIGH; GDS:ENAble 0 0 then FAULT:CLEar gives IDLE (needed before a firmware update). The mask-restoring-ON path
+  (inputs back on) is host-tested only.
 
 2026-11-16  -  Shot: a 0 Hz setpoint is an output-off gap inside a shot  [host-tested; CONFIRMED ON HARDWARE (ECH, DSLogic)]
 -----------------------------------------------------------------------
