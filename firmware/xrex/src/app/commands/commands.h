@@ -291,6 +291,8 @@ void cmd_general_test_fault(uart_instance_t *inst, char *args);  /* GENERAL:TEST
  * actually is instead of silently assuming a value that might not
  * match, e.g. after a rebuild with a different channel count. */
 void cmd_config_channels(uart_instance_t *inst, char *args); /* CONFig:CHANnels? -- OK <N> */
+void cmd_config_deadtime(uart_instance_t *inst, char *args);        /* CONFig:DEADtime <ns> -- dead time of every phase, 50-3000 ns, not while FIRING */
+void cmd_config_deadtime_query(uart_instance_t *inst, char *args);  /* CONFig:DEADtime? -- OK <ns> */
 
 /* CONFig:PIDRate <hz> / ? -- added 2026-09-22, direct request:
  * PID_LOOP_RATE_HZ (ctrlr_config.h) made runtime-configurable. See

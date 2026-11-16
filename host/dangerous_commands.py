@@ -60,6 +60,7 @@ RULES = [
     ("CONFig:MAXVolts",         ANY, "limits"),
     ("CONFig:SLEWRate",         ANY, "limits"),
     ("CONFig:FaultRampTime",    ANY, "limits"),
+    ("CONFig:DEADtime",         ANY, "limits"),     # both products: too little dead time risks shoot-through
     # forces a fault
     ("GENERAL:TEST:FAULT",      ANY, "fault-inject"),
     ("OCP:TEST:FAULT",          ANY, "fault-inject"),

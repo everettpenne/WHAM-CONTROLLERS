@@ -123,6 +123,36 @@ static uint16_t HRTIM1_ClampCompare(uint16_t cmp, uint16_t per)
     return cmp;
 }
 
+/* The dead time of every timing unit, in HRTIM clocks (HRTIM_DEADTIME_COUNTS at boot; CONFig:DEADtime changes it). */
+static uint32_t g_deadtimeCounts = HRTIM_DEADTIME_COUNTS;
+
+uint8_t HRTIM1_SetDeadTimeNs(uint32_t ns)
+{
+    uint32_t counts;
+
+    if ((ns < HRTIM_DEADTIME_MIN_NS) || (ns > HRTIM_DEADTIME_MAX_NS))
+    {
+        return 0U;
+    }
+    counts = ((ns * (HRTIM_TIMER_CLK_HZ / 1000000U)) + 500U) / 1000U;     /* ns x 170 MHz, rounded */
+    for (uint8_t ch = 0U; ch < 6U; ch++)
+    {
+        volatile uint32_t *dtr = &hhrtim1.Instance->sTimerxRegs[kTimerIndex[ch]].DTxR;
+        uint32_t v = *dtr;
+
+        v &= ~(HRTIM_DTR_DTR | HRTIM_DTR_DTF);          /* keep the prescaler, signs and lock bits as configured */
+        v |= (counts & HRTIM_DTR_DTR) | ((counts << 16U) & HRTIM_DTR_DTF);
+        *dtr = v;
+    }
+    g_deadtimeCounts = counts;
+    return 1U;
+}
+
+uint32_t HRTIM1_GetDeadTimeNs(void)
+{
+    return ((g_deadtimeCounts * 1000U) + ((HRTIM_TIMER_CLK_HZ / 1000000U) / 2U)) / (HRTIM_TIMER_CLK_HZ / 1000000U);
+}
+
 void HRTIM1_FullInit(void)
 {
     HRTIM_TimeBaseCfgTypeDef pTimeBaseCfg;
@@ -399,11 +429,11 @@ void HRTIM1_FullInit(void)
     }
 
     pDeadTimeCfg.Prescaler = HRTIM_TIMDEADTIME_PRESCALERRATIO_DIV1;
-    pDeadTimeCfg.RisingValue = HRTIM_DEADTIME_COUNTS;
+    pDeadTimeCfg.RisingValue = g_deadtimeCounts;
     pDeadTimeCfg.RisingSign = HRTIM_TIMDEADTIME_RISINGSIGN_POSITIVE;
     pDeadTimeCfg.RisingLock = HRTIM_TIMDEADTIME_RISINGLOCK_WRITE;
     pDeadTimeCfg.RisingSignLock = HRTIM_TIMDEADTIME_RISINGSIGNLOCK_WRITE;
-    pDeadTimeCfg.FallingValue = HRTIM_DEADTIME_COUNTS;
+    pDeadTimeCfg.FallingValue = g_deadtimeCounts;
     pDeadTimeCfg.FallingSign = HRTIM_TIMDEADTIME_FALLINGSIGN_POSITIVE;
     pDeadTimeCfg.FallingLock = HRTIM_TIMDEADTIME_FALLINGLOCK_WRITE;
     pDeadTimeCfg.FallingSignLock = HRTIM_TIMDEADTIME_FALLINGSIGNLOCK_WRITE;
@@ -837,7 +867,7 @@ void HRTIM1_GapEnter(const uint8_t *channelEnabled, uint16_t per, const uint16_t
 
     for (uint8_t ch = 0U; ch < HRTIM_NUM_CHANNELS; ch++)
     {
-        uint32_t afterDuty = (uint32_t)cmp[ch] + 24U;                   /* past the fall and the dead time */
+        uint32_t afterDuty = (uint32_t)cmp[ch] + g_deadtimeCounts + 7U;  /* past the fall and the dead time */
         uint32_t nearEnd   = (per > 200U) ? ((uint32_t)per - 200U) : 0U;
 
         lo[ch] = (afterDuty > nearEnd) ? afterDuty : nearEnd;

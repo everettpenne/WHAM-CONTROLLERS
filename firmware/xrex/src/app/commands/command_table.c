@@ -60,6 +60,8 @@ static const scpi_command_t command_table[] = {
     /* Reports the compile-time HRTIM channel count -- see cmd_config.c's
        own header comment on cmd_config_channels(). */
     { "CONFig:CHANnels?",    cmd_config_channels },
+    { "CONFig:DEADtime",     cmd_config_deadtime },
+    { "CONFig:DEADtime?",    cmd_config_deadtime_query },
 
     /* Runtime-configurable PID_LOOP_RATE_HZ -- see cmd_config.c's own
        header comment on cmd_config_pid_rate(). */

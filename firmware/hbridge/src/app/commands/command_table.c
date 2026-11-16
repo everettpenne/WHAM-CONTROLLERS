@@ -173,6 +173,8 @@ static const scpi_command_t command_table[] = {
     { "CONFig:PROFile:DIFF?", cmd_profile_diff },
     { "CONFig:PROFile:CLEar", cmd_profile_clear },
     { "CONFig:CHANnels?",    cmd_config_channels },
+    { "CONFig:DEADtime",     cmd_config_deadtime },
+    { "CONFig:DEADtime?",    cmd_config_deadtime_query },
     { "CONFig:MODE",         cmd_config_mode           },
     { "CONFig:MODE?",        cmd_config_mode_query     },
     { "CONFig:LIMits?",      cmd_config_limits_query   },

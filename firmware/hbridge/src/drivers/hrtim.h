@@ -58,7 +58,20 @@ extern "C" {
  * the same STM32G474 PLL configuration. */
 #define HRTIM_TIMER_CLK_HZ      170000000U
 #define HRTIM_DEADTIME_NS       100U
-#define HRTIM_DEADTIME_COUNTS   17U
+#define HRTIM_DEADTIME_COUNTS   17U        /* the default, at boot */
+
+/* Dead time at runtime (CONFig:DEADtime, 2026-11-16): the same value on every timing unit (every phase and every
+ * reserved one). One count is one HRTIM clock, 1/170 MHz = 5.88 ns, so the value is quantized: 100 ns = 17 counts exactly.
+ * The register holds 9 bits (511 counts = 3.0 us); the floor is a choice, not a hardware limit: below ~50 ns the gate
+ * driver's own turn-off delay can overlap the complement's turn-on. RAM only: every boot returns to the default. */
+#define HRTIM_DEADTIME_MIN_NS   50U
+#define HRTIM_DEADTIME_MAX_NS   3000U
+
+/* Sets the dead time of every timing unit; returns 0 (nothing changed) when ns is outside MIN..MAX. Only call with the
+ * counters stopped (not FIRING): the register is rewritten in place. */
+uint8_t  HRTIM1_SetDeadTimeNs(uint32_t ns);
+/* The dead time in force, in ns (counts x 1000 / 170, rounded). */
+uint32_t HRTIM1_GetDeadTimeNs(void);
 
 /* Safe compare clamping margin */
 #define HRTIM_COMPARE_MIN           ((uint16_t)2U)

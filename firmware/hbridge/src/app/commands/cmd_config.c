@@ -8,6 +8,8 @@
 #include "state_machine.h"
 #include "supply_mode.h"
 #include "ctrlr_config.h"
+#include "hrtim.h"
+#include "state_machine.h"
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -30,6 +32,52 @@ void cmd_config_channels(uart_instance_t *inst, char *args)
     (void)args;
 
     snprintf(buf, sizeof(buf), "OK %u\r\n", (unsigned int)HRTIM_NUM_CHANNELS);
+    uart_send(inst, buf);
+}
+
+/* --------------------------------------------------------------------------
+ * CONFig:DEADtime <ns> / CONFig:DEADtime?      (added 2026-11-16)
+ *
+ * The dead time between a phase's output and its complement, one value for every timing unit (every phase). Default 100 ns
+ * at every boot (HRTIM_DEADTIME_COUNTS, hrtim.h); RAM only, not saved in a profile. One HRTIM count is 5.88 ns, so the
+ * value is rounded: CONFig:DEADtime? replies the dead time in force in ns (100 -> 100, 120 -> 118). Range
+ * HRTIM_DEADTIME_MIN_NS..HRTIM_DEADTIME_MAX_NS (50-3000 ns). Not while FIRING (the register is rewritten in place): ERR 13.
+ * Too small a value risks shoot-through on a real bridge: the hub announces it as a limits change.
+ *
+ *   CONFig:DEADtime 150     OK            ERR 12 not a whole number or outside 50-3000, ERR 13 while FIRING
+ *   CONFig:DEADtime?        OK 150
+ * -------------------------------------------------------------------------- */
+void cmd_config_deadtime(uart_instance_t *inst, char *args)
+{
+    char *tok = (args != NULL) ? strtok(args, " \r\n") : NULL;
+    long ns;
+
+    if ((tok == NULL) || (strtok(NULL, " \r\n") != NULL))
+    {
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "CONFig:DEADtime needs one argument: nanoseconds (50-3000)");
+        return;
+    }
+    SCPI_NEED_LONG(inst, tok, ns);
+    if ((ns < (long)HRTIM_DEADTIME_MIN_NS) || (ns > (long)HRTIM_DEADTIME_MAX_NS))
+    {
+        Scpi_SendErr(inst, ERR_INVALID_ARGS, "dead time must be 50-3000 ns");
+        return;
+    }
+    if (SM_GetState() == SM_STATE_FIRING)
+    {
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "CONFig:DEADtime not while FIRING");
+        return;
+    }
+    (void)HRTIM1_SetDeadTimeNs((uint32_t)ns);
+    Scpi_ReplyOk(inst);
+}
+
+void cmd_config_deadtime_query(uart_instance_t *inst, char *args)
+{
+    char buf[32];
+    (void)args;
+
+    snprintf(buf, sizeof(buf), "OK %lu\r\n", (unsigned long)HRTIM1_GetDeadTimeNs());
     uart_send(inst, buf);
 }
 

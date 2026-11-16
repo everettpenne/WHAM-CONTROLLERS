@@ -124,6 +124,8 @@ void cmd_fault_clear(uart_instance_t *inst, char *args);  /* FAULT:CLEar -- OK *
  * actually is instead of silently assuming a value that might not
  * match, e.g. after a rebuild with a different channel count. */
 void cmd_config_channels(uart_instance_t *inst, char *args); /* CONFig:CHANnels? -- OK <N> */
+void cmd_config_deadtime(uart_instance_t *inst, char *args);        /* CONFig:DEADtime <ns> -- dead time of every phase, 50-3000 ns, not while FIRING */
+void cmd_config_deadtime_query(uart_instance_t *inst, char *args);  /* CONFig:DEADtime? -- OK <ns> */
 
 /* Raw GateDriverStatus_01..12 (PE0..PE11, see gate_driver.h) readback
  * -- a pure diagnostic snapshot, unaffected by and independent of

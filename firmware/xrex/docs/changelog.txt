@@ -1,6 +1,16 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-16  -  CONFig:DEADtime: the dead time of every phase is a runtime setting (default 100 ns)  [host-tested, builds clean; flashed: see the bench note below]
+-----------------------------------------------------------------------
+  Request: one command to change the dead time, the same on all phases, default 100 ns, at runtime, for the Limiter, the ECH-HVPS and the XREX controller.
+  hrtim.c (both products): the dead time is now a variable (g_deadtimeCounts, boot value HRTIM_DEADTIME_COUNTS = 17 = 100 ns) used by HRTIM1_FullInit(); new HRTIM1_SetDeadTimeNs() rewrites DTR and DTF
+  (rising and falling, same count) of all six timing units in place, keeping the prescaler, the signs and the lock bits, and HRTIM1_GetDeadTimeNs() reads it back. cmd_config.c: CONFig:DEADtime <ns> / ?
+  (50-3000 ns, ERR 12 outside or not a number, ERR 13 while FIRING; the reply to the query is the quantized value, one count = 5.88 ns). HBRIDGE only: HRTIM1_GapEnter()'s "past the fall and the dead time" margin
+  (24 clocks) now follows the dead time (counts + 7, = 24 at 100 ns), so a longer dead time cannot get the output-off gap to cut a phase during its dead time.
+  Not saved in a profile (RAM only, the default returns at every boot) -- say so if it should be. The hub lists the command under "limits" (shoot-through if set too small).
+  Tests: make -C tests passes in both repos (the command table collision test covers the new pattern); host test_dangerous_commands passes.
+
 2026-11-09  -  The live !EVT stream is OFF by default (SYS:EVENT 0 at every boot)
 -----------------------------------------------------------------------
   Request: turn off system event reporting by default. telemetry.c: TELEM_EVENT_DEFAULT_ENABLED 0, used by the static initialiser and Telemetry_Init(). SYS:EVENT 1 turns

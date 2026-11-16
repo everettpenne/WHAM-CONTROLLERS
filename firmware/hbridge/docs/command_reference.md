@@ -600,6 +600,20 @@ separate:
   trip confirmed on scope/DSLogic — see `docs/changelog.txt` for what
   specifically remains open there.
 
+### `CONFig:DEADtime <ns>` and `CONFig:DEADtime?`
+
+The dead time between each phase's output and its complement, **one value for every phase** (every timing unit). Added 2026-11-16 (both products;
+before this it was a compile-time 17 counts). **Default 100 ns at every boot**; not remembered across a reboot and not saved in a profile.
+
+| Command | Reply |
+|---|---|
+| `CONFig:DEADtime 150` | `OK`. `ERR 12` for a missing/garbled number or a value outside **50-3000 ns**; `ERR 13` while `FIRING` (the register is rewritten in place) |
+| `CONFig:DEADtime?` | `OK 150`: the dead time in force, in ns |
+
+One HRTIM count is 5.88 ns (1/170 MHz), so a value is rounded to the nearest count and the query shows the result: `100` -> `OK 100` (17 counts),
+`120` -> `OK 118`. The 50 ns floor is a firmware choice (below it the gate driver's own turn-off delay can overlap the complement's turn-on and shoot through); the
+register allows 511 counts (3.0 us). The hub announces the command as a limits change (`dangerous_commands.py`).
+
 ### `CONFig:CHANnels?`
 
 Reports `HRTIM_NUM_CHANNELS` (`Core/Inc/ctrlr_config.h`) — the
