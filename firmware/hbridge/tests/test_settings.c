@@ -667,7 +667,7 @@ static void TestGdsConfig(void)
     CHECK(res.apply.gdsOff == 2U);                      /* reported, so the reply says GDSOFF=2 */
     CHECK(g_fakeGdsChecks >= 1U);                       /* the pins are re-checked after the change */
 
-    /* the polarity in force is saved and a recall restores it (a runtime flip, 2026-11-17), whichever build it came from */
+    /* the polarity in force is saved and a recall restores it (a runtime flip, 2026-11-16), whichever build it came from */
     {
         uint8_t other = (uint8_t)(GdsInputs_DefaultPolarityIsNormallyLow() != 0U ? 0U : 1U);
 

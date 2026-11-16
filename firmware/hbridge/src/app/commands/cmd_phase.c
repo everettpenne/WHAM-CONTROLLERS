@@ -20,7 +20,7 @@
  * been put on a scope for each combination.) The choice is read when a shot starts (FIRE, SOURce:RUN), so it can only be changed in
  * IDLE (ERR 13 otherwise), and ARM refuses while no phase is enabled. It is operator state like XREX's channel
  * enables: durable until reset, and all three phases are enabled at every boot. A saved profile holds it since
- * 2026-11-17 (it used to be left out so that a recall could never change which legs are driven; a recall can now).
+ * 2026-11-16 (it used to be left out so that a recall could never change which legs are driven; a recall can now).
  */
 #include "commands.h"
 #include "cmd_common.h"

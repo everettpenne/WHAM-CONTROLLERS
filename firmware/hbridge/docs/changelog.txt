@@ -1,7 +1,7 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
-2026-11-17  -  Profiles also store the dead time and the phase choice  [host-tested, builds clean; NOT flashed]
+2026-11-16  -  Profiles also store the dead time and the phase choice  [host-tested; FLASHED to the ECH and the Limiter (c36f382e); save/change/recall checked on the Limiter]
 -----------------------------------------------------------------------
   Request: make sure the dead time, the Limiter's tables and the selected phases are saved, and look for anything else worth saving.
   settings_codec: two new scalar fields, frozen ids 43 (CONFig:DEADtime, U32 ns, as HRTIM1_GetDeadTimeNs() reads it back) and 44 (PHASe:ENAble, U8 bitmask, bit 0 = U); the presence bitmap grew from 128 to 160
@@ -10,8 +10,10 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
   Limiter tables: the shot and target tables are saved whatever the supply mode (the Limiter has no HVPS curve); test_settings' per-channel-table and limiter round trips already cover them and still pass.
   Tests: test_settings (dead time 150 ns -> 153 and phases U+W survive scramble + recall), test_settings_codec (records 21 -> 23), worst-case payload 15704 of 16336 bytes. Docs: command_reference, saved_profiles, labview_commands, AGENTS.
   Not stored, on purpose: run state, CHARGE, the external trigger enable, DEBUG:FAULT:BYPASS, the DAC outputs and the simulation knobs. XREX does not store its dead time (separate codec).
+  Flashed later the same day to the ECH and the Limiter (c36f382e). Limiter, empty slot 8: dead time 150 (reads 153) and phases UW saved, changed to 100 and ALL, CONFig:PROFile:DIFF? 8 listed exactly
+  DEADtime=100>153 PHASe:ENAble=7>5, *RCL 8 -> OK APPLIED=39 FAILED=0 GDSOFF=12 and both came back; slot cleared and defaults restored afterwards. Not checked on the ECH (installed).
 
-2026-11-17  -  GDS:POLarity: flip the fault polarity of all twelve gate-driver status inputs at runtime  [host-tested, builds clean; NOT flashed]
+2026-11-16  -  GDS:POLarity: flip the fault polarity of all twelve gate-driver status inputs at runtime  [host-tested; FLASHED to the ECH and the Limiter (25e25ea2); checked on the Limiter, partly on the ECH]
 -----------------------------------------------------------------------
   Request: a command to invert the polarity of the fault pin readings, and a query; one global flip for all GDS inputs.
   gds_inputs.c: the polarity is a runtime variable (g_normallyLow, volatile: read by the EXTI interrupts) that starts at, and GdsInputs_Reset() returns to, the compiled GDS_FAULT_POLARITY;
@@ -20,7 +22,9 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
   APPLIED by *RCL; before, it was only compared with the build's and a difference was a FAILED name. Profiles saved before this carry the build's NORMALLY_HIGH, so a recall resets any runtime flip to that.
   Hub: GDS:POLarity (with any argument) is listed as dangerous ("interlock"); the query is not. Not remembered across a reboot.
   Tests: test_gds_inputs (flip, invert, refusals by state, reset), test_settings (save, reboot, recall restores a flipped polarity), host test_dangerous_commands. Docs: command_reference, AGENTS, labview_commands.
-  Not flashed: the boards are on the bench; say when to reflash.
+  Not flashed at first. Later the same day: flashed to the ECH (WB-0001-8) and the Limiter (WB-0002-6) as 25e25ea2. Limiter: ERR 12 for a bad or missing word, INVert -> NORMALLY_LOW, FAULT:CLEar then
+  reached IDLE with the unwired inputs reading LOW (healthy under NORMALLY_LOW), flipping back re-latched FAULT GENERAL at once. ECH: the same first replies, then its network bridge dropped off
+  the network (no ping from the hub host) for reasons not found; the rest of the check was not repeated because the board was then installed in its supply.
 
 2026-11-16  -  CONFig:DEADtime: the dead time of every phase is a runtime setting (default 100 ns)  [host-tested, builds clean; flashed: see the bench note below]
 -----------------------------------------------------------------------

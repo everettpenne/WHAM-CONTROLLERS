@@ -93,8 +93,8 @@ void Settings_Capture(settings_snapshot_t *s)
     MarkPresent(s, SETF_CL_BRANCH, 0U);
 
     /* the fault-pin configuration (2026-11-16): which GateDriverStatus inputs are switched on, what they are called, and
-       the polarity in force (2026-11-17: it can be flipped at runtime, so it is stored like the rest) */
-    /* dead time and the phase choice (2026-11-17) */
+       the polarity in force (2026-11-16: it can be flipped at runtime, so it is stored like the rest) */
+    /* dead time and the phase choice (2026-11-16) */
     s->deadTimeNs = HRTIM1_GetDeadTimeNs();
     s->phaseMask  = PFM_GetPhaseMask();
     MarkPresent(s, SETF_DEADTIME_NS, 0U);
@@ -358,7 +358,7 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
     }
     ApplyGds(s, r);
 
-    /* dead time and the phase choice (2026-11-17). A recall is IDLE-only, so neither can change under a running shot. */
+    /* dead time and the phase choice (2026-11-16). A recall is IDLE-only, so neither can change under a running shot. */
     if (Present(s, SETF_DEADTIME_NS, 0U) != 0U)
     {
         Record(r, (uint8_t)(HRTIM1_SetDeadTimeNs(s->deadTimeNs) != 0U), "CONFig:DEADtime", SET_CHANNEL_SYSTEM);
@@ -374,7 +374,7 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
 
 /* The fault-pin configuration of a save. Switching an input OFF removes a protection: a recall is IDLE-only (cmd_profile.c),
    the reply counts the inputs left off (r->gdsOff, "GDSOFF=<n>") and the pins are re-checked at once, as GDS:ENAble does. A
-   saved polarity is applied too (it used to be only checked, before GDS:POLarity existed as a runtime setting, 2026-11-17). */
+   saved polarity is applied too (it used to be only checked, before GDS:POLarity existed as a runtime setting, 2026-11-16). */
 static void ApplyGds(const settings_snapshot_t *s, settings_apply_result_t *r)
 {
     if (Present(s, SETF_GDS_POLARITY, 0U) != 0U)

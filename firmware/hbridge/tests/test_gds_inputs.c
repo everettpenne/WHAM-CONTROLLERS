@@ -58,7 +58,7 @@ static void TestPolarity(void)
     CHECK(GdsInputs_FaultBits(0x0FFBU) == 0x004U);
     Run(cmd_gds_polarity_query, NULL); CHECK_STR(fake_uart_out, "OK NORMALLY_HIGH\r\n");
 
-    /* the runtime flip (2026-11-17): all twelve at once, evaluation follows, pins re-checked */
+    /* the runtime flip (2026-11-16): all twelve at once, evaluation follows, pins re-checked */
     CHECK(GdsInputs_DefaultPolarityIsNormallyLow() == 0U);
     f_pins = 0x0FFFU; f_checks = 0;
     Run(cmd_gds_polarity, "NORMALLY_LOW"); CHECK_STR(fake_uart_out, "OK\r\n");

@@ -603,7 +603,7 @@ separate:
 ### `CONFig:DEADtime <ns>` and `CONFig:DEADtime?`
 
 The dead time between each phase's output and its complement, **one value for every phase** (every timing unit). Added 2026-11-16 (both products;
-before this it was a compile-time 17 counts). **Default 100 ns at every boot**; not remembered across a reboot, but **HBRIDGE stores it in a profile** (`*SAV`/`*RCL`, since 2026-11-17; XREX does not).
+before this it was a compile-time 17 counts). **Default 100 ns at every boot**; not remembered across a reboot, but **HBRIDGE stores it in a profile** (`*SAV`/`*RCL`, since 2026-11-16; XREX does not).
 
 | Command | Reply |
 |---|---|
@@ -881,7 +881,7 @@ lowest bit = input 01.
 a LOW reading is a fault; `NORMALLY_LOW` is the opposite. A board boots at the polarity it was built with (`GDS_FAULT_POLARITY` in `ctrlr_config.h`; HBRIDGE is built
 `NORMALLY_HIGH`, 2026-11-13).
 
-`GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>` (added 2026-11-17) changes it, **one global setting for all twelve inputs** (there is no per-pin polarity). `INVert`
+`GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>` (added 2026-11-16) changes it, **one global setting for all twelve inputs** (there is no per-pin polarity). `INVert`
 (or `INV`) selects the opposite of what is in force; keywords are case-insensitive. `OK`; `ERR 12` for anything else; `ERR 13` unless the state is `IDLE` or `FAULT`.
 The pins are re-checked at once, so a flip that leaves a switched-on input in its new fault state faults immediately (as `GDS:ENAble` does); it never clears an
 existing fault. Not remembered across a reboot (the built-in polarity returns), but a stored profile holds it (`*SAV`/`*RCL`). The hub announces it as DANGEROUS
@@ -907,7 +907,7 @@ Switches individual GateDriverStatus fault inputs off and on (added 2026-11-13).
 - **Remembered only in a saved profile.** Every input is on at boot except those cleared in `GDS_DEFAULT_ENABLE_MASK` (`ctrlr_config.h`, default `0x0FFF` = all on): a reboot
   returns to that. `*SAV` stores which inputs are on (and the nicknames, and the polarity in force) and `*RCL` puts them back -- including **switching inputs off**, so a
   recall can remove protections: the reply carries `GDSOFF=<n>` (the number of inputs left off) whenever the saved profile switched any off, `*RCL` is IDLE-only, and the
-  pins are re-checked at once. A save made before 2026-11-16 has no fault-pin fields and leaves the live configuration alone. A recall also restores the saved polarity (changed 2026-11-17: it used to be only checked against the build's), so it can
+  pins are re-checked at once. A save made before 2026-11-16 has no fault-pin fields and leaves the live configuration alone. A recall also restores the saved polarity (changed 2026-11-16: it used to be only checked against the build's), so it can
   put the pins into a fault state at once. Use `GDS:ENAble?` to see what is off right now.
 - `DEBUG:FAULT:BYPASS` is separate and broader (PC10 and all twelve inputs at once).
 
@@ -1084,7 +1084,7 @@ three run. These commands choose any combination -- U and W, only W, only V, ...
 - A disabled phase's outputs are never connected to the pins when a shot starts, so its gate drivers see no
   switching at all; its timer keeps running in step with the others, so the enabled phases keep their own places in
   the cycle (U at 0, V at 1/3, W at 2/3 of a period) whichever of the others are on. All three are enabled at every
-  boot and the choice lasts until reset. A stored profile holds it since 2026-11-17 (`*SAV`/`*RCL`), so a recall can switch legs on or
+  boot and the choice lasts until reset. A stored profile holds it since 2026-11-16 (`*SAV`/`*RCL`), so a recall can switch legs on or
   off; before that it was left out so that a recall could never change which legs are driven.
 - `SOURce LOOP` (the loopback test) measures Phase U on PFM_Input_01, so it refuses to start with U disabled.
   A PFM_Input capture of a disabled phase simply sees no edges.
@@ -1136,9 +1136,9 @@ In `DIFF?` a table is compared by point count (`shot=500>500*` means the same co
 number or label, `ERR 13` when not IDLE. A recall that refuses a value still applies the rest; a table that fails
 part way is left empty.
 
-**Also saved (2026-11-16):** the fault-pin configuration -- `GDS:ENAble` (which inputs are on), `GDS:NICKname` and the polarity in force (`GDS:POLarity`; applied on recall since 2026-11-17). `*RCL` then replies `OK APPLIED=<n> FAILED=<k> [<names>] [GDSOFF=<j>] [IGNORED=<m>]`; `GDSOFF` counts inputs the recalled profile left switched off.
+**Also saved (2026-11-16):** the fault-pin configuration -- `GDS:ENAble` (which inputs are on), `GDS:NICKname` and the polarity in force (`GDS:POLarity`; applied on recall since 2026-11-16). `*RCL` then replies `OK APPLIED=<n> FAILED=<k> [<names>] [GDSOFF=<j>] [IGNORED=<m>]`; `GDSOFF` counts inputs the recalled profile left switched off.
 
-**Also saved (2026-11-17):** `CONFig:DEADtime` (as read back, in ns) and the phase choice (`PHASe:ENAble`, a bitmask). A recall applies both (`CONFig:DEADtime` or `PHASe:ENAble` appears in the `FAILED` names if a value is refused).
+**Also saved (2026-11-16):** `CONFig:DEADtime` (as read back, in ns) and the phase choice (`PHASe:ENAble`, a bitmask). A recall applies both (`CONFig:DEADtime` or `PHASe:ENAble` appears in the `FAILED` names if a value is refused).
 
 **Not saved:** run state (`ARM`, `FIRE`, `SOURce:*`), the `CHARGE` output, the external trigger enable, the DAC outputs, and the bench-simulation settings
 (`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`).

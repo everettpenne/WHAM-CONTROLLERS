@@ -85,7 +85,7 @@ static uint8_t IsWord(const char *tok, const char *word)
 }
 
 /* --------------------------------------------------------------------------
- * GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>      (added 2026-11-17)
+ * GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>      (added 2026-11-16)
  *
  * Flips which level on the GateDriverStatus pins is a fault, for ALL twelve inputs at once (not per pin).
  *   NORMALLY_HIGH   pins read HIGH when healthy, LOW is a fault (the HBRIDGE build default)

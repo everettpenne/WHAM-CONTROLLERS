@@ -11,7 +11,7 @@
  *
  *   input numbers   1..12 = GateDriverStatus_01..12 (PE0..PE11), as in GDS?; 0 means "all" where noted.
  *   polarity        one setting for all twelve inputs. Boots at the compiled GDS_FAULT_POLARITY (ctrlr_config.h) and can be
- *                   flipped at runtime (GDS:POLarity, 2026-11-17); a reboot returns to the compiled one, a profile stores it.
+ *                   flipped at runtime (GDS:POLarity, 2026-11-16); a reboot returns to the compiled one, a profile stores it.
  *   enabled         runtime. Every input is ON at boot except those cleared in GDS_DEFAULT_ENABLE_MASK
  *                   (ctrlr_config.h). A switched-off input is never evaluated: it cannot latch a fault or stop the
  *                   output. A reboot returns to the compiled default; only an explicit *RCL of a profile that holds a mask

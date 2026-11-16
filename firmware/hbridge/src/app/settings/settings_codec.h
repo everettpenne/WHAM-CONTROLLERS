@@ -35,7 +35,7 @@
  * have a second, per-channel format (ids 70-73: one duty or voltage per phase in every point); a save uses it only
  * when the phases differ, so an ordinary profile is saved, byte for byte, as it always was.
  *
- * Saved since 2026-11-17: the dead time (CONFig:DEADtime) and which phases are enabled (PHASe:ENAble / SELect). The
+ * Saved since 2026-11-16: the dead time (CONFig:DEADtime) and which phases are enabled (PHASe:ENAble / SELect). The
  * phase choice used to be left out so that a recall could never change which legs of the bridge are driven; it is
  * stored now at the operator's request, so a recall CAN switch legs on (it is IDLE-only, and the choice is read
  * when a shot starts).
@@ -95,10 +95,10 @@ typedef enum
     SETF_X_KD             = 37,
 
     SETF_GDS_ENABLE_MASK  = 40,   /* GDS:ENAble as a bitmask, bit 0 = input 1 (2026-11-16) */
-    SETF_GDS_POLARITY     = 41,   /* the fault polarity in force when saved (1 NORMALLY_LOW, 0 NORMALLY_HIGH): applied on recall (since 2026-11-17; before that it was only checked against the build's) */
+    SETF_GDS_POLARITY     = 41,   /* the fault polarity in force when saved (1 NORMALLY_LOW, 0 NORMALLY_HIGH): applied on recall (since 2026-11-16; before that it was only checked against the build's) */
     SETF_GDS_NICKNAMES    = 42,   /* GDS:NICKname 1..12 as one string: "name1,name2,...", "-" for none */
-    SETF_DEADTIME_NS      = 43,   /* CONFig:DEADtime in ns, as the controller reads it back (a multiple of one HRTIM count, rounded) (2026-11-17) */
-    SETF_PHASE_MASK       = 44,   /* PHASe:ENAble as a bitmask, bit 0 = phase U (2026-11-17) */
+    SETF_DEADTIME_NS      = 43,   /* CONFig:DEADtime in ns, as the controller reads it back (a multiple of one HRTIM count, rounded) (2026-11-16) */
+    SETF_PHASE_MASK       = 44,   /* PHASe:ENAble as a bitmask, bit 0 = phase U (2026-11-16) */
 
     SETF_SHOT_COUNT       = 64,   /* tables: see above */
     SETF_SHOT_POINTS      = 65,
@@ -149,7 +149,7 @@ typedef struct
 extern const settings_field_t kSettingsFields[];
 extern const uint8_t          kSettingsFieldCount;
 
-#define SET_PRESENT_BITS   (160U)   /* >= fieldCount * SET_MAX_INSTANCES (raised from 128 on 2026-11-17: 34 fields x 4) */
+#define SET_PRESENT_BITS   (160U)   /* >= fieldCount * SET_MAX_INSTANCES (raised from 128 on 2026-11-16: 34 fields x 4) */
 
 typedef struct
 {

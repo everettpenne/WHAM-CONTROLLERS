@@ -62,7 +62,7 @@ points with different values on every phase, plus the HVPS curve -- is 15,693 of
 (a host test saves and recalls exactly that). Older firmware reading a newer save skips the records it does not know
 (loops 2 and 3, the per-phase tables), so a per-phase profile recalls there with that table missing.
 
-**Saved since 2026-11-17:** the dead time (`CONFig:DEADtime`, as the controller reads it back, in ns) and which phases are enabled
+**Saved since 2026-11-16:** the dead time (`CONFig:DEADtime`, as the controller reads it back, in ns) and which phases are enabled
 (`PHASe:ENAble`/`SELect`, a bitmask, U = bit 0). The phase choice used to be left out on purpose, so that a recall could never change
 which legs of the bridge are driven; it is stored now at the operator's request, so a recall CAN switch legs on or off (it is IDLE-only and
 the choice is read when a shot starts). Profiles saved before this date have neither field and leave the live values alone.

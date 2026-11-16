@@ -101,7 +101,7 @@ own `ARM`, and every fault latches `FAULT` -- see the bullet below.
 - **GateDriverStatus inputs** (2026-11-13; `src/app/protection/gds_inputs.c`, `gate_driver.c`, `src/app/commands/cmd_gds.c`): polarity boots at the compile-time
   `GDS_FAULT_POLARITY` in `ctrlr_config.h` (the supply config; HBRIDGE is `GDS_NORMALLY_HIGH`, a LOW pin is a fault, so an undriven input is a fault) with
   `GDS_DEFAULT_ENABLE_MASK` for inputs not wired on a supply. At runtime, `GDS:ENAble <0-12> <0|1>` switches inputs off/on (off only in IDLE/FAULT, DANGEROUS
-  to the hub; a reboot returns to the default) and `GDS:NICKname` labels them; `*SAV` now stores the mask, nicknames and polarity and `*RCL` restores them (settings ids 40-42; the reply carries `GDSOFF=<n>`); `GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>` flips the polarity of all twelve inputs at runtime (2026-11-17; IDLE/FAULT only, DANGEROUS to the hub, restored by `*RCL`, boot value returns after a reset) and `GDS:POLarity?` reports the one in force. Host-tested (`tests/test_gds_inputs.c`). Not yet run on hardware.
+  to the hub; a reboot returns to the default) and `GDS:NICKname` labels them; `*SAV` now stores the mask, nicknames and polarity and `*RCL` restores them (settings ids 40-42; the reply carries `GDSOFF=<n>`); `GDS:POLarity <NORMALLY_HIGH|NORMALLY_LOW|INVert>` flips the polarity of all twelve inputs at runtime (2026-11-16; IDLE/FAULT only, DANGEROUS to the hub, restored by `*RCL`, boot value returns after a reset) and `GDS:POLarity?` reports the one in force. Host-tested (`tests/test_gds_inputs.c`). Not yet run on hardware.
 - **Output-off gaps in a shot (2026-11-16)**: a `SHOT:STEP` with frequency 0 turns the outputs off until the next setpoint (the counters keep running; `HRTIM1_GapEnter()`/`GapExit()` in `hrtim.c`, hooked
   into `ApplyStep()` in `pfm.c`; off steps have every compare 0, `PFM_STEP_OFF_CMP`). The first setpoint cannot be off and the last two must be on. Host-tested and built; NOT yet run on hardware. Read the
   2026-11-16 changelog entry before touching the generator's off segments or the gap enter/exit order (write-after-disable on entry, write-before-reconnect on exit matters).
@@ -532,7 +532,7 @@ changing a frozen field id, or the per-channel meaning of loop numbers 1-3.
 The mechanism is old (carried over from the sibling project): `pfm.c` keeps a durable per-channel enable array and
 passes it to `HRTIM1_PWM_Start()`, which leaves a disabled channel's pins unconnected while its timer keeps running in
 step with the Master. The commands only change that array, in IDLE (it is read at shot start), parse the list with the
-pure, host-tested `phase_mask.c`, and `ARM` refuses with none enabled. The enables are saved in profiles since 2026-11-17 (field 44), with the dead time (field 43). The GDS fault
+pure, host-tested `phase_mask.c`, and `ARM` refuses with none enabled. The enables are saved in profiles since 2026-11-16 (field 44), with the dead time (field 43). The GDS fault
 inputs are not masked per phase (the pin map does not tie them to phases) -- ask before changing that.
 
 ## Saved profiles (added 2026-10-05)
