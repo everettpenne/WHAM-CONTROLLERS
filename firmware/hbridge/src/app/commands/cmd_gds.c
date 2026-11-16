@@ -99,7 +99,7 @@ static uint8_t ParseInput(uart_instance_t *inst, const char *tok, uint8_t minInp
  *
  * Switches individual GateDriverStatus fault inputs off and on. input = 1..12 (GateDriverStatus_01..12), or 0 for all
  * twelve. A switched-OFF input is not evaluated at all: it cannot latch a fault or stop the output, whatever it reads.
- * Not remembered across a reboot (only *SAV/*RCL carry it, 2026-11-16) -- every input is on at boot (except any cleared in GDS_DEFAULT_ENABLE_MASK, ctrlr_config.h) and a reboot
+ * Not remembered across a reboot (only a saved profile carries it, 2026-11-16) -- every input is on at boot (except any cleared in GDS_DEFAULT_ENABLE_MASK, ctrlr_config.h) and a reboot
  * always returns to that. Not stored in a profile. This switches a protection off: the hub announces it as DANGEROUS
  * ("interlock"); use it only for an input that is not wired or is known faulty.
  *
@@ -171,7 +171,7 @@ void cmd_gds_enable_query(uart_instance_t *inst, char *args)
  *
  * A label for each GateDriverStatus input, so a fault can be traced to "PhaseU_Hi" instead of "input 3". input = 1..12.
  * name = 1-15 characters from letters, digits and _ . - + (no spaces); the single character "-" clears the nickname
- * (and is how an unset nickname is printed). Lost at reboot unless saved with *SAV (a profile holds the nicknames, 2026-11-16).
+ * (and is how an unset nickname is printed). Lost at reboot unless saved in a profile (a profile holds the nicknames, 2026-11-16).
  *
  *   GDS:NICKname 3 PhaseU_Hi     OK        ERR 12 input not 1-12, ERR 14 invalid nickname
  *   GDS:NICKname? 3              OK PhaseU_Hi        (OK - when none is set)
