@@ -62,9 +62,13 @@ points with different values on every phase, plus the HVPS curve -- is 15,693 of
 (a host test saves and recalls exactly that). Older firmware reading a newer save skips the records it does not know
 (loops 2 and 3, the per-phase tables), so a per-phase profile recalls there with that table missing.
 
-**Not saved**, on purpose: ARM/FIRE/SOURce run state and `SOURce:SETpoint`, which phases are enabled (`PHASe:ENAble`:
-a recall must never change which legs of the bridge are driven), the DAC outputs, and every
-bench-simulation knob (`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`). A profile that put the loop onto a
+**Saved since 2026-11-17:** the dead time (`CONFig:DEADtime`, as the controller reads it back, in ns) and which phases are enabled
+(`PHASe:ENAble`/`SELect`, a bitmask, U = bit 0). The phase choice used to be left out on purpose, so that a recall could never change
+which legs of the bridge are driven; it is stored now at the operator's request, so a recall CAN switch legs on or off (it is IDLE-only and
+the choice is read when a shot starts). Profiles saved before this date have neither field and leave the live values alone.
+
+**Not saved**, on purpose: ARM/FIRE/SOURce run state and `SOURce:SETpoint`, the `CHARGE` output, the DAC outputs, the external trigger enable,
+`DEBUG:FAULT:BYPASS`, and every bench-simulation knob (`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`). A profile that put the loop onto a
 simulated feedback by itself would be a hazard on a real supply.
 
 ## Recall

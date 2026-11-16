@@ -39,7 +39,7 @@ void cmd_config_channels(uart_instance_t *inst, char *args)
  * CONFig:DEADtime <ns> / CONFig:DEADtime?      (added 2026-11-16)
  *
  * The dead time between a phase's output and its complement, one value for every timing unit (every phase). Default 100 ns
- * at every boot (HRTIM_DEADTIME_COUNTS, hrtim.h); RAM only, not saved in a profile. One HRTIM count is 5.88 ns, so the
+ * at every boot (HRTIM_DEADTIME_COUNTS, hrtim.h); Not remembered across a reboot, but saved in a profile (since 2026-11-17). One HRTIM count is 5.88 ns, so the
  * value is rounded: CONFig:DEADtime? replies the dead time in force in ns (100 -> 100, 120 -> 118). Range
  * HRTIM_DEADTIME_MIN_NS..HRTIM_DEADTIME_MAX_NS (50-3000 ns). Not while FIRING (the register is rewritten in place): ERR 13.
  * Too small a value risks shoot-through on a real bridge: the hub announces it as a limits change.

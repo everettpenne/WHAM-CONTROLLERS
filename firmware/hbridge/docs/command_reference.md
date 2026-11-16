@@ -603,7 +603,7 @@ separate:
 ### `CONFig:DEADtime <ns>` and `CONFig:DEADtime?`
 
 The dead time between each phase's output and its complement, **one value for every phase** (every timing unit). Added 2026-11-16 (both products;
-before this it was a compile-time 17 counts). **Default 100 ns at every boot**; not remembered across a reboot and not saved in a profile.
+before this it was a compile-time 17 counts). **Default 100 ns at every boot**; not remembered across a reboot, but **HBRIDGE stores it in a profile** (`*SAV`/`*RCL`, since 2026-11-17; XREX does not).
 
 | Command | Reply |
 |---|---|
@@ -1084,8 +1084,8 @@ three run. These commands choose any combination -- U and W, only W, only V, ...
 - A disabled phase's outputs are never connected to the pins when a shot starts, so its gate drivers see no
   switching at all; its timer keeps running in step with the others, so the enabled phases keep their own places in
   the cycle (U at 0, V at 1/3, W at 2/3 of a period) whichever of the others are on. All three are enabled at every
-  boot and the choice lasts until reset. It is **not part of a saved profile**: a recall must never change which legs
-  of the bridge are driven.
+  boot and the choice lasts until reset. A stored profile holds it since 2026-11-17 (`*SAV`/`*RCL`), so a recall can switch legs on or
+  off; before that it was left out so that a recall could never change which legs are driven.
 - `SOURce LOOP` (the loopback test) measures Phase U on PFM_Input_01, so it refuses to start with U disabled.
   A PFM_Input capture of a disabled phase simply sees no edges.
 - The twelve gate-driver status inputs (`GDS?`) are **not** masked for disabled phases: the pin map does not say
@@ -1138,7 +1138,9 @@ part way is left empty.
 
 **Also saved (2026-11-16):** the fault-pin configuration -- `GDS:ENAble` (which inputs are on), `GDS:NICKname` and the polarity in force (`GDS:POLarity`; applied on recall since 2026-11-17). `*RCL` then replies `OK APPLIED=<n> FAILED=<k> [<names>] [GDSOFF=<j>] [IGNORED=<m>]`; `GDSOFF` counts inputs the recalled profile left switched off.
 
-**Not saved:** run state (`ARM`, `FIRE`, `SOURce:*`), the DAC outputs, and the bench-simulation settings
+**Also saved (2026-11-17):** `CONFig:DEADtime` (as read back, in ns) and the phase choice (`PHASe:ENAble`, a bitmask). A recall applies both (`CONFig:DEADtime` or `PHASe:ENAble` appears in the `FAILED` names if a value is refused).
+
+**Not saved:** run state (`ARM`, `FIRE`, `SOURce:*`), the `CHARGE` output, the external trigger enable, the DAC outputs, and the bench-simulation settings
 (`CONFig:FEEDback:SOURce`, `DACRatio`, `SIM:PLANT:*`).
 
 ## Adding a command

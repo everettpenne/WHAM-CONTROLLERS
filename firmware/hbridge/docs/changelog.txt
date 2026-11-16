@@ -1,6 +1,16 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-17  -  Profiles also store the dead time and the phase choice  [host-tested, builds clean; NOT flashed]
+-----------------------------------------------------------------------
+  Request: make sure the dead time, the Limiter's tables and the selected phases are saved, and look for anything else worth saving.
+  settings_codec: two new scalar fields, frozen ids 43 (CONFig:DEADtime, U32 ns, as HRTIM1_GetDeadTimeNs() reads it back) and 44 (PHASe:ENAble, U8 bitmask, bit 0 = U); the presence bitmap grew from 128 to 160
+  bits (34 fields x 4 instances no longer fit in 128). settings.c: Capture() reads both, Apply() sets them (HRTIM1_SetDeadTimeNs, PFM_SetPhaseMask; a refused value is named in FAILED, a mask with bits beyond the
+  phase count is refused). A save from before this date has neither field and leaves the live values alone. The phase choice used to be left out so that a recall could never change which legs are driven: it can now.
+  Limiter tables: the shot and target tables are saved whatever the supply mode (the Limiter has no HVPS curve); test_settings' per-channel-table and limiter round trips already cover them and still pass.
+  Tests: test_settings (dead time 150 ns -> 153 and phases U+W survive scramble + recall), test_settings_codec (records 21 -> 23), worst-case payload 15704 of 16336 bytes. Docs: command_reference, saved_profiles, labview_commands, AGENTS.
+  Not stored, on purpose: run state, CHARGE, the external trigger enable, DEBUG:FAULT:BYPASS, the DAC outputs and the simulation knobs. XREX does not store its dead time (separate codec).
+
 2026-11-17  -  GDS:POLarity: flip the fault polarity of all twelve gate-driver status inputs at runtime  [host-tested, builds clean; NOT flashed]
 -----------------------------------------------------------------------
   Request: a command to invert the polarity of the fault pin readings, and a query; one global flip for all GDS inputs.

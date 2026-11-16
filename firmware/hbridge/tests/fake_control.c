@@ -10,6 +10,19 @@ static PFM_Source_t g_fakeSource = PFM_SOURCE_TABLE;
 void PFM_SelectSource(PFM_Source_t s) { g_fakeSource = s; }
 PFM_Source_t PFM_GetSource(void) { return g_fakeSource; }
 
+/* the dead time and phase choice settings.c now saves: the real quantization (one HRTIM count = 1000/170 ns) */
+static uint32_t g_fakeDeadCounts = 17U;
+static uint8_t  g_fakePhaseMask = 7U;
+uint8_t HRTIM1_SetDeadTimeNs(uint32_t ns)
+{
+    if ((ns < 50U) || (ns > 3000U)) { return 0U; }
+    g_fakeDeadCounts = ((ns * 170U) + 500U) / 1000U;
+    return 1U;
+}
+uint32_t HRTIM1_GetDeadTimeNs(void) { return ((g_fakeDeadCounts * 1000U) + 85U) / 170U; }
+uint8_t PFM_GetPhaseMask(void) { return g_fakePhaseMask; }
+void PFM_SetPhaseMask(uint8_t mask) { g_fakePhaseMask = (uint8_t)(mask & ((1U << HRTIM_NUM_CHANNELS) - 1U)); }
+
 static closed_loop_t g_cl;
 static uint8_t  g_init = 0U;
 static uint32_t g_rate = 10000U;
@@ -56,6 +69,7 @@ void FakeControl_Reset(void)
 {
     g_init = 0U;
     g_fakeSource = PFM_SOURCE_TABLE;
+    g_fakeDeadCounts = 17U; g_fakePhaseMask = 7U;
     g_rate = 10000U; g_scans = 4U; g_sample = 475U;
     g_slew = 0.0f; g_maxV = 4.0f; g_filter = 0.0f; g_clip = 10.0f;
     LoopDefaults();

@@ -63,7 +63,7 @@ extern "C" {
 /* Dead time at runtime (CONFig:DEADtime, 2026-11-16): the same value on every timing unit (every phase and every
  * reserved one). One count is one HRTIM clock, 1/170 MHz = 5.88 ns, so the value is quantized: 100 ns = 17 counts exactly.
  * The register holds 9 bits (511 counts = 3.0 us); the floor is a choice, not a hardware limit: below ~50 ns the gate
- * driver's own turn-off delay can overlap the complement's turn-on. RAM only: every boot returns to the default. */
+ * driver's own turn-off delay can overlap the complement's turn-on. Every boot returns to the default unless a profile is recalled (settings.c saves it). */
 #define HRTIM_DEADTIME_MIN_NS   50U
 #define HRTIM_DEADTIME_MAX_NS   3000U
 

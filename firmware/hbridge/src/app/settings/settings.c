@@ -10,6 +10,7 @@
 #include "pfm.h"
 #include "gds_inputs.h"
 #include "gate_driver.h"
+#include "hrtim.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -93,6 +94,12 @@ void Settings_Capture(settings_snapshot_t *s)
 
     /* the fault-pin configuration (2026-11-16): which GateDriverStatus inputs are switched on, what they are called, and
        the polarity in force (2026-11-17: it can be flipped at runtime, so it is stored like the rest) */
+    /* dead time and the phase choice (2026-11-17) */
+    s->deadTimeNs = HRTIM1_GetDeadTimeNs();
+    s->phaseMask  = PFM_GetPhaseMask();
+    MarkPresent(s, SETF_DEADTIME_NS, 0U);
+    MarkPresent(s, SETF_PHASE_MASK, 0U);
+
     s->gdsEnableMask = (uint32_t)GdsInputs_EnabledMask();
     s->gdsPolarity   = GdsInputs_PolarityIsNormallyLow();
     {
@@ -350,6 +357,19 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
         }
     }
     ApplyGds(s, r);
+
+    /* dead time and the phase choice (2026-11-17). A recall is IDLE-only, so neither can change under a running shot. */
+    if (Present(s, SETF_DEADTIME_NS, 0U) != 0U)
+    {
+        Record(r, (uint8_t)(HRTIM1_SetDeadTimeNs(s->deadTimeNs) != 0U), "CONFig:DEADtime", SET_CHANNEL_SYSTEM);
+    }
+    if (Present(s, SETF_PHASE_MASK, 0U) != 0U)
+    {
+        uint8_t ok = (uint8_t)((s->phaseMask & (uint8_t)~((1U << HRTIM_NUM_CHANNELS) - 1U)) == 0U);
+
+        if (ok != 0U) { PFM_SetPhaseMask(s->phaseMask); }
+        Record(r, ok, "PHASe:ENAble", SET_CHANNEL_SYSTEM);
+    }
 }
 
 /* The fault-pin configuration of a save. Switching an input OFF removes a protection: a recall is IDLE-only (cmd_profile.c),

@@ -532,7 +532,7 @@ changing a frozen field id, or the per-channel meaning of loop numbers 1-3.
 The mechanism is old (carried over from the sibling project): `pfm.c` keeps a durable per-channel enable array and
 passes it to `HRTIM1_PWM_Start()`, which leaves a disabled channel's pins unconnected while its timer keeps running in
 step with the Master. The commands only change that array, in IDLE (it is read at shot start), parse the list with the
-pure, host-tested `phase_mask.c`, and `ARM` refuses with none enabled. Enables are NOT saved in profiles. The GDS fault
+pure, host-tested `phase_mask.c`, and `ARM` refuses with none enabled. The enables are saved in profiles since 2026-11-17 (field 44), with the dead time (field 43). The GDS fault
 inputs are not masked per phase (the pin map does not tie them to phases) -- ask before changing that.
 
 ## Saved profiles (added 2026-10-05)

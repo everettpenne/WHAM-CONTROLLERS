@@ -38,7 +38,7 @@ is the only way to find out that a value was clamped (several commands clamp sil
 | `STATE?`, `FAULT?`, `FAULT:CLEar`, `ARM`, `DISARM` | see part 2 | `ARM` and `FAULT:CLEar` are marked dangerous |
 | `SOURce:STOP` | `OK` | stops the output, back to `IDLE` |
 | `CONFig:CHANnels?` | `OK <n>` | number of drive channels the firmware was built with |
-| `CONFig:DEADtime <ns>` **DANGEROUS** / `CONFig:DEADtime?` | `OK` / `OK <ns>` | dead time between a leg's two switches, the same on every phase. Default **100 ns** at every boot; range 50-3000 ns (`ERR 12` outside it or not a whole number); rounded to the nearest 5.88 ns count, so the query can return a slightly different value (`120` reads back `118`). `ERR 13` while `FIRING`. **RAM only: not stored in a profile.** Changes shoot-through protection: a commissioning setting, not for an operator screen |
+| `CONFig:DEADtime <ns>` **DANGEROUS** / `CONFig:DEADtime?` | `OK` / `OK <ns>` | dead time between a leg's two switches, the same on every phase. Default **100 ns** at every boot; range 50-3000 ns (`ERR 12` outside it or not a whole number); rounded to the nearest 5.88 ns count, so the query can return a slightly different value (`120` reads back `118`). `ERR 13` while `FIRING`. **Not remembered across a reboot, but stored in a profile on HBRIDGE (section 6); XREX does not store it.** Changes shoot-through protection: a commissioning setting, not for an operator screen |
 | `GDS?` | `OK 01=HIGH 02=LOW ...` | raw gate-driver status pin levels; diagnostic only |
 | `GDS:POLarity?` (HBRIDGE) | `OK NORMALLY_HIGH` or `OK NORMALLY_LOW` | which level is a fault, for all twelve inputs: the polarity in force (boots at the build's: HBRIDGE NORMALLY_HIGH, a LOW pin is the fault) |
 | `GDS:POLarity <NORMALLY_HIGH\|NORMALLY_LOW\|INVert>` **DANGEROUS** (HBRIDGE) | `OK` | flips that polarity for all twelve inputs at once (`INVert` = the opposite of now). `IDLE` or `FAULT` only (`ERR 13`), `ERR 12` for another word. The pins are re-checked at once, so a flip can fault immediately. Lost at reboot unless saved in a profile (section 6). Not for a front-end |
@@ -205,7 +205,7 @@ input), and phases can be mixed in one run.
 | `CONFig:LIMits?` | `OK <mode> FREQ <min> <max> DUTY <min> <max>` | the limits in force (Hz, percent) |
 | `PHASe:ENAble <phases> <0\|1>` **DANGEROUS if 1** | `OK` | `IDLE` only. `<phases>` = letters (`U`, `UW`), channel numbers (`1`, `13`) or `ALL`; the others are left as they are. A disabled phase is never connected to its output pins. All three are enabled at every boot; `ARM` refuses if none is |
 | `PHASe:SELect <phases\|NONE>` **DANGEROUS** | `OK` | exactly these phases on and the rest off |
-| `PHASe:ENAble?` / `PHASe:SELect?` | `OK U=1 V=0 W=1` / `OK UW` | the phase choice is **not** part of a stored profile, by design (a recall never changes which legs of the bridge are driven) |
+| `PHASe:ENAble?` / `PHASe:SELect?` | `OK U=1 V=0 W=1` / `OK UW` | the phase choice **is** part of a stored profile (since 2026-11-17), so a recall can switch legs on or off: read `PHASe:ENAble?` after every `*RCL` |
 
 ### 4.2 Open-loop shot: frequency and duty over time
 
@@ -364,7 +364,7 @@ use the commands below in both products.
 Recalling can switch protections off, so check the reply: HBRIDGE adds ` GDSOFF=<j>` (before `IGNORED`) when the recalled profile left `<j>` gate-driver inputs switched off. Show it to the operator.
 
 What is stored differs by product. XREX: control rates and calibration, fault polarities, shot timing, and per channel gains, loop mode, maximum current, demand current and nickname; **not**
-channel enables, the external-enable setting, setpoints or any run action (the two board enable outputs `GPOut:ENAble` and `PWMAlt:ENAble` are stored). HBRIDGE: the settings *and* the shot, target and HVPS-curve tables; the **gate-driver fault-pin configuration** (which `GDS:ENAble` inputs are on, the `GDS:NICKname` labels, and and the `GDS:POLarity` in force, which a recall puts back); **not** run state, the DAC outputs, the simulation settings, the phase choice or `CONFig:DEADtime`.
+channel enables, the external-enable setting, setpoints or any run action (the two board enable outputs `GPOut:ENAble` and `PWMAlt:ENAble` are stored). HBRIDGE: the settings *and* the shot, target and HVPS-curve tables; the **gate-driver fault-pin configuration** (which `GDS:ENAble` inputs are on, the `GDS:NICKname` labels, and and the `GDS:POLarity` in force, which a recall puts back); the **dead time** (`CONFig:DEADtime`) and the **phase choice** (`PHASe:ENAble`), both since 2026-11-17; **not** run state, the `CHARGE` output, the external trigger enable, the DAC outputs or the simulation settings.
 A profile saved by older firmware still recalls on newer firmware; `IGNORED` counts saved values the running firmware does not know.
 
 ---

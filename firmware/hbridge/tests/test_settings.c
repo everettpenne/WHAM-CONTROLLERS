@@ -12,6 +12,7 @@
 #include "target_profile.h"
 #include "hvps_curve.h"
 #include "pfm.h"
+#include "hrtim.h"
 #include "test_util.h"
 #include <string.h>
 
@@ -100,6 +101,8 @@ static void SetLiveState(void)
     (void)Control_SetHvpsVpeak(1.5f);
     (void)Control_SetLimiterVscale(900.0f);
     (void)Control_SetHvpsAbove(0U);
+    (void)HRTIM1_SetDeadTimeNs(150U);                         /* reads back 153 */
+    PFM_SetPhaseMask(0x5U);                                   /* U and W */
     (void)Control_SetGainsFor(0U, CL_PLANT_HVPS, 4000.0f, 200000.0f, 0.001f);
     (void)Control_SetGainsFor(0U, CL_PLANT_LIMITER, 0.167f, 6.667f, 0.0f);
     Control_SetLoopMode(0U, 1U);
@@ -140,6 +143,8 @@ static void ScrambleLiveState(void)
     (void)Control_SetHvpsVpeak(1.0f);
     (void)Control_SetLimiterVscale(1.0f);
     (void)Control_SetHvpsAbove(1U);
+    (void)HRTIM1_SetDeadTimeNs(100U);
+    PFM_SetPhaseMask(0x7U);
     (void)Control_SetGainsFor(CTL_ALL_LOOPS, CL_PLANT_HVPS, 1.0f, 2.0f, 3.0f);
     (void)Control_SetGainsFor(CTL_ALL_LOOPS, CL_PLANT_LIMITER, 4.0f, 5.0f, 6.0f);
     Control_SetLoopMode(CTL_ALL_LOOPS, 0U);
@@ -183,6 +188,7 @@ static void TestRoundTrip(void)
     CHECK(SupplyMode_Get() == SUPPLY_MODE_HVPS && Control_GetRateHz() == 8000U && Control_GetScansPerTick() == 3U);
     CHECK(ShotProfile_IsComplete() != 0U && Target_IsComplete() != 0U);
     CHECK(PFM_GetSource() == PFM_SOURCE_PROFILE);             /* FIRE plays the recalled shot, as after SHOT:END */
+    CHECK(HRTIM1_GetDeadTimeNs() == 153U && PFM_GetPhaseMask() == 0x5U);   /* dead time and the phase choice come back */
 
     /* recalling the same profile again changes nothing and does not report the mode as changed */
     CHECK(Settings_Recall(2U, &res) == PROFILE_OK && res.apply.failed == 0U && res.modeChanged == 0U);
