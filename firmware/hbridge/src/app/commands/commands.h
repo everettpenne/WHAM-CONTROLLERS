@@ -39,6 +39,7 @@ extern "C" {
  *   cmd_config.c   CONFig:*
  *   cmd_state.c    FAULT?/FAULT:CLEar, ARM/DISARM/STATE?, DEBUG:FAULT:BYPASS, GENERAL:TEST:FAULT
  *   cmd_io.c       DIAGnostic:LEDs?, EXTernal:TRIGger*
+ *   cmd_spark.c    SPARKgap:INPut?, SPARKgap:ENAble (the spark-gap fault input, PF13)
  *   cmd_gds.c      GDS?, GDS:LAST?, GDS:POLarity, GDS:POLarity?, GDS:ENAble, GDS:NICKname (the 12 GateDriverStatus fault inputs)
  *   cmd_charge.c   CHARGE:FREQuency, CHARGE:STATus? (the PG0 frequency output)
  *   cmd_pfmin.c    PFMIN:*
@@ -321,6 +322,8 @@ void cmd_gds_nickname_query(uart_instance_t *inst, char *args);   /* GDS:NICKnam
 void cmd_ext_trigger(uart_instance_t *inst, char *args);              /* EXTernal:TRIGger <0|1> */
 void cmd_ext_trigger_query(uart_instance_t *inst, char *args);        /* EXTernal:TRIGger? -- OK <0|1> */
 void cmd_spark_gap_input_query(uart_instance_t *inst, char *args);   /* SPARKgap:INPut? -- OK <0|1>, the raw PF13 level */
+void cmd_spark_gap_enable(uart_instance_t *inst, char *args);        /* SPARKgap:ENAble <0|1> -- switch the spark-gap fault input off/on */
+void cmd_spark_gap_enable_query(uart_instance_t *inst, char *args);  /* SPARKgap:ENAble? -- OK <0|1> */
 void cmd_ext_trigger_input_query(uart_instance_t *inst, char *args);  /* EXTernal:TRIGger:INPut? -- OK <0|1>, the raw PF15 level */
 void cmd_ext_trigger_status_query(uart_instance_t *inst, char *args); /* EXTernal:TRIGger:STATus? -- counters and the last result */
 /* The CHARGE output: a 50 % square wave on PG0 (charge.h), independent of the state */

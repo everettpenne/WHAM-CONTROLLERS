@@ -98,6 +98,7 @@ typedef enum
     SETF_GDS_POLARITY     = 41,   /* the fault polarity in force when saved (1 NORMALLY_LOW, 0 NORMALLY_HIGH): applied on recall (since 2026-11-16; before that it was only checked against the build's) */
     SETF_GDS_NICKNAMES    = 42,   /* GDS:NICKname 1..12 as one string: "name1,name2,...", "-" for none */
     SETF_DEADTIME_NS      = 43,   /* CONFig:DEADtime in ns, as the controller reads it back (a multiple of one HRTIM count, rounded) (2026-11-16) */
+    SETF_SPARK_ENABLE     = 45,   /* SPARKgap:ENAble, 1 = the spark-gap input is on (2026-11-16) */
     SETF_PHASE_MASK       = 44,   /* PHASe:ENAble as a bitmask, bit 0 = phase U (2026-11-16) */
 
     SETF_SHOT_COUNT       = 64,   /* tables: see above */
@@ -192,6 +193,7 @@ typedef struct
     char     gdsNicks[SET_GDS_NICK_BUF];
     uint32_t deadTimeNs;
     uint8_t  phaseMask;
+    uint8_t  sparkEnabled;
     settings_plant_t plant[SET_PLANT_COUNT];
     settings_xloop_t xloop[SET_XLOOPS];
     settings_plant_t xplant[SET_MAX_INSTANCES];     /* [extra loop * SET_PLANT_COUNT + plant] */

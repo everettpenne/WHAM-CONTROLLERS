@@ -540,9 +540,15 @@ neither stops the output nor latches; `FAULT:SOURces?` still shows the truth; tu
 
 `SPARKgap:INPut?` -> `OK <0|1>`: the raw level of PF13 right now, `1` = HIGH (healthy), `0` = LOW (a fault), whether or not it latched or the bypass is on.
 
-The pin has the **internal pull-up** (`SPARK_GAP_PULL_UP`, `ctrlr_config.h`), so an unwired input reads HIGH (healthy) and a bench board does not fault. The cost: a
-broken wire to a real spark-gap sensor also reads HIGH. There is no enable switch or polarity command for this input (use the bypass, or change the define).
-It is not stored in a profile.
+The pin has **no internal pull resistor**: the external circuit must hold it HIGH. An **unwired input floats** and can read LOW, so a board with nothing on PF13 can
+latch a spark-gap fault at boot -- wire it, or switch the input off with `SPARKgap:ENAble 0`. There is no polarity command for this input.
+
+`SPARKgap:ENAble <0|1>` / `SPARKgap:ENAble?` -> `OK` / `OK <0|1>`: the input's own enable switch, like `GDS:ENAble`. A switched-off input is not evaluated at all (it
+cannot stop the output or latch a fault, whatever the pin reads; `SPARKgap:INPut?` still shows the raw level). **On at every boot** (`SPARK_GAP_DEFAULT_ENABLED`,
+`ctrlr_config.h`). Switching it **off** needs `IDLE` or `FAULT` (`ERR 13` otherwise) -- a protection is not removed from an armed or running controller -- and is announced
+by the hub as DANGEROUS ("interlock"); switching it **on** is allowed in any state and re-checks the pin at once (a LOW pin faults immediately). The argument must be
+exactly `0` or `1` (`ERR 12`). Switching it off does not clear a fault it already latched: `FAULT:CLEar` does, and the re-check then ignores the switched-off input.
+It **is stored in a profile** (`*SAV`/`*RCL`, field 45): `*RCL` of a profile that left it off adds `SPARKOFF=1` to its reply.
 
 ### `FAULT?`, `FAULT:CLEAR`, `FAULT:SOURces?`
 

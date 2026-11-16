@@ -101,7 +101,7 @@ $(OUT)/test_profile_store: test_profile_store.c fake_nvstore.c fake_nvstore.h $(
 
 # the saved-profile glue against a fake control layer and the real tables, supply modes and flash store
 SET_SRC := $(SETTINGS)/settings.c $(SETTINGS)/settings_codec.c $(SETTINGS)/profile_store.c fake_nvstore.c fake_control.c \
-           $(ROOT)/src/app/protection/gds_inputs.c \
+           $(ROOT)/src/app/protection/gds_inputs.c $(ROOT)/src/app/protection/spark_gap.c \
            $(SCPI_UTIL) fake_uart.c \
            $(ROOT)/src/app/control/closed_loop.c $(ROOT)/src/app/control/pid_core.c $(ROOT)/src/app/control/feedback.c \
            $(ROOT)/src/app/control/hvps_curve.c $(ROOT)/src/app/control/shot_profile.c \

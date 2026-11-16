@@ -1,6 +1,15 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-16  -  Spark-gap input: enable switch (SPARKgap:ENAble), no internal pull-up, saved in profiles  [host-tested; flash status: see below]
+-----------------------------------------------------------------------
+  Request: an enable switch like the GDS inputs', and no internal pull-up resistor on PF13.
+  board_io.c: PF13 is GPIO_NOPULL now; SPARK_GAP_PULL_UP is gone (ctrlr_config.h gained SPARK_GAP_DEFAULT_ENABLED = 1). An UNWIRED PF13 therefore floats and may read LOW: a board with nothing on it can latch a spark-gap
+  fault at boot; wire it or switch it off. spark_gap.c: SparkGap_IsEnabled/SetEnabled/Reset; a switched-off input is never evaluated (CheckFault does nothing, so a clear's re-check ignores it too); the raw SPARKgap:INPut? still reads.
+  New src/app/commands/cmd_spark.c (SPARKgap:INPut? moved here from cmd_io.c) with SPARKgap:ENAble <0|1> / ENAble?: off only in IDLE/FAULT (ERR 13), strict 0/1 (ERR 12), switching on re-checks the pin; hub: "interlock" when off.
+  Profiles: field 45 SPARKgap:ENAble (u8, system); *RCL re-checks the pin and adds SPARKOFF=1 to its reply when a profile left it off; saves from before this field leave the live setting alone. Not in the hub's dangerous list for *RCL (unchanged).
+  Tests: test_spark_gap (enable cases), test_settings (save/recall, SPARKOFF, recall with PF13 LOW), test_settings_codec (24 records), test_dangerous_commands. Docs: command_reference, saved_profiles, labview_commands.
+
 2026-11-16  -  Spark-gap fault input on PF13  [host-tested, builds clean; NOT flashed, not seen on a real signal]
 -----------------------------------------------------------------------
   Request: use PF13 as a spark-gap fault: normally HIGH, bypassable like the other faults, and a LOW reading is a fault reported as a spark-gap fault.

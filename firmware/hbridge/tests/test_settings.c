@@ -5,6 +5,7 @@
  */
 #include "settings.h"
 #include "gds_inputs.h"
+#include "spark_gap.h"
 #include "fake_nvstore.h"
 #include "control_runtime.h"
 #include "supply_mode.h"
@@ -697,6 +698,37 @@ static void TestGdsConfig(void)
         CHECK(GdsInputs_IsEnabled(5U) == 0U && res.apply.gdsOff == 0U);
     }
     GdsInputs_Reset();
+
+    /* the spark-gap input's enable switch is saved: a recall puts it back, and reports SPARKOFF when it left it off */
+    {
+        extern uint8_t g_fakeSparkPin;
+        extern uint32_t g_fakeForceStops;
+
+        SparkGap_Reset();
+        CHECK(SparkGap_IsEnabled() == 1U);
+        Settings_Capture(&snap);
+        CHECK(snap.sparkEnabled == 1U);
+        SparkGap_SetEnabled(0U);
+        Settings_Capture(&snap);
+        CHECK(snap.sparkEnabled == 0U);
+        CHECK(Settings_Save(5U, "spark", "v0.11") == PROFILE_OK);
+        SparkGap_Reset();                                           /* a reboot: back on */
+        CHECK(SparkGap_IsEnabled() == 1U);
+        CHECK(Settings_Recall(5U, &res) == PROFILE_OK && res.apply.failed == 0U);
+        CHECK(SparkGap_IsEnabled() == 0U && res.apply.sparkOff == 1U);
+        SparkGap_Reset();
+        SparkGap_SetEnabled(1U);
+        Settings_Capture(&snap);
+        CHECK(Settings_Save(5U, "spark", "v0.11") == PROFILE_OK);
+        SparkGap_SetEnabled(0U);
+        g_fakeSparkPin = 0U;                                        /* a recall that switches it on with PF13 LOW faults */
+        g_fakeForceStops = 0U;
+        CHECK(Settings_Recall(5U, &res) == PROFILE_OK && res.apply.sparkOff == 0U);
+        CHECK(SparkGap_IsEnabled() == 1U && SparkGap_FaultIsLatched() == 1U && g_fakeForceStops >= 1U);
+        g_fakeSparkPin = 1U;
+        SparkGap_FaultClear();
+        SparkGap_Reset();
+    }
 }
 
 static void TestWorstCaseFits(void)

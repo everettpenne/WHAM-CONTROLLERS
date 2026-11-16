@@ -240,6 +240,7 @@ CONFig:MODE HVPS ... upload ... ARM -> OK -> FIRE -> OK        (FIRE plays the u
 
 | Command | Reply | Notes |
 |---|---|---|
+| `SPARKgap:ENAble <0\|1>` / `SPARKgap:ENAble?` (HBRIDGE) | `OK` / `OK <0\|1>` | switches the spark-gap fault input (PF13) off/on; on at every boot; off only in IDLE/FAULT (`ERR 13`), argument exactly 0 or 1 (`ERR 12`); DANGEROUS when off; stored in profiles. PF13 has no internal pull, so an unwired input can read LOW |
 | `SPARKgap:INPut?` (HBRIDGE) | `OK <0\|1>` | raw level of the spark-gap fault input PF13: `1` HIGH = healthy, `0` LOW = a spark-gap fault (`FAULT:SOURces?` then shows `SPARK=1` once it latched). Added 2026-11-16 |
 | `EXTernal:TRIGger <0\|1>` / `?`, `EXTernal:TRIGger:INPut?`, `EXTernal:TRIGger:STATus?` | `OK` / `OK <0\|1>` / `OK <0\|1>` / `OK enabled=... last=...` | a rising edge on PF15 while `ARMED` **starts the shot like `FIRE`**, from an interrupt (on by default). The state can go `ARMED` to `FIRING` with no command from you. `...STATus?` has the counters and why a trigger did not start a shot. HBRIDGE has no `EXTernal:ENAble` |
 | `CHARGE:FREQuency <hz>` **DANGEROUS if not 0** | `OK` | **HBRIDGE only.** A separate 50 % square wave on one pin for the capacitor-bank charger: `0` = off, otherwise 1 to 100000 Hz. **Any state; it stays on through a fault**, off after every reset, not stored in a profile. `ERR 12` for any other value |
@@ -356,7 +357,7 @@ use the commands below in both products.
 | Command | Reply |
 |---|---|
 | `*SAV <slot> [label]` | `OK`. Label 1-15 characters, no spaces. Overwrites a used slot |
-| `*RCL <slot>` | `OK APPLIED=<n> FAILED=<k> [<names refused>] [GDSOFF=<j>] [IGNORED=<m>]`. Every value goes through the normal limit checks; one that is refused is named and the rest still load. `FAILED` must be 0 for a clean recall; **check it** |
+| `*RCL <slot>` | `OK APPLIED=<n> FAILED=<k> [<names refused>] [GDSOFF=<j>] [SPARKOFF=1] [IGNORED=<m>]`. Every value goes through the normal limit checks; one that is refused is named and the rest still load. `FAILED` must be 0 for a clean recall; **check it** |
 | `CONFig:PROFile:CATalog?` | `OK 1=<label>/<fw> 2=empty 3=corrupt ...` |
 | `CONFig:PROFile? <slot>` | the saved values, nothing applied |
 | `CONFig:PROFile:DIFF? <slot>` | what a recall would change, as `name=live>saved`, or `OK SAME`. Show this to the operator before a recall |

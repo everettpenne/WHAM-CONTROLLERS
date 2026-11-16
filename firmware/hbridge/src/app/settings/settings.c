@@ -9,6 +9,7 @@
 #include "hvps_curve.h"
 #include "pfm.h"
 #include "gds_inputs.h"
+#include "spark_gap.h"
 #include "gate_driver.h"
 #include "hrtim.h"
 #include <stdio.h>
@@ -99,6 +100,8 @@ void Settings_Capture(settings_snapshot_t *s)
     s->phaseMask  = PFM_GetPhaseMask();
     MarkPresent(s, SETF_DEADTIME_NS, 0U);
     MarkPresent(s, SETF_PHASE_MASK, 0U);
+    s->sparkEnabled = SparkGap_IsEnabled();
+    MarkPresent(s, SETF_SPARK_ENABLE, 0U);
 
     s->gdsEnableMask = (uint32_t)GdsInputs_EnabledMask();
     s->gdsPolarity   = GdsInputs_PolarityIsNormallyLow();
@@ -362,6 +365,13 @@ void Settings_Apply(const settings_snapshot_t *s, settings_apply_result_t *r, ui
     if (Present(s, SETF_DEADTIME_NS, 0U) != 0U)
     {
         Record(r, (uint8_t)(HRTIM1_SetDeadTimeNs(s->deadTimeNs) != 0U), "CONFig:DEADtime", SET_CHANNEL_SYSTEM);
+    }
+    if (Present(s, SETF_SPARK_ENABLE, 0U) != 0U)
+    {
+        SparkGap_SetEnabled(s->sparkEnabled);
+        if (s->sparkEnabled == 0U) { r->sparkOff = 1U; }
+        SparkGap_CheckFault();                /* switched on while PF13 reads LOW: faults at once */
+        Record(r, 1U, "SPARKgap:ENAble", SET_CHANNEL_SYSTEM);
     }
     if (Present(s, SETF_PHASE_MASK, 0U) != 0U)
     {

@@ -31,6 +31,7 @@ typedef struct
     uint16_t applied;
     uint16_t failed;
     char     failedNames[96];   /* comma-separated, truncated if long */
+    uint8_t  sparkOff;          /* 1 if the applied save left the spark-gap input switched OFF */
     uint16_t gdsOff;            /* GateDriverStatus inputs the applied save left switched OFF (0 when it had no fault-pin settings) */
 } settings_apply_result_t;
 

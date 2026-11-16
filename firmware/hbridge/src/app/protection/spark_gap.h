@@ -16,18 +16,26 @@
  * stops the output nor latches; FAULT? and FAULT:SOURces? still report the true pin. Turning the bypass off re-checks
  * the pin at once (EXTI only sees an edge, so a pin that stayed LOW would otherwise never be noticed).
  *
- * The pin is configured with the internal pull-up (SPARK_GAP_PULL_UP, ctrlr_config.h), so an UNWIRED input reads HIGH
- * (healthy). The price: a broken wire to a real sensor also reads HIGH. Set SPARK_GAP_PULL_UP to 0 to make an unwired
- * (floating) input unreliable instead.
+ * The pin has NO internal pull resistor: the external circuit must hold it HIGH. An UNWIRED input floats and can read LOW, so
+ * a board with nothing on PF13 can latch a spark-gap fault; switch the input off with SPARKgap:ENAble 0 (like GDS:ENAble:
+ * RAM only, IDLE or FAULT only, DANGEROUS to the hub, restored by *RCL from a profile that stored it).
  *
  * Hardware-independent logic over board_io.h; host-tested (tests/test_spark_gap.c).
  * -------------------------------------------------------------------------- */
 
-/* The raw level now: 1 = HIGH (healthy), 0 = LOW (a fault). */
+/* Back to the boot state: switched on (SPARK_GAP_DEFAULT_ENABLED, ctrlr_config.h), nothing latched is touched. */
+void SparkGap_Reset(void);
+
+/* The input's enable switch: while off it is never evaluated -- it cannot stop the output or latch a fault, whatever the pin
+   reads. Switching it off does not clear a fault it already latched (FAULT:CLEar does, and its re-check then ignores it). */
+uint8_t SparkGap_IsEnabled(void);
+void    SparkGap_SetEnabled(uint8_t enabled);
+
+/* The raw level now: 1 = HIGH (healthy), 0 = LOW (a fault); read whether or not the input is enabled. */
 uint8_t SparkGap_Read(void);
 
-/* From the EXTI interrupt, at boot, after FAULT:CLEar and when the bypass is turned off: if the pin reads LOW and the
-   bypass is off, stops the output (PFM_ForceStop) and latches. */
+/* From the EXTI interrupt, at boot, after FAULT:CLEar, when the bypass is turned off and when the input is switched on: if
+   the input is enabled, the pin reads LOW and the bypass is off, stops the output (PFM_ForceStop) and latches. */
 void SparkGap_CheckFault(void);
 
 uint8_t SparkGap_FaultIsLatched(void);

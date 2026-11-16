@@ -36,6 +36,7 @@ const settings_field_t kSettingsFields[] =
     { SETF_GDS_NICKNAMES,   "GDS:NICKname",    SETK_STR, SETS_SYSTEM, SYS_OFF(gdsNicks)      },
     { SETF_DEADTIME_NS,     "DEADtime",        SETK_U32, SETS_SYSTEM, SYS_OFF(deadTimeNs)    },
     { SETF_PHASE_MASK,      "PHASe:ENAble",    SETK_U8,  SETS_SYSTEM, SYS_OFF(phaseMask)     },
+    { SETF_SPARK_ENABLE,    "SPARKgap:ENAble", SETK_U8,  SETS_SYSTEM, SYS_OFF(sparkEnabled)  },
 
     { SETF_KP,              "kp",               SETK_F32, SETS_PLANT, PL_OFF(kp)             },
     { SETF_KI,              "ki",               SETK_F32, SETS_PLANT, PL_OFF(ki)             },

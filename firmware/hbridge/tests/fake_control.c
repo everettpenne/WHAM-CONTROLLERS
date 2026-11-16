@@ -208,3 +208,10 @@ uint8_t Control_GetHvpsAbove(void) { return Control_Loop()->cfg.hvpsAbove; }
 /* the gate-driver fault re-check a recalled fault-pin configuration asks for: counted, no hardware */
 unsigned int g_fakeGdsChecks = 0U;
 void GateDriver_CheckFault(void) { g_fakeGdsChecks++; }
+/* the spark-gap input (spark_gap.c itself is linked): a healthy PF13, no bypass, a counted output stop */
+uint8_t g_fakeSparkPin = 1U;
+uint8_t g_fakeFaultBypass = 0U;
+uint32_t g_fakeForceStops = 0U;
+uint8_t BoardIo_ReadSparkGap(void) { return g_fakeSparkPin; }
+uint8_t SM_GetFaultBypassEnabled(void) { return g_fakeFaultBypass; }
+void PFM_ForceStop(void) { g_fakeForceStops++; }

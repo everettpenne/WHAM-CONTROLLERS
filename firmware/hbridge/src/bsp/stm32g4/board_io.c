@@ -106,7 +106,7 @@ void BoardIo_Init(void)
       __HAL_RCC_SYSCFG_CLK_ENABLE();
       sparkInit.Pin  = GPIO_PIN_13;
       sparkInit.Mode = GPIO_MODE_IT_FALLING;
-      sparkInit.Pull = (SPARK_GAP_PULL_UP != 0U) ? GPIO_PULLUP : GPIO_NOPULL;
+      sparkInit.Pull = GPIO_NOPULL;                    /* no internal resistor: the external circuit holds it HIGH */
       HAL_GPIO_Init(GPIOF, &sparkInit);
       __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_13);
   }

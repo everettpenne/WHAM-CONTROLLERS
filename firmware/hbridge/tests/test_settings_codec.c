@@ -6,7 +6,7 @@
 #include "test_util.h"
 
 /* every record a fully populated snapshot encodes: 18 system fields, loop 1's gains, and the extra loops' */
-#define ALL_RECORDS (23U + 3U * SET_PLANT_COUNT + SET_XLOOPS * (4U + 3U * SET_PLANT_COUNT))
+#define ALL_RECORDS (24U + 3U * SET_PLANT_COUNT + SET_XLOOPS * (4U + 3U * SET_PLANT_COUNT))
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

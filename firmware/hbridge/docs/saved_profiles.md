@@ -51,7 +51,7 @@ does not have are left alone on recall, so an older and a newer firmware can rea
 | Shot table, per phase | count (70), points (71) | 14 bytes per point (t_us, freq_mHz, a duty per phase U, V, W), 18 per record |
 | Target table | count (66), points (67) | 8 bytes per point (t_us, millivolts), 30 per record: one voltage for every phase |
 | Target table, per phase | count (72), points (73) | 16 bytes per point (t_us, a millivolts per phase), 15 per record |
-| Fault pins (2026-11-16) | GDS:ENAble mask (40, u32, bit 0 = input 1), the build's polarity (41, u8), the twelve nicknames as one string `a,-,b,...` (42) | **recall switches inputs off**: see `*RCL`'s `GDSOFF=`; the polarity is checked, not applied |
+| Fault pins (2026-11-16) | GDS:ENAble mask (40, u32, bit 0 = input 1), the build's polarity (41, u8), the twelve nicknames as one string `a,-,b,...` (42), the spark-gap input's enable `SPARKgap:ENAble` (45, u8) | **recall switches inputs off**: see `*RCL`'s `GDSOFF=`; the polarity is checked, not applied |
 | HVPS curve | count (68), points (69) | 8 bytes per point (Hz, volts as floats), 30 per record; count 0 = the linear default |
 
 **Which table format a save uses.** A shot or target whose phases all have the same value at every point is saved in
