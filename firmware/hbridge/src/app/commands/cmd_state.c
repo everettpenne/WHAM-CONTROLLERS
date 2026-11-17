@@ -82,6 +82,7 @@ void cmd_arm(uart_instance_t *inst, char *args)
         Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- no phase is enabled (PHASe:ENAble U|V|W|ALL 1)");
         return;
     }
+    PFM_PrepareStart();     /* the ring is filled now, while still IDLE, so the start has only the outputs left to do */
     if (SM_Arm() == 0U)
     {
         Scpi_SendErr(inst, ERR_INVALID_STATE, "Can't ARM -- arm conditions not met");   /* narrow race only */

@@ -26,7 +26,17 @@ static void TestUploadRules(void)
     CHECK(Add(0U, 20000U, 5000U) == SHOT_APPEND_NO_MODE);
 
     SupplyMode_Set(SUPPLY_MODE_HVPS);
-    ShotProfile_Clear();
+    {
+        uint32_t rev = ShotProfile_Revision();
+
+        ShotProfile_Clear();
+        CHECK(ShotProfile_Revision() != rev);                              /* Clear moves the revision */
+        rev = ShotProfile_Revision();
+        CHECK(Add(0U, 20000U, 5000U) == SHOT_APPEND_OK && ShotProfile_Revision() != rev);   /* an accepted Append does */
+        rev = ShotProfile_Revision();
+        CHECK(Add(0U, 20000U, 5000U) != SHOT_APPEND_OK && ShotProfile_Revision() == rev);   /* a refused one does not */
+        ShotProfile_Clear();
+    }
     CHECK(ShotProfile_Count() == 0U && ShotProfile_DurationUs() == 0U && !ShotProfile_IsComplete());
     CHECK(Add(1U, 20000U, 5000U) == SHOT_APPEND_FIRST_NOT_ZERO);     /* t = 0 is required */
     CHECK(ShotProfile_Count() == 0U);

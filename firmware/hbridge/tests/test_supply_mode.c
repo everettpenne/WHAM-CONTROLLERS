@@ -37,7 +37,16 @@ static void TestNoModeAndNames(void)
     CHECK(l.freqMinHz == 75000U && l.freqMaxHz == 125000U && l.dutyMinPct == 5U && l.dutyMaxPct == 95U);
     CHECK(SupplyMode_GetLimits(SUPPLY_MODE_HVPS, &l) == 1U);
     CHECK(l.freqMinHz == 10000U && l.freqMaxHz == 30000U && l.dutyMinPct == 40U && l.dutyMaxPct == 60U);
-    CHECK(SupplyMode_Set(SUPPLY_MODE_LIMITER) == 1U);          /* changed */
+    {
+        uint32_t rev = SupplyMode_Revision();
+
+        CHECK(SupplyMode_Set(SUPPLY_MODE_LIMITER) == 1U);      /* changed */
+        CHECK(SupplyMode_Revision() != rev);                   /* a change moves the revision ... */
+        rev = SupplyMode_Revision();
+        CHECK(SupplyMode_Set(SUPPLY_MODE_LIMITER) == 0U && SupplyMode_Revision() == rev);   /* ... and a repeat does not */
+        CHECK(SupplyMode_Set(SUPPLY_MODE_NONE) == 1U);
+        CHECK(SupplyMode_Set(SUPPLY_MODE_LIMITER) == 1U);
+    }
     CHECK(SupplyMode_Set(SUPPLY_MODE_LIMITER) == 0U);          /* already selected */
     CHECK(SupplyMode_Set(SUPPLY_MODE_NONE) == 1U);
 }

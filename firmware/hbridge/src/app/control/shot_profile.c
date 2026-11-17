@@ -21,9 +21,17 @@
 static shot_setpoint_t g_sp[SHOT_SETPOINT_MAX];
 static uint16_t        g_count = 0U;
 
+static uint32_t g_revision = 0U;
+
+uint32_t ShotProfile_Revision(void)
+{
+    return g_revision;
+}
+
 void ShotProfile_Clear(void)
 {
     g_count = 0U;
+    g_revision++;
 }
 
 static uint8_t g_badChannel = 0U;
@@ -92,6 +100,7 @@ shot_append_result_t ShotProfile_Append(uint32_t tUs, uint32_t freqMilliHz,
         g_sp[g_count].dutyHundredths[ch] = (freqMilliHz == 0U) ? 0U : dutyHundredths[ch];   /* an off setpoint keeps no duty */
     }
     g_count++;
+    g_revision++;
     return SHOT_APPEND_OK;
 }
 

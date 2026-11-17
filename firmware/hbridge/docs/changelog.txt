@@ -1,6 +1,14 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-16  -  The ring prefill moves from the trigger to ARM  [host-tested; flash status: see the line below]
+-----------------------------------------------------------------------
+  Request: after the gap-log memset fix (start_us 851 -> ~198 us) the remaining firmware share was the ring prefill, 86 us (50-period shot) to 165 us (100-entry ring). cmd_arm now calls PFM_PrepareStart() BEFORE SM_Arm()
+  (still IDLE, so no trigger edge can start a shot while it runs): for an open-loop shot from the SHOT:* profile it starts the generator and fills the ring. PFM_Restart() uses that ring only if ShotProfile_Revision() and
+  SupplyMode_Revision() (new counters: Clear/accepted Append, and a mode change) still match and nothing consumed or overwrote it (PFM_Restart clears the flag; PFM_TableReset/AppendStep clear it, the ring is g_pfmTable);
+  otherwise it fills as before, so changing the shot or the mode while ARMED is still honoured. Table and closed-loop starts are untouched. LATency? gained prepared=<0|1>. Tests: revisions in test_shot_profile/test_supply_mode.
+  Not covered by a host test (pfm.c is not host-built): checked on the Limiter -- see below.
+
 2026-11-16  -  EXTernal:TRIGger:LATency?: where the time between the trigger edge and the output goes  [host-tested; measurement only, no behaviour change]
 -----------------------------------------------------------------------
   Reported: about 1 ms between the rising edge on the fiber trigger and the output starting (scope + supply output capture). By reading the code the firmware's own share should be 0.2-0.4 ms (ring prefill ~140 us,

@@ -5,6 +5,7 @@
 #include "hrtim.h"
 
 static supply_mode_t g_mode = SUPPLY_MODE_NONE;
+static uint32_t g_revision = 0U;
 
 supply_mode_t SupplyMode_Get(void)
 {
@@ -18,7 +19,13 @@ uint8_t SupplyMode_Set(supply_mode_t mode)
         return 0U;
     }
     g_mode = mode;
+    g_revision++;
     return 1U;
+}
+
+uint32_t SupplyMode_Revision(void)
+{
+    return g_revision;
 }
 
 const char *SupplyMode_Name(supply_mode_t mode)

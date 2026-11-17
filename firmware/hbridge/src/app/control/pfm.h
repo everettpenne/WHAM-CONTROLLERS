@@ -193,6 +193,16 @@ void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced,
 #define PFM_RESTART_STAMPS  (5U)
 void PFM_GetRestartStamps(uint32_t out[PFM_RESTART_STAMPS]);
 
+/* Called from ARM, before the state becomes ARMED (so no trigger edge can start a shot while it runs): for an open-loop
+   shot from the SHOT:* profile, starts the generator and fills the ring now (~90-170 us) instead of in PFM_Restart(), so
+   FIRE or the trigger only has to start the outputs. A no-op for a table or a closed-loop shot. PFM_Restart() uses the
+   prepared ring only if the profile and the supply mode are unchanged since (ShotProfile_Revision(),
+   SupplyMode_Revision()) and otherwise fills it as before, so a change made while ARMED is always honoured. */
+void PFM_PrepareStart(void);
+
+/* 1 if the last PFM_Restart() used the ring prepared at ARM. */
+uint8_t PFM_LastStartWasPrepared(void);
+
 void PFM_Init(void);
 void PFM_ApplyCurrentStep(void);
 void PFM_CycleBoundaryHandler(void);

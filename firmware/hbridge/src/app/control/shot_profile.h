@@ -94,6 +94,10 @@ uint8_t  ShotProfile_Get(uint16_t index, shot_setpoint_t *out);
 /* A usable shot: at least two setpoints (the first is t = 0 by construction), the last two on (not 0 Hz). */
 uint8_t  ShotProfile_IsComplete(void);
 
+/* Changes whenever the setpoint list changes (Clear, every accepted Append). Something computed from the profile in
+   advance (the ring PFM_PrepareStart() fills at ARM) is valid only while this still has the value it had then. */
+uint32_t ShotProfile_Revision(void);
+
 /* ---- generator ---- */
 
 /* Starts walking the stored setpoints from t = 0. `ticksPerEntry` scales the

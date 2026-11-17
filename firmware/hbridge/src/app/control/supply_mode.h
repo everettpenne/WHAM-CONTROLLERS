@@ -52,6 +52,9 @@ supply_mode_t SupplyMode_Get(void);
    IDLE-only rule and clears the table on a change. */
 uint8_t SupplyMode_Set(supply_mode_t mode);
 
+/* Changes whenever the mode changes: see ShotProfile_Revision(). */
+uint32_t SupplyMode_Revision(void);
+
 /* "NONE", "LIMITER" or "HVPS". */
 const char *SupplyMode_Name(supply_mode_t mode);
 

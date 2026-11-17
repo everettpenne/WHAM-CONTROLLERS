@@ -531,11 +531,12 @@ present at boot shows in the `!BOOT` banner as `STATE=FAULT`.
 
 ### `EXTernal:TRIGger:LATency?` -- where the start time goes
 
-Added 2026-11-16 (diagnostic). `OK edge_us=<t|NA> ring_us=<t> preload_us=<t> capture_us=<t> pwm_us=<t> start_us=<t> total_us=<t|NA>` -- microseconds (one decimal, the 170 MHz
+Added 2026-11-16 (diagnostic). `OK edge_us=<t|NA> ring_us=<t> preload_us=<t> capture_us=<t> pwm_us=<t> start_us=<t> total_us=<t|NA> prepared=<0|1>` -- microseconds (one decimal, the 170 MHz
 cycle counter) of the LAST SUCCESSFUL shot start: `edge_us` = the accepted PF15 edge to the start routine being entered (`NA` if the shot was started by `FIRE`/`SHOT:STARt`);
-`ring_us` = filling the ring; `preload_us` = step 0 written and forced into the HRTIM; `capture_us` = the PFM_Input capture started; `pwm_us` = `HRTIM1_PWM_Start()` (the outputs
+`ring_us` = filling the ring (a few microseconds when `prepared=1`: the ring was filled by `ARM`); `preload_us` = step 0 written and forced into the HRTIM; `capture_us` = the PFM_Input capture started; `pwm_us` = `HRTIM1_PWM_Start()` (the outputs
 are connected at its end); `start_us` = start routine entry to outputs connected; `total_us` = edge to outputs connected. `ERR 13` before any shot has been started since boot.
-The first HRTIM pulse follows the end of `pwm_us` by up to one switching period.
+`prepared=1` = the last start used the ring `ARM` had already filled (open-loop shot from the `SHOT:*` profile; a table or a closed-loop start is never prepared). A change to the shot profile or the supply mode made
+while ARMED is detected and the ring is filled at the start as before (`prepared=0`), so the shot played is always the one currently defined. The first HRTIM pulse follows the end of `pwm_us` by up to one switching period.
 
 ### Spark-gap fault input: PF13, `SPARKgap:INPut?`
 

@@ -50,6 +50,12 @@ static uint32_t g_diagRefills  = 0U;
 static uint32_t g_diagProduced = 0U;
 static uint32_t g_diagRefillWall    = 0U;   /* cycles from refill entry to exit, summed (includes preemption) */
 static uint32_t g_diagRefillWallMax = 0U;
+/* The ring prepared at ARM (PFM_PrepareStart()): valid while the profile and the supply mode are as they were then, and
+   until PFM_Restart() consumes it or the table is rewritten (the ring IS g_pfmTable). */
+static uint8_t  g_prepValid = 0U;
+static uint8_t  g_lastWasPrepared = 0U;
+static uint32_t g_prepProfileRev = 0U;
+static uint32_t g_prepModeRev = 0U;
 static uint32_t g_tRestart[PFM_RESTART_STAMPS];   /* PFM_GetRestartStamps() */
 static uint32_t g_diagPrefillCycles = 0U;   /* PFM_Restart()'s prefill, interrupts masked: the pure cost of the generator */   /* longest single refill run, same measure */
 
@@ -535,6 +541,34 @@ void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced,
     if (prefillCycles != NULL)       { *prefillCycles = g_diagPrefillCycles; }
 }
 
+void PFM_PrepareStart(void)
+{
+    uint32_t irq;
+    uint32_t t0;
+
+    g_prepValid = 0U;
+    if ((g_openSource != PFM_SOURCE_PROFILE) || (ShotProfile_IsComplete() == 0U))
+    {
+        return;                       /* a table or a closed-loop start has nothing to prepare */
+    }
+    irq = Mcu_IrqSave();
+    g_ringHead = 0U;
+    g_ringTail = 0U;
+    g_genDone  = (ShotGen_Start(PFM_HOLD_PERIODS) != 0U) ? 0U : 1U;
+    t0 = Mcu_CycleCount();
+    FillRing();
+    g_diagPrefillCycles = Mcu_CycleCount() - t0;
+    g_prepProfileRev = ShotProfile_Revision();
+    g_prepModeRev = SupplyMode_Revision();
+    g_prepValid = 1U;
+    Mcu_IrqRestore(irq);
+}
+
+uint8_t PFM_LastStartWasPrepared(void)
+{
+    return g_lastWasPrepared;
+}
+
 void PFM_GetRestartStamps(uint32_t out[PFM_RESTART_STAMPS])
 {
     for (uint8_t i = 0U; i < PFM_RESTART_STAMPS; i++)
@@ -549,6 +583,7 @@ void PFM_Restart(void)
 
     g_tRestart[0] = Mcu_CycleCount();
     irq = Mcu_IrqSave();   /* the ring and the generator are set up with the refill interrupt held off */
+    g_lastWasPrepared = 0U;
 
     g_pfmIndex = 0U;
     g_holdCounter = 0U;
@@ -569,12 +604,20 @@ void PFM_Restart(void)
     }
     else if (g_source == PFM_SOURCE_PROFILE)
     {
-        g_ringHead = 0U;
-        g_genDone  = (ShotGen_Start(PFM_HOLD_PERIODS) != 0U) ? 0U : 1U;
+        if ((g_prepValid != 0U) && (g_prepProfileRev == ShotProfile_Revision()) && (g_prepModeRev == SupplyMode_Revision()))
         {
-            uint32_t t0 = Mcu_CycleCount();
-            FillRing();           /* the whole ring is ready before the first period */
-            g_diagPrefillCycles = Mcu_CycleCount() - t0;
+            g_lastWasPrepared = 1U;   /* the ring and the generator were set up at ARM and nothing they depend on changed */
+            g_diagProduced = g_ringHead;   /* what the prefill produced (this shot's counters were just reset) */
+        }
+        else
+        {
+            g_ringHead = 0U;
+            g_genDone  = (ShotGen_Start(PFM_HOLD_PERIODS) != 0U) ? 0U : 1U;
+            {
+                uint32_t t0 = Mcu_CycleCount();
+                FillRing();           /* the whole ring is ready before the first period */
+                g_diagPrefillCycles = Mcu_CycleCount() - t0;
+            }
         }
     }
     else
@@ -582,6 +625,7 @@ void PFM_Restart(void)
         g_ringHead = g_pfmEntryCount;
         g_genDone  = 1U;
     }
+    g_prepValid = 0U;                 /* consumed, or overwritten (a live or table start): never reused */
     Mcu_IrqRestore(irq);
     g_tRestart[1] = Mcu_CycleCount();
     g_pfmState = PFM_STATE_RUNNING;
@@ -725,6 +769,7 @@ const PFM_Step_t *PFM_GetStepByIndex(uint16_t index)
 
 void PFM_TableReset(void)
 {
+    g_prepValid = 0U;                 /* the ring is g_pfmTable */
     g_pfmEntryCount = 0U;
 }
 
@@ -735,6 +780,7 @@ uint8_t PFM_AppendStep(uint16_t per, const uint16_t *cmp)
         return 0U;
     }
 
+    g_prepValid = 0U;
     g_pfmTable[g_pfmEntryCount].per = per;
     memcpy(g_pfmTable[g_pfmEntryCount].cmp, cmp, sizeof(g_pfmTable[g_pfmEntryCount].cmp));
     g_pfmEntryCount++;
