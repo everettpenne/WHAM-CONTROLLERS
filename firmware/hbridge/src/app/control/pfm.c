@@ -597,7 +597,10 @@ void PFM_Restart(void)
     g_diagHaveLastCall  = 0U;
     g_diagBusyMaxCycles = 0U;
     g_diagBusySumCycles = 0U;
-    memset(g_diagGapLog, 0, sizeof(g_diagGapLog));
+    /* NOT a memset of the whole log (2026-11-16): it is PFM_INPUT_MAX_PERIODS (3,800) words, and newlib-nano's memset is a
+       byte loop -- about 0.5 ms with the trigger waiting (measured, EXTernal:TRIGger:LATency?). PFM_GetDiagGapLog()
+       returns only the entries of this shot (0..g_diagCallCount), each written as it is played; entry 0 never is. */
+    g_diagGapLog[0] = 0U;
 
     /* Every shot must write HRTIM on its first period, no matter what a
        previous shot left in the registers. */
