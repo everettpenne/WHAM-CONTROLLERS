@@ -7,7 +7,8 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
   (still IDLE, so no trigger edge can start a shot while it runs): for an open-loop shot from the SHOT:* profile it starts the generator and fills the ring. PFM_Restart() uses that ring only if ShotProfile_Revision() and
   SupplyMode_Revision() (new counters: Clear/accepted Append, and a mode change) still match and nothing consumed or overwrote it (PFM_Restart clears the flag; PFM_TableReset/AppendStep clear it, the ring is g_pfmTable);
   otherwise it fills as before, so changing the shot or the mode while ARMED is still honoured. Table and closed-loop starts are untouched. LATency? gained prepared=<0|1>. Tests: revisions in test_shot_profile/test_supply_mode.
-  Not covered by a host test (pfm.c is not host-built): checked on the Limiter -- see below.
+  Checked on the Limiter (ae2fdbe1, software FIRE): ARM then FIRE of the 0.5 ms shot -> ring_us 2.5 (was 86), start_us 39.5 (was 116-198), prepared=1, 50 periods; ARM, then the shot redefined to 0.3 ms WHILE ARMED, then
+  FIRE -> prepared=0, ring filled at the start (58 us), 30 periods played = the new shot. Flashed to the Limiter only; the ECH still runs the earlier build. A real PF15 edge with this build: not yet.
 
 2026-11-16  -  EXTernal:TRIGger:LATency?: where the time between the trigger edge and the output goes  [host-tested; measurement only, no behaviour change]
 -----------------------------------------------------------------------
