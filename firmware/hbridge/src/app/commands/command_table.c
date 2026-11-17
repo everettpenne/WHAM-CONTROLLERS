@@ -128,6 +128,7 @@ static const scpi_command_t command_table[] = {
     { "SPARKgap:ENAble",         cmd_spark_gap_enable         },
     { "SPARKgap:ENAble?",        cmd_spark_gap_enable_query   },
     { "EXTernal:TRIGger:STATus?", cmd_ext_trigger_status_query },
+    { "EXTernal:TRIGger:LATency?", cmd_ext_trigger_latency_query },
 
     /* The CHARGE output (PG0, 50 % duty): any state -- see charge.h and cmd_charge.c. */
     { "CHARGE:FREQuency",        cmd_charge_freq              },

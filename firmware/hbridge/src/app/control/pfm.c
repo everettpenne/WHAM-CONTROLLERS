@@ -50,6 +50,7 @@ static uint32_t g_diagRefills  = 0U;
 static uint32_t g_diagProduced = 0U;
 static uint32_t g_diagRefillWall    = 0U;   /* cycles from refill entry to exit, summed (includes preemption) */
 static uint32_t g_diagRefillWallMax = 0U;
+static uint32_t g_tRestart[PFM_RESTART_STAMPS];   /* PFM_GetRestartStamps() */
 static uint32_t g_diagPrefillCycles = 0U;   /* PFM_Restart()'s prefill, interrupts masked: the pure cost of the generator */   /* longest single refill run, same measure */
 
 /* --------------------------------------------------------------------------
@@ -534,9 +535,20 @@ void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced,
     if (prefillCycles != NULL)       { *prefillCycles = g_diagPrefillCycles; }
 }
 
+void PFM_GetRestartStamps(uint32_t out[PFM_RESTART_STAMPS])
+{
+    for (uint8_t i = 0U; i < PFM_RESTART_STAMPS; i++)
+    {
+        out[i] = g_tRestart[i];
+    }
+}
+
 void PFM_Restart(void)
 {
-    uint32_t irq = Mcu_IrqSave();   /* the ring and the generator are set up with the refill interrupt held off */
+    uint32_t irq;
+
+    g_tRestart[0] = Mcu_CycleCount();
+    irq = Mcu_IrqSave();   /* the ring and the generator are set up with the refill interrupt held off */
 
     g_pfmIndex = 0U;
     g_holdCounter = 0U;
@@ -571,6 +583,7 @@ void PFM_Restart(void)
         g_genDone  = 1U;
     }
     Mcu_IrqRestore(irq);
+    g_tRestart[1] = Mcu_CycleCount();
     g_pfmState = PFM_STATE_RUNNING;
 
     /* Fresh diagnostic window for this shot -- see g_diagMaxGapCycles's
@@ -605,6 +618,7 @@ void PFM_Restart(void)
        the counters, when started one line below, begin their very
        first period with the correct step-0 values. */
     HRTIM1_SoftwareUpdate();
+    g_tRestart[2] = Mcu_CycleCount();
 
     /* PFM_Input capture (2026-09-08, pfm_input.h) starts here, in the same
        call as the shot and immediately BEFORE the outputs (2026-09-30):
@@ -615,8 +629,10 @@ void PFM_Restart(void)
        -- the outputs are idle until the line below. No-op for any channel
        never armed via PfmInput_Arm(). */
     PfmInput_OnShotStart();
+    g_tRestart[3] = Mcu_CycleCount();
 
     HRTIM1_PWM_Start(g_channelEnabled);
+    g_tRestart[4] = Mcu_CycleCount();
 }
 
 void PFM_SetPhaseEnabled(uint8_t channel, uint8_t enabled)

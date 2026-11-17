@@ -325,6 +325,7 @@ void cmd_spark_gap_input_query(uart_instance_t *inst, char *args);   /* SPARKgap
 void cmd_spark_gap_enable(uart_instance_t *inst, char *args);        /* SPARKgap:ENAble <0|1> -- switch the spark-gap fault input off/on */
 void cmd_spark_gap_enable_query(uart_instance_t *inst, char *args);  /* SPARKgap:ENAble? -- OK <0|1> */
 void cmd_ext_trigger_input_query(uart_instance_t *inst, char *args);  /* EXTernal:TRIGger:INPut? -- OK <0|1>, the raw PF15 level */
+void cmd_ext_trigger_latency_query(uart_instance_t *inst, char *args); /* EXTernal:TRIGger:LATency? -- where the time of the last shot start went */
 void cmd_ext_trigger_status_query(uart_instance_t *inst, char *args); /* EXTernal:TRIGger:STATus? -- counters and the last result */
 /* The CHARGE output: a 50 % square wave on PG0 (charge.h), independent of the state */
 void cmd_charge_freq(uart_instance_t *inst, char *args);              /* CHARGE:FREQuency <hz>  (0 = off) */

@@ -56,6 +56,10 @@ typedef struct
 
 void ShotTrigger_GetStatus(shot_trigger_status_t *out);
 
+/* Cycles (170 MHz) from the accepted edge to ShotStart_Run() being entered, for the most recent shot started by an edge.
+   Returns 0 (and leaves *cycles alone) if there is none, or a later FIRE/SHOT:STARt has started a shot since. */
+uint8_t ShotTrigger_LastEdgeToEntry(uint32_t *cycles);
+
 #ifdef __cplusplus
 }
 #endif

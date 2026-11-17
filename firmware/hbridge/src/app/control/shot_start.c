@@ -12,6 +12,11 @@
 /* Taken with interrupts masked, so two callers (the main loop and the trigger's software interrupt) can never both
    be inside the start sequence. */
 static volatile uint8_t g_busy = 0U;
+static uint32_t g_lastEntry = 0U;
+static uint32_t g_startCount = 0U;
+
+uint32_t ShotStart_LastEntryStamp(void) { return g_lastEntry; }
+uint32_t ShotStart_StartCount(void) { return g_startCount; }
 
 uint8_t ShotStart_FaultLatched(void)
 {
@@ -31,6 +36,7 @@ uint8_t ShotStart_FaultLatched(void)
 shot_start_result_t ShotStart_Run(void)
 {
     shot_start_result_t r = { SHOT_START_OK, CTL_OK };
+    uint32_t entry = Mcu_CycleCount();
 
     Mcu_IrqDisable();
     if (g_busy != 0U)
@@ -83,6 +89,11 @@ shot_start_result_t ShotStart_Run(void)
         }
     }
 
+    if (r.code == SHOT_START_OK)
+    {
+        g_lastEntry = entry;
+        g_startCount++;
+    }
     g_busy = 0U;
     return r;
 }

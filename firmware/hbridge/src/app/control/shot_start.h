@@ -34,6 +34,11 @@ typedef enum
     SHOT_START_CHANGED        /* the state changed between the checks and the start: nothing was started */
 } shot_start_code_t;
 
+/* Timing of the last SUCCESSFUL start (cycle counter, 170 MHz): the cycle count when ShotStart_Run() was entered, and the
+   number of successful starts since boot (lets a caller tell whether a later start was its own). */
+uint32_t ShotStart_LastEntryStamp(void);
+uint32_t ShotStart_StartCount(void);
+
 typedef struct
 {
     shot_start_code_t code;

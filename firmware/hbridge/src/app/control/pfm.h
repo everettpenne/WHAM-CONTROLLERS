@@ -187,6 +187,12 @@ void    PFM_ClearUnderrun(void);
 void PFM_GetDiagRing(uint32_t *minReady, uint32_t *refills, uint32_t *produced,
                      uint32_t *refillWallCycles, uint32_t *refillWallMaxCycles, uint32_t *prefillCycles);
 
+/* Where the time went in the last PFM_Restart() (cycle-counter values, 170 MHz; take differences as uint32_t):
+   [0] entry, [1] ring ready, [2] step 0 preloaded (before the capture is started), [3] capture started,
+   [4] HRTIM1_PWM_Start() returned (the outputs are connected). Added 2026-11-16 for the trigger-latency measurement. */
+#define PFM_RESTART_STAMPS  (5U)
+void PFM_GetRestartStamps(uint32_t out[PFM_RESTART_STAMPS]);
+
 void PFM_Init(void);
 void PFM_ApplyCurrentStep(void);
 void PFM_CycleBoundaryHandler(void);

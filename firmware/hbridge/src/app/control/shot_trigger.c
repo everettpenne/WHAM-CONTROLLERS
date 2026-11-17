@@ -28,8 +28,24 @@ uint8_t ShotTrigger_GetEnabled(void)
     return g_enabled;
 }
 
+static uint32_t g_edgeStamp = 0U;
+static uint32_t g_edgeToEntry = 0U;
+static uint32_t g_edgeStartCount = 0U;   /* ShotStart_StartCount() right after the edge's own start; 0 = none */
+
+uint8_t ShotTrigger_LastEdgeToEntry(uint32_t *cycles)
+{
+    if ((g_edgeStartCount == 0U) || (g_edgeStartCount != ShotStart_StartCount()))
+    {
+        return 0U;
+    }
+    *cycles = g_edgeToEntry;
+    return 1U;
+}
+
 void ShotTrigger_OnEdge(void)
 {
+    uint32_t now = Mcu_CycleCount();
+
     g_st.edges++;
     if (g_enabled == 0U)
     {
@@ -45,6 +61,7 @@ void ShotTrigger_OnEdge(void)
     }
     else
     {
+        g_edgeStamp = now;
         g_pending = 1U;
         Mcu_StartIrqPend();
     }
@@ -65,6 +82,8 @@ void ShotTrigger_RunPending(void)
     g_st.attempts++;
     if (r.code == SHOT_START_OK)
     {
+        g_edgeToEntry = ShotStart_LastEntryStamp() - g_edgeStamp;
+        g_edgeStartCount = ShotStart_StartCount();
         g_st.started++;
     }
     else

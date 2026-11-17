@@ -1,6 +1,13 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-16  -  EXTernal:TRIGger:LATency?: where the time between the trigger edge and the output goes  [host-tested; measurement only, no behaviour change]
+-----------------------------------------------------------------------
+  Reported: about 1 ms between the rising edge on the fiber trigger and the output starting (scope + supply output capture). By reading the code the firmware's own share should be 0.2-0.4 ms (ring prefill ~140 us,
+  capture DMA start, HRTIM1_PWM_Start() cold-start settling of up to one period; more for a closed-loop start), so this adds cycle-counter stamps (170 MHz) instead of guessing: ShotStart_Run() entry, PFM_Restart()'s
+  stages (ring ready, step 0 preloaded, capture started, outputs connected) and the PF15 edge itself. New EXTernal:TRIGger:LATency? -> OK edge_us= ring_us= preload_us= capture_us= pwm_us= start_us= total_us= (microseconds,
+  one decimal; edge_us/total_us NA when the last start was a FIRE/SHOT:STARt; an error before the first start). Docs: command_reference. Tests: test_shot_trigger.
+
 2026-11-16  -  Spark-gap input: enable switch (SPARKgap:ENAble), no internal pull-up, saved in profiles  [host-tested; flash status: see below]
 -----------------------------------------------------------------------
   Request: an enable switch like the GDS inputs', and no internal pull-up resistor on PF13.

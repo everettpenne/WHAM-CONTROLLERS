@@ -58,6 +58,8 @@ ctl_result_t Control_Prepare(uint8_t useProfile)
 }
 void Control_Go(void)                { f_goes++; }
 void Control_Stop(void)              { f_stops++; }
+static uint32_t f_cycles;                               /* a fake cycle counter: 100 cycles per read */
+uint32_t Mcu_CycleCount(void)        { f_cycles += 100U; return f_cycles; }
 void Mcu_IrqDisable(void)            { f_irqDepth++; }
 void Mcu_IrqEnable(void)             { f_irqDepth--; }
 void Mcu_StartIrqInit(void)          { f_startIrqInit++; }
@@ -202,11 +204,20 @@ static void TestEdgeStartsAShotOnlyWhenArmedEnabledAndHigh(void)
     CHECK(f_state == SM_STATE_FIRING && f_fires == 1);
     CHECK(s.started == s0.started + 1 && s.attempts == s0.attempts + 1 && s.last.code == SHOT_START_OK);
     CHECK(s.edges == s0.edges + 6);
-
     ShotTrigger_RunPending();                           /* run again with no new edge: nothing more */
     CHECK(f_fires == 1);
     ShotTrigger_OnEdge();                               /* edge while FIRING: ignored */
     CHECK(f_startIrqPends == 1);
+
+    {
+        uint32_t cyc = 0U;
+
+        CHECK(ShotTrigger_LastEdgeToEntry(&cyc) == 1U && cyc > 0U);   /* the edge's own start has an edge-to-entry time */
+        Reset();
+        CHECK(ShotStart_Run().code == SHOT_START_OK);                 /* a later FIRE-style start is not the edge's */
+        CHECK(ShotTrigger_LastEdgeToEntry(&cyc) == 0U);
+    }
+
 }
 
 static void TestRefusedStartLeavesItArmedAndNeedsANewEdge(void)

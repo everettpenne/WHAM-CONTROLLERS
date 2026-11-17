@@ -8,6 +8,8 @@
 #include "cmd_common.h"
 #include "ctrlr_config.h"
 #include "shot_trigger.h"
+#include "shot_start.h"
+#include "pfm.h"
 #include "board_io.h"
 #include <stdio.h>
 #include <string.h>
@@ -80,6 +82,48 @@ void cmd_ext_trigger_input_query(uart_instance_t *inst, char *args)
     (void)args;
 
     snprintf(buf, sizeof(buf), "OK %u\r\n", (unsigned)BoardIo_ReadExtTrigger());
+    uart_send(inst, buf);
+}
+
+/* EXTernal:TRIGger:LATency? -- OK edge_us=<t|NA> ring_us=<t> preload_us=<t> capture_us=<t> pwm_us=<t> start_us=<t> total_us=<t|NA>
+   Where the time went in the LAST SUCCESSFUL shot start, in microseconds with one decimal (cycle counter, 170 MHz):
+   edge_us    the accepted PF15 edge to ShotStart_Run() being entered (NA if the last start was a FIRE/SHOT:STARt);
+   ring_us    PFM_Restart(): filling the ring;   preload_us  step 0 written and forced into the HRTIM;
+   capture_us the PFM_Input capture started;     pwm_us      HRTIM1_PWM_Start() (cold-start settling, outputs connected);
+   start_us   ShotStart_Run() entry to the outputs connected (everything the firmware does after the edge, except edge_us);
+   total_us   edge to outputs connected. An error before the first shot. */
+static void FormatTenths(char *dst, size_t n, uint32_t cycles)
+{
+    uint32_t t10 = (uint32_t)(((uint64_t)cycles * 10U) / 170U);
+    snprintf(dst, n, "%lu.%lu", (unsigned long)(t10 / 10U), (unsigned long)(t10 % 10U));
+}
+
+void cmd_ext_trigger_latency_query(uart_instance_t *inst, char *args)
+{
+    uint32_t s[PFM_RESTART_STAMPS];
+    uint32_t edge = 0U;
+    char ring[16], pre[16], cap[16], pwm[16], start[16], e[16] = "NA", tot[16] = "NA";
+    char buf[200];
+    (void)args;
+
+    if (ShotStart_StartCount() == 0U)
+    {
+        Scpi_SendErr(inst, ERR_INVALID_STATE, "no shot has been started since boot");
+        return;
+    }
+    PFM_GetRestartStamps(s);
+    FormatTenths(ring, sizeof(ring), s[1] - s[0]);
+    FormatTenths(pre, sizeof(pre), s[2] - s[1]);
+    FormatTenths(cap, sizeof(cap), s[3] - s[2]);
+    FormatTenths(pwm, sizeof(pwm), s[4] - s[3]);
+    FormatTenths(start, sizeof(start), s[4] - ShotStart_LastEntryStamp());
+    if (ShotTrigger_LastEdgeToEntry(&edge) != 0U)
+    {
+        FormatTenths(e, sizeof(e), edge);
+        FormatTenths(tot, sizeof(tot), (s[4] - ShotStart_LastEntryStamp()) + edge);
+    }
+    snprintf(buf, sizeof(buf), "OK edge_us=%s ring_us=%s preload_us=%s capture_us=%s pwm_us=%s start_us=%s total_us=%s\r\n",
+             e, ring, pre, cap, pwm, start, tot);
     uart_send(inst, buf);
 }
 
