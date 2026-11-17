@@ -7,6 +7,10 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
   capture DMA start, HRTIM1_PWM_Start() cold-start settling of up to one period; more for a closed-loop start), so this adds cycle-counter stamps (170 MHz) instead of guessing: ShotStart_Run() entry, PFM_Restart()'s
   stages (ring ready, step 0 preloaded, capture started, outputs connected) and the PF15 edge itself. New EXTernal:TRIGger:LATency? -> OK edge_us= ring_us= preload_us= capture_us= pwm_us= start_us= total_us= (microseconds,
   one decimal; edge_us/total_us NA when the last start was a FIRE/SHOT:STARt; an error before the first start). Docs: command_reference. Tests: test_shot_trigger.
+  MEASURED on the Limiter (WB-0002-6, 100 kHz 10 ms shot, software FIRE): ring 167 us, PRELOAD 656 us, capture 2 us (PFMIN not armed), PWM_Start 17 us = 851 us from the start routine to the outputs connected --
+  the reported ~1 ms. The 656 us was PFM_Restart()'s memset of the 3,800-word diagnostic gap log (PFM:GAPLOG?): newlib-nano's memset is a byte loop (~0.5 ms). FIX: no memset (PFM_GetDiagGapLog() only returns entries 0..calls
+  of THIS shot, each written as played; entry 0, never written, is zeroed). Re-measured: preload 4-8 us, start_us 198 us (ring 165 us). The remaining share is the ring prefill (and, with PFMIN armed, the capture start);
+  moving the prefill and the other preparation from the trigger to ARM would take the start down to about 20-40 us -- NOT done. Edge-to-entry (edge_us) not measured yet: needs a real edge on PF15. Flashed to the Limiter only.
 
 2026-11-16  -  Spark-gap input: enable switch (SPARKgap:ENAble), no internal pull-up, saved in profiles  [host-tested; flash status: see below]
 -----------------------------------------------------------------------
