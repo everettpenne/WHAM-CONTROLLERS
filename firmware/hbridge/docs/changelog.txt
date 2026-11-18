@@ -1,6 +1,94 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-18  -  ech_meter_calibration.py (dummy-load vs experimental forward-power meter) and ech_compensate.py --power-scale; README procedures  [host-tested; calibration not yet run on real shots]
+-----------------------------------------------------------------------
+  Request: the experimental shots use a different forward-power meter (vessel, WG_MONITOR_F) than the dummy-load shots used to tune profiles
+  (DL_MONITOR_F). The two never see the same pulse, and comparing 11-13 vessel shots with 11-18 dummy-load shots at matched voltage/current gave
+  ratios of 0.89-1.06 (the gyrotron's own curve moves more than that between days), so the factor needs back-to-back shots. New
+  compensation/ech_meter_calibration.py: interleaved dummy-load/vessel shots of one profile (MDS or CSV); refuses if the gyrotron's voltage or
+  current differ by more than 1 % rms between the targets; removes each meter's baseline and their timing difference (derivative
+  cross-correlation, +/-0.3 ms); K = power-weighted ratio over the flat tops, uncertainty from the pair spread and sample scatter, and a
+  straight-line fit to show a power-dependent ratio. ech_compensate.py --power-scale K (kept in the CSV): demand_kw is then in experimental-meter
+  kW on either target; internally everything stays in dummy-load-meter kW (the model's units): demand / K in, x K out, vessel measurements / K,
+  --train divides vessel shots by K. README: how to run each tool from a terminal, the hub-log upload check and MDS export snippets, and
+  procedures for refining a demand profile (four examples from 2026-11-18), building a training corpus, training, and calibrating the meters.
+  Example demands in compensation/examples/. Tests: 49 (8 new); both self-tests pass.
+  Real use 2026-11-18 (dummy load, 520 V): 2-pulse 018, 3-pulse 019/020, staircase 021/022 (133/166/200 kW), two-step 023/024 (150 -> 200 kW,
+  edge 50 % point at 5.00 ms), W shape 026 (first attempt +25-30 kW high after 5 ms, 69.1 kV peak; corrected profile written). Figures of 018,
+  020, 022, 024 and 026 in figures/.
+
+2026-11-18  -  ech_compensate.py: --flatten (aim at the shot's own flat-top mean); previous shot's bank read from the bank it ran at  [host-tested; used on 261118012]
+-----------------------------------------------------------------------
+  Request: flatten the pulse rather than hit 200 kW; keep it at about the flat-top mean. --flatten rescales each pulse's demand to the mean measured over the correction window and writes that level
+  into the output CSV (flatten_from_shot, flatten_level), so later iterations hold it. Bug fixed: the pair learning took the previous shot's bank from the previous CSV's bank_volts (the bank it was
+  PLANNED for); when the operator changed the bank (iter4 planned at 540 V, shot 010 fired at 520 V) a valid same-bank pair (010/012, both 520 V) was refused as "540 V vs 520 V". Now it takes the
+  current CSV's analysed_bank_volts (the bank from_shot actually ran at). Tests: 41 (the new one fails without the fix).
+  Real data, 2026-11-18 (dummy load, filament 41.0 A): beam current ~6 % lower than 11-17 at the same voltage (20.3 vs 21.5 A at 66 kV), so 200 kW needs ~67-68 kV late in the pulse; 540 V gave
+  70.2-71.1 kV (008, 009), 520 V 67.7-68.0 kV (010, 012). Hand entry of the profiles truncated decimals (001-008), shifted every frequency one row early (009/010) and once typed 19018 for 20018 Hz at
+  4 ms (caught on the hub log before arming, rewritten) -- check uploads against the hub log. 012 flat top 185.8 kW mean, 176-195 kW; the 010/012 pair showed ~0 %/100 Hz below ~19.1 kHz (gain peak).
+  The learned run then pushed 13 ms up 84 Hz on a noise-level estimate (21 Hz move); the profile used is the --no-learn one, with 14/15 ms held (predicted flat at ~186 kW, max 67.2 kV).
+
+2026-11-18  -  ech_compensate.py: setpoints at fixed times (--fixed-times-ms), predictions from the written setpoints  [host-tested]
+-----------------------------------------------------------------------
+  Request: exactly one setpoint at each integer ms from 0 to 15 ms (16 rows) and no others. --fixed-times-ms 0:15:1 (or a comma list; kept in the CSV): least-squares fit of the firmware's straight
+  lines to the corrected curve at those times; every point >= its lower bound (floor, voltage ceiling, gain-peak guard, per-shot step, and in the rise the flat top's start); lines may dip <= 15 Hz
+  below the bound between points (FIXED_DIP_TOL_HZ; the floor holds exactly; the voltage ceiling gets the same margin, and the free-time path its 5 Hz fitting tolerance). A first attempt held each
+  point above the bound's maximum over both neighbouring intervals: with the guard's bound sloping ~100 Hz/ms at the tail that raised the last points by up to 160 Hz (~-20 kW) -- replaced. Shot 048's
+  next profile in 16 points matches the free-time one within +/-9 Hz over 0-11 ms (-11..+26 Hz at the tail). Plots and predictions now use the written setpoints. Tests: 39.
+
+2026-11-18  -  ech_compensate.py: --train (retrain the supply model from recorded shots), learned bank-charge offset, predicted power on the plots  [host-tested]
+-----------------------------------------------------------------------
+  --train MANIFEST (shot,profile_csv,bank_volts[,data_csv], firing order) rebuilds ech_plant.json: frequency sensitivity from consecutive same-charge shots; from profiles fired at >= 3 charges, the
+  bank offset per 0.5 ms (output ~ bank - offset(t), fitted on the charges within 60 V of the highest) and dP/dV between neighbouring charges. The bank rescale (--next-bank-volts) now uses the learned
+  offset instead of a fixed 151 V. Trained on 2026-11-17 (40 shots: 7 pairs, 3 charge sweeps): offset 158-176 V over 1-14 ms, dP/dV 17-19 kW/kV above 56 kV, kappa unchanged. Plots now also show the
+  predicted forward power (and voltage) of the next shot: the measurement changed by the new frequencies/charge through the model, one output lag later. Tests: 37 (unittest).
+
+2026-11-18  -  ech_compensate.py: raise-only rise shaping against the overshoot  [host-tested; first profile computed from shot 261117048, NOT yet fired]
+-----------------------------------------------------------------------
+  Request: reduce the overshoot (+6-8 % near 1.6 ms at every charge, e.g. 211 kW on a 200 kW target in 261117048) and the dip after it. In each pulse's rise window the frequency is now the flat
+  top's start plus a raise r >= 0, learned from the power above target one lag ahead, shrinking back to 0 below the target, capped (--rise-max-hz 300) and per-shot limited -- never below the flat
+  top's start, so no rise is pushed towards resonance (no faster rise is attempted). The earlier rise windup (seen in simulation with a two-sided rise correction, 2026-11-17) cannot happen: only
+  raises are learned. Simulated (gyrotron overshooting like the real one): overshoot 16 % -> 1 % in 3-4 shots with a ~70 Hz raise. Tests: 37. First real use: shot 048 -> iter3 (+21 Hz at 0.8-1.7 ms).
+
+2026-11-17  -  ech_compensate.py learns the supply from shot pairs; 21 kHz ceiling; 15-setpoint cap  [host-tested; used on real shots 261117029-042]
+-----------------------------------------------------------------------
+  Request: fewer iterations to converge. Root causes seen on today's shots: one sensitivity (4 %/100 Hz) everywhere while ~19 kHz measured 1.7 %; a cautious 0.7 gain; a power/voltage curve from the
+  morning. Now: a supply model (ech_plant.json next to the CSVs: kappa on a 100 Hz grid, dP/dV on a 1 kV grid, weighted, capped weights) used by every frequency calculation (gain() is now the exp of
+  kappa's integral; the model's reference stays 20 kHz, F_REF_HZ, while the ceiling F_CEIL_HZ is 21 kHz). Each run also reads the previous shot (its CSV and shot are in the current CSV's from_csv /
+  from_shot; offline --prev-data): where the frequency moved >= 20 Hz between the two (same bank charge), the measured voltage change is the sensitivity -- used for that correction with gain 0.9, and
+  learned. Guard: no further lowering at or below a frequency where 100 Hz bought < 2 % (--guard-pct). Also --max-setpoints (carried in the CSV), and the frequency-mode target anchored once
+  (target_v_ref_kv) instead of re-measured every shot (it hunted once the 20 kHz cap stopped hiding it). Simulated: after the first pair the error falls 2-4x faster than with the fixed model.
+  Real: seeded from pairs 033/035 and 039/040; on 042 (15 ms, 100 kW, 510 V) 463 samples learned from 041/042; the next profile (iter5) only raises frequencies. Tests: 36 (unittest), --selftest.
+
+2026-11-17  -  compensation/ech_compensate.py + power_waveform_picker.html: shot-to-shot frequency-profile correction for the ECH-HVPS  [host-tested on a simulated supply and on recorded shots offline; NOT yet used to fire]
+-----------------------------------------------------------------------
+  Request: a counterpart of limiter_compensate.py for the ECH, taking a forward-power target (drawn in a point-picker UI, max 15 ms) or a frequency profile, the target (vessel / dummy load)
+  and the LabVIEW bank charge as parameters; frequency 18.7-20 kHz. Host-only: no firmware change.
+  Data (read-only, MDS 'ech' tree + the ECH hub log + the THOR logbook): shots 261117004-028 -- a bank sweep (400-550 V, one 20 -> 19.45 kHz ramp, saved in ECH slot 1 'hvpsdefault', confirmed
+  point by point after an authorised *RCL 1) and a two-pulse profile (20 kHz 0-5 ms, off, 19.85 kHz 10-14 ms) at 8 charges. Measured: output +4.0 % per 100 Hz lower (+/-0.2 % over 8 charges,
+  from the slope difference between constant and ramped frequency at the same charge), ~0.164 kV per V of bank above ~151 V, droop ~1 %/ms at 1.1 MW, rise ~1.1 ms to 90 % (~0.65 ms lag),
+  pulse 2 after a 5 ms gap 6-7 % lower than droop explains (cause not identified), forward power falling by itself at constant voltage. A single gain*(bank-offset) model with an energy-drained
+  bank fits each shot family alone but not both together, so the tool uses the model only for the first shot and otherwise corrects each pulse from its own measured error.
+  ech_compensate.py (one file, one CSV): no frequencies yet -> a first-shot profile from the model; otherwise reads GYROTRON_V + DL_/WG_MONITOR_F:FILTERED, refuses when MDS ECH_TARGET names the
+  other target, warns when HVPS_V differs from --bank-volts; per-pulse correction with a phase lead, never shaping the first 2 ms of a pulse (the start follows the flat top, so it is never pushed
+  towards resonance to hurry the rise); limits 18.7-20 kHz, <= 100 Hz per shot towards resonance, predicted gyrotron V <= 70 kV, <= 15 ms, HVPS rules; --next-bank-volts rescales for a different
+  charge. A 1.5 ms settle window wound the frequency down ~2 Hz per shot in simulation (an error inside the lag it cannot fix); 2.0 ms is stable over 15 shots, so 2.0 is the default.
+  power_waveform_picker.html: self-contained (no network), click/drag/right-click, gaps, rise bands, 15 ms limit, the controller's rules checked live, saves the CSV.
+  Tests: compensation/tests (30 with the Limiter's; unittest) and --selftest: power target 200 kW two-pulse 19 % -> 2 % in 5 shots, frequency profile -> 0.6 %; limits held every shot.
+  Offline against real shots: 261117021 with a flat 100 kW target -> pulse 1 lowered late in the pulse, pulse 2 -100 Hz (held by the per-shot limit), 59 kV predicted. NOT yet fired.
+
+2026-11-17  -  compensation/limiter_compensate.py: shot-to-shot droop compensation for open-loop Limiter shots  [host-tested on a simulated bank; NOT yet run on a real shot]
+-----------------------------------------------------------------------
+  Request: the Limiter's output is ~Vcap*(2D-1) but the capacitor bank droops during a shot (by an amount that depends on the shot), and closed loop cannot run in the lab yet. A script run after each shot (by
+  LabVIEW) should compare the measured output with the operator's duty demand and recommend corrected duties. Host-only: no firmware change.
+  New top-level compensation/ directory (the ECH counterpart will join it later), one self-contained file the operator runs on one CSV: time_us,carrier_hz,demand_duty_pct[,commanded_duty_pct] (or U/V/W per phase;
+  carrier 0 = gap), one row per SHOT:STEP. It reads V_LIM (bias.bias_supply.V_LIM.filtered, latest shot or --shot) from MDSplus, checks the profile against the firmware's LIMITER rules (copied from ctrlr_config.h /
+  shot_profile.c), finds the shot's start and the output polarity by cross-correlation, fits a smooth effective bank voltage Vc(t) to V = s*Vc*(2D-1) where |2D-1| >= 0.1, and writes <csv>_iter<N>.csv
+  with the demand unchanged and commanded = (1 + (2Ddemand-1)*V0/Vc)/2 (clamped 5-95 %, --gain to damp), reduced to <= 500 setpoints (demand corners and gaps kept), plus a PNG and one RESULT line.
+  Tests: compensation/tests (14, unittest) and --selftest on a simulated bank (capacitor into a resistive load, filter, noise, offset, either sign): 15 % droop, RMS error 4.6 % -> 0.7 % -> 0.3 % (noise floor) over
+  two corrected shots; gaps and per-phase duties converge too. NOT tried on a real shot or from LabVIEW yet; MDSplus access is untested.
+
 2026-11-16  -  The ring prefill moves from the trigger to ARM  [host-tested; flash status: see the line below]
 -----------------------------------------------------------------------
   Request: after the gap-log memset fix (start_us 851 -> ~198 us) the remaining firmware share was the ring prefill, 86 us (50-period shot) to 165 us (100-entry ring). cmd_arm now calls PFM_PrepareStart() BEFORE SM_Arm()
@@ -9,6 +97,7 @@ WHAM-HBRIDGE-PFMG474 Firmware Changelog
   otherwise it fills as before, so changing the shot or the mode while ARMED is still honoured. Table and closed-loop starts are untouched. LATency? gained prepared=<0|1>. Tests: revisions in test_shot_profile/test_supply_mode.
   Checked on the Limiter (ae2fdbe1, software FIRE): ARM then FIRE of the 0.5 ms shot -> ring_us 2.5 (was 86), start_us 39.5 (was 116-198), prepared=1, 50 periods; ARM, then the shot redefined to 0.3 ms WHILE ARMED, then
   FIRE -> prepared=0, ring filled at the start (58 us), 30 periods played = the new shot. Flashed to the Limiter only; the ECH still runs the earlier build. A real PF15 edge with this build: not yet.
+  2026-11-17: the same build (f6aecafb) also flashed to the ECH (WB-0001-8) over the hub, CRC verified, IDLE with no faults after the reboot; queries only, no shot.
 
 2026-11-16  -  EXTernal:TRIGger:LATency?: where the time between the trigger edge and the output goes  [host-tested; measurement only, no behaviour change]
 -----------------------------------------------------------------------

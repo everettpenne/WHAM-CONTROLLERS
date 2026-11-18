@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECH Power Picker</title>
+<!--
+  power_waveform_picker.html -- draw the forward-power waveform you want from the ECH, and save it as the CSV that
+  ech_compensate.py reads (time_us,demand_kw; 'off' rows are gaps). Self-contained: open the file in any browser, no
+  network needed. Part of compensation/ (see README.md).
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1d232b; --muted: #687482; --line: #d9dee5; --grid: #eceff3;
+    --accent: #1f6feb; --gap: #b8c0cc; --rise: rgba(120, 130, 145, 0.14); --bad: #c62828; --ok: #2e7d32; --sel: #e36209;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1318; --panel: #171c23; --ink: #e6ebf1; --muted: #93a0ae; --line: #2a323c; --grid: #1f262f;
+      --accent: #58a6ff; --gap: #5c6673; --rise: rgba(160, 170, 185, 0.12); --bad: #ff6b6b; --ok: #56c271; --sel: #f0883e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1318; --panel: #171c23; --ink: #e6ebf1; --muted: #93a0ae; --line: #2a323c; --grid: #1f262f;
+    --accent: #58a6ff; --gap: #5c6673; --rise: rgba(160, 170, 185, 0.12); --bad: #ff6b6b; --ok: #56c271; --sel: #f0883e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 4px 0 2px; }
+  p.lede { margin: 0 0 12px; color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  label { color: var(--muted); font-size: 13px; }
+  input, select, button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+  input[type=number] { width: 90px; }
+  input[type=text] { width: 160px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  canvas { width: 100%; height: 420px; display: block; touch-action: none; cursor: crosshair; }
+  .help { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .help kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td input[type=number] { width: 100px; }
+  tr.sel td { background: color-mix(in srgb, var(--sel) 12%, transparent); }
+  #msgs div { margin: 2px 0; }
+  .bad { color: var(--bad); } .ok { color: var(--ok); } .muted { color: var(--muted); }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-height: 220px; overflow: auto; font-size: 12px; }
+  .two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } canvas { height: 320px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>ECH power waveform</h1>
+  <p class="lede">Draw the forward power you want, then save the CSV and run
+    <code>python ech_compensate.py &lt;file&gt;.csv</code>. The first run writes a first-shot frequency profile; each run after a
+    shot writes the next one.</p>
+
+  <div class="panel">
+    <div class="row">
+      <span><label for="target">Target</label>
+        <select id="target"><option value="dummy-load">dummy load</option><option value="vessel">vessel</option></select></span>
+      <span><label for="bank">Bank charge (V)</label> <input id="bank" type="number" min="0" max="700" step="5" value="530"></span>
+      <span><label for="label">Name</label> <input id="label" type="text" value="ech_power" maxlength="40"></span>
+      <span><label for="pmax">Plot top (kW)</label> <input id="pmax" type="number" min="50" max="1000" step="50" value="300"></span>
+      <span><label for="snapt">Snap time (ms)</label> <input id="snapt" type="number" min="0.01" max="1" step="0.01" value="0.1"></span>
+      <span><label for="snapp">Snap power (kW)</label> <input id="snapp" type="number" min="1" max="50" step="1" value="5"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <canvas id="cv" aria-label="Power waveform editor: time 0 to 15 ms across, power up the side"></canvas>
+    <div class="help">
+      <b>Click</b> to add a point · <b>drag</b> to move · <b>right-click</b> or <kbd>Del</kbd> deletes the selected point ·
+      <b>click a segment</b> (or <kbd>G</kbd>) to switch it between output and an <b>off gap</b> ·
+      the shaded band after each pulse start is the rise (~2 ms) that cannot be shaped · maximum 15 ms.
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="preset1">Preset: one pulse, 200 kW, 10 ms</button>
+      <button id="preset2">Preset: two pulses, 200 kW, 4 ms each, 5 ms gap</button>
+      <button id="clear">Clear</button>
+      <button id="undo">Undo</button>
+      <span style="flex:1"></span>
+      <label class="muted" for="load">Load a CSV</label> <input id="load" type="file" accept=".csv,text/csv">
+      <button id="copy">Copy CSV</button>
+      <button id="save" class="primary">Save CSV</button>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="panel">
+      <table>
+        <thead><tr><th>#</th><th>time (ms)</th><th>power (kW)</th><th>then</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div id="msgs"></div>
+      <pre id="csv"></pre>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_MS = 15, RISE_MS = 2.0, MIN_DT = 0.02, MAX_ROWS = 500;
+  const $ = (id) => document.getElementById(id);
+  const cv = $("cv"), ctx = cv.getContext("2d");
+  // a point: {t (ms), p (kW), gap (true = the segment after this point is an off gap)}
+  let pts = [], sel = -1, drag = -1, history = [];
+
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const num = (id) => parseFloat($(id).value);
+  const snap = (v, s) => Math.round(v / s) * s;
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const save = () => { history.push(JSON.stringify(pts)); if (history.length > 100) history.shift(); };
+
+  // ---------------------------------------------------------------- geometry
+  const M = { l: 52, r: 14, t: 12, b: 34 };
+  function size() {
+    const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+  const x = (t) => M.l + (t / MAX_MS) * (W() - M.l - M.r);
+  const y = (p) => H() - M.b - (p / num("pmax")) * (H() - M.t - M.b);
+  const tOf = (px) => ((px - M.l) / (W() - M.l - M.r)) * MAX_MS;
+  const pOf = (py) => ((H() - M.b - py) / (H() - M.t - M.b)) * num("pmax");
+
+  // pulses: [start, end] in ms, from the points and gap flags
+  function pulses() {
+    const out = []; let s = null;
+    pts.forEach((q, i) => {
+      if (s === null) s = q.t;
+      if (q.gap || i === pts.length - 1) { out.push([s, q.t]); s = null; }
+    });
+    return out;
+  }
+  // after a gap the next point starts a pulse
+  function pulseStarts() { const s = []; pts.forEach((q, i) => { if (i === 0 || pts[i - 1].gap) s.push(q.t); }); return s; }
+
+  // ---------------------------------------------------------------- drawing
+  function draw() {
+    size();
+    const w = W(), h = H(), pmax = num("pmax");
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = "12px system-ui, sans-serif";
+    // grid
+    ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1; ctx.fillStyle = css("--muted");
+    for (let t = 0; t <= MAX_MS; t += 1) {
+      ctx.beginPath(); ctx.moveTo(x(t), M.t); ctx.lineTo(x(t), h - M.b); ctx.stroke();
+      ctx.textAlign = "center"; ctx.fillText(String(t), x(t), h - M.b + 16);
+    }
+    const step = pmax <= 200 ? 25 : pmax <= 500 ? 50 : 100;
+    for (let p = 0; p <= pmax + 1e-9; p += step) {
+      ctx.beginPath(); ctx.moveTo(M.l, y(p)); ctx.lineTo(w - M.r, y(p)); ctx.stroke();
+      ctx.textAlign = "right"; ctx.fillText(String(p), M.l - 6, y(p) + 4);
+    }
+    ctx.textAlign = "center"; ctx.fillText("time (ms)", (M.l + w - M.r) / 2, h - 4);
+    ctx.save(); ctx.translate(13, (M.t + h - M.b) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText("forward power (kW)", 0, 0); ctx.restore();
+    // rise bands
+    const ps = pulses();
+    ctx.fillStyle = css("--rise");
+    ps.forEach(([s, e]) => { const a = x(s), b = x(Math.min(s + RISE_MS, e)); ctx.fillRect(a, M.t, b - a, h - M.t - M.b); });
+    ctx.fillStyle = css("--muted"); ctx.textAlign = "left";
+    ps.forEach(([s, e]) => { if (e - s > 0.8) ctx.fillText("rise", x(s) + 4, M.t + 14); });
+    // segments
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (a.gap) {
+        ctx.strokeStyle = css("--gap"); ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x(a.t), y(a.p)); ctx.lineTo(x(a.t), y(0)); ctx.lineTo(x(b.t), y(0)); ctx.lineTo(x(b.t), y(b.p)); ctx.stroke();
+        ctx.setLineDash([]); ctx.fillStyle = css("--muted"); ctx.textAlign = "center";
+        ctx.fillText("off", (x(a.t) + x(b.t)) / 2, y(0) - 6);
+      } else {
+        ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(x(a.t), y(a.p)); ctx.lineTo(x(b.t), y(b.p)); ctx.stroke();
+      }
+    }
+    // points
+    pts.forEach((q, i) => {
+      ctx.beginPath(); ctx.arc(x(q.t), y(q.p), i === sel ? 7 : 5, 0, 2 * Math.PI);
+      ctx.fillStyle = i === sel ? css("--sel") : css("--accent"); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = css("--panel"); ctx.stroke();
+    });
+    // end-of-shot marker
+    if (pts.length) {
+      ctx.strokeStyle = css("--muted"); ctx.setLineDash([2, 4]); ctx.lineWidth = 1;
+      const e = x(pts[pts.length - 1].t); ctx.beginPath(); ctx.moveTo(e, M.t); ctx.lineTo(e, h - M.b); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  // ---------------------------------------------------------------- editing
+  function hitPoint(mx, my) {
+    let best = -1, bd = 12;
+    pts.forEach((q, i) => { const d = Math.hypot(x(q.t) - mx, y(q.p) - my); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+  function hitSegment(mx, my) {
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (mx < x(a.t) + 6 || mx > x(b.t) - 6) continue;
+      if (a.gap) { if (Math.abs(my - y(0)) < 9) return i; continue; }
+      const f = (mx - x(a.t)) / (x(b.t) - x(a.t)), yy = y(a.p) + f * (y(b.p) - y(a.p));
+      if (Math.abs(my - yy) < 7) return i;
+    }
+    return -1;
+  }
+  function addPoint(t, p) {
+    t = Math.max(0, Math.min(MAX_MS, snap(t, num("snapt")))); p = Math.max(0, snap(p, num("snapp")));
+    if (pts.length === 0) t = 0;
+    if (pts.some((q) => Math.abs(q.t - t) < MIN_DT - 1e-9)) return -1;
+    save();
+    // a point added inside a gap keeps the gap after it only if it was after the gap's start point
+    const i = pts.findIndex((q) => q.t > t);
+    const at = i < 0 ? pts.length : i;
+    const prev = pts[at - 1];
+    const q = { t: r3(t), p: p, gap: false };
+    if (prev && prev.gap) { q.gap = true; prev.gap = false; }   // splitting a gap: the off part moves after the new point
+    pts.splice(at, 0, q);
+    return at;
+  }
+  function movePoint(i, t, p) {
+    const lo = i === 0 ? 0 : pts[i - 1].t + MIN_DT, hi = i === pts.length - 1 ? MAX_MS : pts[i + 1].t - MIN_DT;
+    t = i === 0 ? 0 : Math.max(lo, Math.min(hi, snap(t, num("snapt"))));
+    pts[i].t = r3(t); pts[i].p = Math.max(0, snap(p, num("snapp")));
+  }
+  function delPoint(i) { if (i < 0) return; save(); const wasGap = pts[i].gap; pts.splice(i, 1); if (wasGap && i > 0) pts[i - 1].gap = true; if (pts.length && pts[0].t !== 0) pts[0].t = 0; sel = -1; refresh(); }
+  function toggleGap(i) { if (i < 0 || i >= pts.length - 1) return; save(); pts[i].gap = !pts[i].gap; refresh(); }
+
+  const pos = (ev) => { const r = cv.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+  cv.addEventListener("pointerdown", (ev) => {
+    const [mx, my] = pos(ev);
+    if (ev.button === 2) return;
+    const hp = hitPoint(mx, my);
+    if (hp >= 0) { sel = hp; drag = hp; save(); cv.setPointerCapture(ev.pointerId); refresh(); return; }
+    const hs = hitSegment(mx, my);
+    if (hs >= 0 && !ev.shiftKey) { toggleGap(hs); return; }
+    const i = addPoint(tOf(mx), pOf(my)); if (i >= 0) { sel = i; drag = i; cv.setPointerCapture(ev.pointerId); } refresh();
+  });
+  cv.addEventListener("pointermove", (ev) => { if (drag < 0) return; const [mx, my] = pos(ev); movePoint(drag, tOf(mx), pOf(my)); refresh(); });
+  cv.addEventListener("pointerup", () => { drag = -1; });
+  cv.addEventListener("contextmenu", (ev) => { ev.preventDefault(); const [mx, my] = pos(ev); delPoint(hitPoint(mx, my)); });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.target.tagName === "INPUT") return;
+    if ((ev.key === "Delete" || ev.key === "Backspace") && sel >= 0) { ev.preventDefault(); delPoint(sel); }
+    if ((ev.key === "g" || ev.key === "G") && sel >= 0) toggleGap(sel);
+    if ((ev.key === "z" || ev.key === "Z") && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); undo(); }
+  });
+  function undo() { if (!history.length) return; pts = JSON.parse(history.pop()); sel = -1; refresh(); }
+
+  // ---------------------------------------------------------------- table
+  function table() {
+    const tb = $("rows"); tb.innerHTML = "";
+    pts.forEach((q, i) => {
+      const tr = document.createElement("tr"); if (i === sel) tr.className = "sel";
+      const last = i === pts.length - 1;
+      tr.innerHTML = `<td>${i + 1}</td>
+        <td><input type="number" step="0.01" min="0" max="${MAX_MS}" value="${q.t}" ${i === 0 ? "disabled" : ""}></td>
+        <td><input type="number" step="1" min="0" value="${q.p}"></td>
+        <td>${last ? '<span class="muted">end of shot</span>' : `<select><option value="on"${q.gap ? "" : " selected"}>ramp to next</option><option value="gap"${q.gap ? " selected" : ""}>off until next</option></select>`}</td>
+        <td><button title="delete">✕</button></td>`;
+      const [ti, pi] = tr.querySelectorAll("input");
+      ti.addEventListener("change", () => { save(); movePoint(i, parseFloat(ti.value), q.p); refresh(); });
+      pi.addEventListener("change", () => { save(); q.p = Math.max(0, parseFloat(pi.value) || 0); refresh(); });
+      const s = tr.querySelector("select"); if (s) s.addEventListener("change", () => { save(); q.gap = s.value === "gap"; refresh(); });
+      tr.querySelector("button").addEventListener("click", () => delPoint(i));
+      tr.addEventListener("click", (ev) => { if (ev.target.tagName === "TD") { sel = i; refresh(); } });
+      tb.appendChild(tr);
+    });
+  }
+
+  // ---------------------------------------------------------------- checks and CSV
+  function rows() {
+    // a gap after point i: on until t_i, an off row 10 us later (the controller holds t_i's value until then)
+    const out = [];
+    pts.forEach((q) => {
+      out.push([Math.round(q.t * 1000), q.p.toFixed(1)]);
+      if (q.gap) out.push([Math.round(q.t * 1000) + 10, "off"]);
+    });
+    return out;
+  }
+  function problems() {
+    const bad = [], warn = [];
+    if (pts.length < 2) bad.push("add at least two points");
+    if (pts.length && pts[0].t !== 0) bad.push("the first point must be at 0 ms");
+    for (let i = 1; i < pts.length; i++) if (pts[i].t - pts[i - 1].t < MIN_DT - 1e-9) bad.push(`points ${i} and ${i + 1} are closer than ${MIN_DT} ms`);
+    if (pts.length && pts[pts.length - 1].t > MAX_MS) bad.push(`the shot is longer than ${MAX_MS} ms`);
+    if (pts.length >= 2 && pts[pts.length - 2].gap) bad.push("the last pulse needs at least two points (the controller requires the last two setpoints on)");
+    for (let i = 0; i + 1 < pts.length; i++) if (pts[i].gap && pts[i + 1].t - pts[i].t < 0.05) bad.push(`the gap after point ${i + 1} is too short`);
+    if (rows().length > MAX_ROWS) bad.push(`more than ${MAX_ROWS} rows`);
+    const ps = pulses();
+    ps.forEach(([s, e], k) => {
+      if (e - s < 0.5) bad.push(`pulse ${k + 1} is ${(e - s).toFixed(2)} ms long: a pulse needs at least 0.5 ms (two points)`);
+      else if (e - s < RISE_MS + 0.5) warn.push(`pulse ${k + 1} is ${(e - s).toFixed(2)} ms: only ${Math.max(0, e - s - RISE_MS).toFixed(2)} ms after its rise can be corrected`);
+    });
+    if (bad.length) return { bad, warn: [] };
+    if (pts.some((q) => q.p > 300)) warn.push("demand above 300 kW: likely beyond the 70 kV ceiling at today's settings");
+    if (pts.some((q) => q.p > 0 && q.p < 20)) warn.push("demand below ~20 kW: near the gyrotron's threshold, the correction is coarse there");
+    const b = num("bank"); if (!(b > 151)) warn.push("set the bank charge (the first-shot profile needs it)");
+    return { bad, warn };
+  }
+  function csvText() {
+    const head = [
+      "# tool=power_waveform_picker", "# mode=power", `# target=${$("target").value}`,
+      `# bank_volts=${num("bank") || ""}`, `# label=${($("label").value || "ech_power").replace(/[^A-Za-z0-9_.-]/g, "_")}`,
+      "time_us,demand_kw",
+    ];
+    return head.concat(rows().map((r) => r.join(","))).join("\n") + "\n";
+  }
+  function refresh() {
+    draw(); table();
+    const { bad, warn } = problems(), m = $("msgs");
+    m.innerHTML = "";
+    if (!bad.length) { const d = document.createElement("div"); d.className = "ok"; d.textContent = `ready: ${pulses().length} pulse(s), ${pts.length ? pts[pts.length - 1].t : 0} ms`; m.appendChild(d); }
+    bad.forEach((t) => { const d = document.createElement("div"); d.className = "bad"; d.textContent = "✕ " + t; m.appendChild(d); });
+    warn.forEach((t) => { const d = document.createElement("div"); d.className = "muted"; d.textContent = "! " + t; m.appendChild(d); });
+    $("csv").textContent = csvText();
+    $("save").disabled = $("copy").disabled = bad.length > 0;
+  }
+
+  // ---------------------------------------------------------------- load
+  function loadCsv(text) {
+    const lines = text.split(/\r?\n/), np = [];
+    let header = null;
+    for (const raw of lines) {
+      const line = raw.trim(); if (!line) continue;
+      const m = line.match(/^#\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
+      if (m) {
+        if (m[1] === "target" && ["vessel", "dummy-load"].includes(m[2])) $("target").value = m[2];
+        if (m[1] === "bank_volts" && m[2]) $("bank").value = m[2];
+        if (m[1] === "label") $("label").value = m[2];
+        continue;
+      }
+      if (line.startsWith("#")) continue;
+      const c = line.split(",").map((s) => s.trim());
+      if (!header) { header = c.map((s) => s.toLowerCase()); continue; }
+      const ti = header.indexOf("time_us"), di = header.indexOf("demand_kw");
+      if (ti < 0 || di < 0) throw new Error("need time_us and demand_kw columns");
+      const t = parseFloat(c[ti]) / 1000, d = c[di].toLowerCase();
+      if (d === "off" || d === "") { if (np.length) np[np.length - 1].gap = true; continue; }
+      np.push({ t: r3(t), p: parseFloat(d), gap: false });
+    }
+    if (np.length < 1) throw new Error("no points found");
+    save(); pts = np; sel = -1; refresh();
+  }
+  $("load").addEventListener("change", (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    f.text().then((t) => { try { loadCsv(t); } catch (e) { alert("Could not read that CSV: " + e.message); } });
+    ev.target.value = "";
+  });
+
+  // ---------------------------------------------------------------- buttons
+  $("preset1").addEventListener("click", () => { save(); pts = [{ t: 0, p: 200, gap: false }, { t: 10, p: 200, gap: false }]; sel = -1; refresh(); });
+  $("preset2").addEventListener("click", () => { save(); pts = [{ t: 0, p: 200, gap: false }, { t: 4, p: 200, gap: true }, { t: 9, p: 200, gap: false }, { t: 13, p: 200, gap: false }]; sel = -1; refresh(); });
+  $("clear").addEventListener("click", () => { save(); pts = []; sel = -1; refresh(); });
+  $("undo").addEventListener("click", undo);
+  $("copy").addEventListener("click", () => {
+    const t = csvText();
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => { $("copy").textContent = "Copied"; setTimeout(() => ($("copy").textContent = "Copy CSV"), 1200); })
+      .catch(() => { const r = document.createRange(); r.selectNodeContents($("csv")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+  });
+  $("save").addEventListener("click", () => {
+    const name = ($("label").value || "ech_power").replace(/[^A-Za-z0-9_.-]/g, "_") + ".csv";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csvText()], { type: "text/csv" }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  ["pmax", "snapt", "snapp", "bank", "target", "label"].forEach((id) => $(id).addEventListener("change", refresh));
+  window.addEventListener("resize", draw);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+
+  pts = [{ t: 0, p: 200, gap: false }, { t: 4, p: 200, gap: true }, { t: 9, p: 200, gap: false }, { t: 13, p: 200, gap: false }];
+  refresh();
+})();
+</script>
+</body>
+</html>

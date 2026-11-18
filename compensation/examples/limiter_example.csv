@@ -1,0 +1,9 @@
+# Example Limiter demand for limiter_compensate.py: 85 % for 3 ms, ramp through 50 % to 20 % by 6 ms,
+# an output-off gap from 7 to 8 ms, then 75 % to the end at 12 ms. 100 kHz carrier throughout.
+time_us,carrier_hz,demand_duty_pct
+0,100000,85
+3000,100000,85
+6000,100000,20
+7000,0,0
+8000,100000,75
+12000,100000,75

@@ -9,6 +9,8 @@ firmware/
   hbridge/   WHAM-HBRIDGE-PFMG474 3-phase H-bridge (Limiter PWM / HVPS PFM)
 hardware/    board files, pin map, hardware notes (see hardware/README.md)
 host/        host-side software that talks to the boards: the per-controller service (see docs/)
+compensation/ shot-to-shot demand compensation for open-loop shots: Limiter and ECH-HVPS (see compensation/README.md)
+figures/     publication figures of individual shots, each with its data and the script that draws it
 docs/        design documents that span products (identity, host service, repo layout)
 handoff/     project handoff: overview, decisions, workflow, operations, known issues, open items (start here)
 ```

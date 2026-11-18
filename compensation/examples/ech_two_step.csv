@@ -1,0 +1,8 @@
+# mode=power
+# target=dummy-load
+# bank_volts=520
+time_us,demand_kw
+0,150.0
+4990,150.0
+5000,200.0
+10000,200.0
