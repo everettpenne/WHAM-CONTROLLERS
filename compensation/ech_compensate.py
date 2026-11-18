@@ -33,8 +33,13 @@ SAFETY LIMITS (absolute; the script refuses to write a profile outside them)
     The first --settle-ms (1.5) of every pulse is never corrected on its own: the rise is slow (~1.1 ms to 90 %) and
     lowering the frequency at a pulse's start to hurry it would mean starting closer to resonance. The start of a pulse
     only follows the correction the pulse's flat top needs.
-    This script never talks to a controller: it reads MDSplus and writes files. Uploading and firing stay with the
-    operator. Needs numpy; matplotlib for the plot (skipped if missing); MDSplus only to read shots.
+
+WHAT IT TALKS TO
+    MDSplus, read only, and the terminal (or LabVIEW System Exec) that runs it -- nothing else: no controller, no hub,
+    no other network service, and it starts no other program. Everything else it needs (the profile that fired, the
+    bank charge, the target) comes from its CSV and its command line, so it runs on any machine that can read MDS, or
+    offline with --data. Uploading and firing stay with the operator. tests/test_isolation.py enforces this.
+    Needs numpy; matplotlib for the plot (skipped if missing); MDSplus only to read shots.
 
 METHOD, IN SHORT (compensation/README.md has the details and the data behind the numbers)
     measured y = gyrotron voltage (frequency profile) or forward power (power target), target y*. On the flat top of
@@ -564,7 +569,7 @@ def read_mds(shot, target, tree_name="ech"):
         raise CompError("the MDSplus Python package is not installed (or use --data FILE for an offline run)")
     if not shot:
         try:
-            shot = int(mds.Tree("wham", -1).getCurrent())
+            shot = int(mds.Tree.getCurrent("wham"))                     # the shot number only; no tree is opened
         except Exception as e:                                          # noqa: BLE001
             raise CompError(f"could not get the current WHAM shot ({e}); pass --shot N")
     try:

@@ -1,6 +1,17 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-18  -  compensation tools talk only to MDS (read only) and the terminal; enforced by a test  [host-tested]
+-----------------------------------------------------------------------
+  Request: the compensation must not talk to anything but MDS and the operator terminal that calls it -- not the hub, which the machine
+  running it may not reach. The scripts already imported nothing network-related; two MDS opens were not explicitly read-only and are now
+  (limiter_compensate.py's tree open; ech_compensate.py's latest-shot lookup now uses Tree.getCurrent("wham") and opens no tree). New
+  compensation/tests/test_isolation.py: every import must be in an allow-list (argparse, math, os, re, sys, json, numpy, MDSplus,
+  matplotlib), no os.system/popen/exec/urlopen/create_connection or dynamic imports, and every MDS Tree opened 'readonly'. README: the
+  procedures no longer read the hub log; confirming what was uploaded is the operator's step (SHOT:END row count/duration, read-back in
+  the uploading program, the uploaded CSV kept as the record); the training corpus takes its profiles from the operator's records.
+  Tests: 52.
+
 2026-11-18  -  ech_meter_calibration.py (dummy-load vs experimental forward-power meter) and ech_compensate.py --power-scale; README procedures  [host-tested; calibration not yet run on real shots]
 -----------------------------------------------------------------------
   Request: the experimental shots use a different forward-power meter (vessel, WG_MONITOR_F) than the dummy-load shots used to tune profiles

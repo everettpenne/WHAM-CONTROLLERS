@@ -44,6 +44,7 @@ METHOD
        large the README explains what to do.
 
     python ech_meter_calibration.py --selftest      checks the method on synthetic shots with a known ratio
+    Talks to MDSplus (read only) and the terminal that runs it, nothing else: no controller, no hub, no network service.
     Needs numpy; matplotlib for the plot; MDSplus only to read shots.
 """
 import argparse

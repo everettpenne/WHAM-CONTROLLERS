@@ -10,8 +10,10 @@ state of the iteration.
 | `ech_compensate.py` + `power_waveform_picker.html` | ECH-HVPS (HBRIDGE, `HVPS` mode) | built from real shots (2026-11-17); used to fire on 2026-11-17/18 (flat 15 ms pulses, two- and three-pulse shots, staircases, a two-step pulse), each within 1-4 % of target after one or two corrections |
 | `ech_meter_calibration.py` | ECH forward-power meters | the factor for `ech_compensate.py --power-scale`; tested on synthetic shots, not yet on a real calibration set |
 
-The tools never talk to a controller. They read MDSplus and write files. Uploading the corrected profile and firing it stay with the
-operator.
+The tools talk to **MDSplus (read only) and the terminal that runs them, and to nothing else**: no controller, no hub, no other
+network service. Everything else they need comes from their CSV and command line, so they run on any machine that can read MDS (or
+offline on exported data). Uploading the corrected profile and firing it stay with the operator. `tests/test_isolation.py` fails if a
+tool ever imports a network or process module or opens MDS for writing.
 
 ## Limiter: why
 
@@ -172,8 +174,9 @@ same correction between shots, within hard limits.
 | `ech_meter_calibration.py` | measure the ratio between the dummy-load and experimental forward-power meters (`--power-scale`) | the same |
 | `figures/shot_<N>/plot_shot.py` (repository root) | a publication figure of one shot: forward power, gyrotron voltage and current | numpy, matplotlib; MDSplus once, to fetch |
 
-Every tool reads files and MDSplus and writes files. **None of them talks to a controller**: uploading a profile, arming
-and firing stay with the operator. Run them on a machine with MDSplus (the analysis server, or the LabVIEW PC if it has
+Every tool reads MDSplus (read only) and local files, writes local files, and talks to nothing else: **no controller,
+no hub, no other network service**. Uploading a profile, arming and firing stay with the operator, and so does
+confirming what was uploaded (below): the tools take the profile that fired from their CSV. Run them on a machine with MDSplus (the analysis server, or the LabVIEW PC if it has
 the MDSplus Python package), or anywhere offline with exported data (see "Exporting a shot" below). Every tool prints
 one `RESULT status=ok ...` or `RESULT status=error message="..."` line on standard output, and warnings on standard
 error, so LabVIEW's System Exec can call it and parse the result.
@@ -296,38 +299,20 @@ python3 plot_shot.py --fetch     # once, where MDSplus is: writes shot_<N>.csv
 python3 plot_shot.py             # anywhere: shot_<N>.png/.pdf (3 panels) and shot_<N>_power.png/.pdf
 ```
 
-### Checking what the controller actually ran
+### Confirming what the controller actually ran (the operator's job)
 
-What was uploaded is not always what was meant. On 2026-11-18, hand entry in LabVIEW dropped the decimals of every
-frequency, once shifted every frequency one row early, and once typed 19018 for 20018 Hz. Before analysing a shot, and
-before training on it, compare the profile with what the controller received. The ECH hub logs every command it passes
-on, one JSON object per line, in `<log_dir>/<serial>/<date>.jsonl` on the machine that runs the hub (`log_dir` is in
-the hub's YAML config, for example `/var/lib/wham/hub/logs/WB-0001-8/2026-11-18.jsonl`). This lists each upload and
-each arm:
+The tools cannot see what was uploaded: they take the profile that fired from their CSV, so the CSV must hold what the
+controller really received. What was uploaded is not always what was meant. On 2026-11-18, hand entry in LabVIEW dropped
+the decimals of every frequency, once shifted every frequency one row early, and once typed 19018 for 20018 Hz.
 
-```python
-# hub_uploads.py -- python3 hub_uploads.py /var/lib/wham/hub/logs/WB-0001-8/2026-11-18.jsonl
-import json, sys
-blk = None
-for line in open(sys.argv[1]):
-    r = json.loads(line)
-    if r.get("kind") != "cmd":
-        continue
-    cmd = r.get("line", ""); u = cmd.upper(); ts = r["ts"][11:19]; who = r.get("client", "")
-    if u.startswith("SHOT:BEG"):
-        blk = [ts, who, []]
-    elif u.startswith("SHOT:STEP") and blk:
-        blk[2].append(" ".join(cmd.split()[1:]))
-    elif u.startswith("SHOT:END") and blk:
-        print(f"{blk[0]} upload by {blk[1]}, {len(blk[2])} rows:"); print("   " + "\n   ".join(blk[2])); blk = None
-    elif u.startswith("ARM"):
-        print(f"{ts} ARM by {who}")
-```
-
-The shot that fired is the first one after the last upload before its `ARM`; the THOR logbook and the MDS insertion
-time (`ECH_PROC.GYROTRON_V:SIGNAL`) give its number. If the upload differs from the CSV, correct the CSV's
-`carrier_hz` column to what was uploaded before running the tool on it: the correction must start from what really
-fired.
+- **Upload from the CSV, not by hand** where possible: take the `carrier_hz,duty_pct` columns of the `_iterN.csv` the tool
+  wrote, as whole hertz.
+- **Check the controller's replies as you upload.** Every `SHOT:STEP` answers `OK`, and `SHOT:END` answers
+  `OK <rows> <duration_us>`: the row count and duration must match the CSV. To compare the frequencies themselves, read
+  them back from the controller in the program that uploaded them (`SHOT:POINt? <n>`, `docs/labview_commands.md`).
+- **Keep the record:** keep the uploaded CSV unchanged, and note the shot number and bank charge (the THOR logbook entry
+  is a good place). If what was uploaded differs from the CSV, correct the CSV's `carrier_hz` column to what was
+  uploaded before running the tool on it: the correction must start from what really fired.
 
 ### Exporting a shot (for offline runs and the training corpus)
 
@@ -391,8 +376,8 @@ next profile; the CSV chain (`_iter0`, `_iter1`, ...) is the record of what was 
 2. **Upload it** (LabVIEW or the operator UI). Enter whole hertz (`round`), not truncated decimals. Each row is
    `SHOT:STEP <time_us> <carrier_hz> <duty_pct>`, `0 0` is the off row of a gap, and `SHOT:END` must reply
    `OK <rows> <duration_us>`.
-3. **Check the upload** against the CSV (hub log, above) before arming. Correct the CSV if the controller holds
-   something else.
+3. **Check the upload** before arming: `SHOT:END`'s row count and duration match the CSV, and, if anything was entered
+   by hand, the frequencies read back match it (above). Correct the CSV if the controller holds something else.
 4. **Take the shot.** Note its number and the bank charge.
 5. **Check the shot:** MDS has its `:FILTERED` data, its `ECH_TARGET` is the CSV's target, and nothing else was uploaded
    between your upload and its `ARM`.
@@ -475,8 +460,9 @@ corpus/2026-11-18/
      day to day (on 2026-11-18 its beam current was 6 % lower than on 11-17 at the same voltage): build one corpus per
      day or per gyrotron condition, not one for everything.
    - Leave out shots with no MDS data, faults or arcs, and shots whose upload you cannot confirm.
-2. **Recover each shot's profile** from the hub log (above), and write it as a profile CSV with the frequencies the
-   controller received: `time_us,demand_kw,carrier_hz,duty_pct` (the `demand_kw` column may simply repeat the target),
+2. **Collect each shot's profile** from the operator's records: the `_iterN.csv` that was uploaded (corrected for any
+   difference noticed at upload time, above), or the profile noted in the logbook. Write it as a profile CSV with the
+   frequencies the controller received: `time_us,demand_kw,carrier_hz,duty_pct` (the `demand_kw` column may simply repeat the target),
    with a `# target=` line. One file can serve every shot that fired it.
 3. **Export each shot's data** (`export_shot.py` above) into `data/`, or leave `data_csv` empty to read MDS at training
    time.

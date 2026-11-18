@@ -259,7 +259,7 @@ def read_mds(shot, tree_name=DEFAULT_TREE, node=DEFAULT_NODE):
             raise CompError(f"could not get the current {tree_name} shot ({e}); pass --shot N")
     tree = None
     try:
-        tree = mds.Tree(tree_name, shot)
+        tree = mds.Tree(tree_name, shot, "readonly")                    # read only: the tools never write to MDS
         n = tree.getNode(node)
         v = np.asarray(n.data(), dtype=float)
         try:
