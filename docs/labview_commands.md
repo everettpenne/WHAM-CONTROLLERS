@@ -60,6 +60,7 @@ is the only way to find out that a value was clamped (several commands clamp sil
 Four independent channels, one per Transrex supply. Each channel has a peak demand current; a shot ramps every enabled channel up,
 holds, then ramps down, with a closed loop per channel (the controller measures each supply's output as a frequency and
 corrects its drive). Units are **amps** for the demand and **hertz** for the drive and measured frequencies.
+The command sequence for a shot, by operating state, is drawn in [`firmware/xrex/docs/xrex_command_flow.md`](../firmware/xrex/docs/xrex_command_flow.md).
 
 ### 3.1 Readiness: the "ready to energize" lines and interlocks
 
@@ -185,11 +186,13 @@ If at any point the state becomes `FAULT`, stop the sequence and follow part 2, 
 
 ---
 
-## 4. HBRIDGE (three-phase H-bridge: Limiter and HVPS)
+## 4. HBRIDGE (Limiter and HVPS)
 
-One controller, two supplies selected at run time by the **supply mode**. Three phases: **U, V, W = channels 1, 2, 3**. Each phase can run **open loop**
+One controller, two supplies selected at run time by the **supply mode**. Three output phases: **U, V, W = channels 1, 2, 3** (HVPS: the three phases of one bridge; Limiter: one phase per independently biased electrode; one electrode today, up to three). Each phase can run **open loop**
 (it plays the uploaded shot: a time series of frequency and duty) or **closed loop** (its own controller holds that phase's measured voltage to a target series using an analog feedback
 input), and phases can be mixed in one run.
+
+The command sequence for a shot, by operating state, is drawn in [`firmware/hbridge/docs/hbridge_command_flow.md`](../firmware/hbridge/docs/hbridge_command_flow.md).
 
 ### 4.1 Supply mode and limits
 

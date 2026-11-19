@@ -4,13 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WHAM Operator Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a50c8'/%3E%3Ctext x='16' y='23' font-family='Arial,sans-serif' font-size='19' font-weight='700' text-anchor='middle' fill='white'%3EW%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header id="top">
-  <div class="brand"><span class="logo">W</span><span>WHAM Operator Console</span></div>
+  <div class="brand" role="button" tabindex="0" title="Start screen: tunnel and saved controllers"><span class="logo">W</span><span class="brand-text">WHAM<small>Operator Console</small></span></div>
   <nav id="tabs" aria-label="Controllers"></nav>
-  <button id="btn-new" class="btn primary">+ Connect to a controller</button>
+  <div id="topright">
+    <div id="tunnel-pill" class="pill" aria-live="polite"></div>
+    <button id="btn-disc-all" class="btn" hidden title="Close the connection to every controller. What each controller is doing keeps going.">Disconnect all</button>
+    <button id="btn-new" class="btn primary">+ Connect</button>
+    <div class="menu">
+      <button id="btn-more" class="btn icon" aria-haspopup="true" aria-expanded="false" aria-label="More: guides and quit" title="Guides, and quit">&#8942;</button>
+      <div id="menu-list" class="menu-list" hidden></div>
+    </div>
+  </div>
 </header>
 
 <main id="main">
@@ -19,14 +28,15 @@
 </main>
 
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="stopped" hidden><div class="stopped-box"><h2>The console has stopped</h2><p>Every controller connection was closed and the tunnel this console opened was closed. What the controllers were doing keeps going.</p><p>You can close this tab. To use the console again, start it again (double-click the launcher).</p></div></div>
 
 <dialog id="dlg-connect">
   <form method="dialog" id="form-connect">
-    <h2>Connect to a controller</h2>
+    <h2 id="connect-title">Connect to a controller</h2>
     <fieldset class="how">
       <legend>How do you want to connect?</legend>
       <label class="choice"><input type="radio" name="mode" value="hub" checked>
-        <span><b>Through the host</b> (recommended)<small>The host service shares the controller with other people, keeps a log, and shows who is connected.</small></span></label>
+        <span><b>Through the host</b> (recommended)<small>The host service shares the controller with other people, keeps a log, and shows who is connected. From outside the lab the address is 127.0.0.1 and the port is the tunnel's.</small></span></label>
       <label class="choice"><input type="radio" name="mode" value="direct">
         <span><b>Directly over the network</b><small>Use this when the host is not available. The controller's network bridge accepts only one connection: nobody else, and not the host, can be connected to it at the same time.</small></span></label>
       <label class="choice"><input type="radio" name="mode" value="serial">
@@ -41,7 +51,8 @@
       <p class="hint" id="serial-hint"></p>
     </div>
     <label class="wide">A name to show for it <input id="f-name" type="text" placeholder="for example: ECH gyrotron controller" autocomplete="off"></label>
-    <label class="check"><input id="f-save" type="checkbox"> Add it to the saved list on the start screen</label>
+    <label class="wide" id="f-note-wrap" hidden>Note <input id="f-note" type="text" autocomplete="off"></label>
+    <label class="check" id="f-save-wrap"><input id="f-save" type="checkbox"> Add it to the saved list on the start screen</label>
     <p id="connect-error" class="error" hidden></p>
     <div class="actions">
       <button type="button" class="btn" id="connect-cancel">Cancel</button>
@@ -53,12 +64,26 @@
 <dialog id="dlg-confirm">
   <form method="dialog" id="form-confirm">
     <h2 id="confirm-title">Confirm</h2>
-    <p id="confirm-body"></p>
-    <p class="cmdline"><span>Command:</span> <code id="confirm-cmd"></code></p>
-    <p id="confirm-others" class="warn" hidden></p>
+    <div id="confirm-body"></div>
+    <p class="cmdline" id="confirm-cmdline"><span>Command:</span> <code id="confirm-cmd"></code></p>
+    <p id="confirm-others" class="banner warn" hidden></p>
     <div class="actions">
       <button type="button" class="btn" id="confirm-cancel" autofocus>Cancel</button>
       <button type="submit" class="btn danger" id="confirm-yes">Yes, send it</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-text">
+  <form method="dialog" id="form-text">
+    <h2 id="text-title"></h2>
+    <p id="text-hint" class="hint"></p>
+    <textarea id="text-area" rows="12" spellcheck="false" autocomplete="off"></textarea>
+    <input id="text-line" type="text" autocomplete="off" hidden>
+    <p id="text-error" class="error" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" id="text-cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="text-ok">OK</button>
     </div>
   </form>
 </dialog>

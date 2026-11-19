@@ -18,6 +18,29 @@ WHAM-XREX-PFMG474 Firmware Changelog
   check against a real hub). The hub tests that gate an update all pass on andrew's Python 3.14 (110 tests, 2026-11-19); on
   macOS two SlowClientTests fail, as before.
 
+2026-11-19  -  Host side: operator UI brought up to the November firmware; disconnect-all, tunnel close, quit; command flowcharts for both products  [no firmware change; host-tested and tried in a browser against the simulated controllers; NOT tried on a real controller, NOT tried on Windows]
+-----------------------------------------------------------------------
+  Request: update the browser operator UI and the command flowcharts for the recent changes, improve their look and use, add a button to disconnect from the controllers and one to close the tunnel to andrew,
+  and make sure the UI runs on any computer that has a tunnel to andrew.
+  Page (host/operator_ui/static): new header (tunnel pill with Open/Close on every screen, "Disconnect" / "Disconnect all (n)", a menu with the flowcharts and Quit), a close button on every controller tab and a
+  Disconnect button on the identity card, saved controllers editable, start screen with a tunnel card (each port, who holds it) and "Using this console on another computer". The Operate tab is now folding sections
+  with one-line summaries. HBRIDGE: the shot table loads a profile from a file or the clipboard (new shot_file.py: the CSVs of compensation/ech_compensate.py and limiter_compensate.py, any CSV with time, frequency
+  and duty columns, SHOT:STEP lines, bare rows), has output-off (0 Hz) setpoints with the firmware's rules, reads the controller's own shot into the table on request (never by itself: it is one query per
+  setpoint), compares the table with the controller and marks it when they are known to be the same, saves a CSV, copies the SHOT commands, and draws frequency and duty with the gaps shaded; new sections for the fault inputs (FAULT:SOURces?, the twelve GDS inputs with enable and nickname, the spark-gap input, the bypass banner),
+  the saved profiles (catalog, save, DIFF?, recall with the protection changes in red, GDSOFF/SPARKOFF reported, erase), the dead time and the start latency; the State box says which source latched a fault.
+  XREX: saved profiles, dead time and the bypass banner. Native confirm() boxes replaced by the page's own dialogs.
+  Server (wham_ui.py): POST /api/disconnect_all, /api/quit (answers, then stops the console: connections closed, the console's tunnel closed), /api/shot/parse, GET /api/help; --presets FILE. Tunnel: a new
+  "partial" state (some of the ports answer); stop(force=True) also ends a tunnel opened OUTSIDE the console, but only ssh processes found on the tunnel's ports (lsof, ss, or netstat+tasklist); a port held by
+  anything else is named and left alone, and an unknown holder is reported, never guessed. The page asks first and disconnects the controllers that use the tunnel.
+  Simulator (wham_sim.py): FAULT:SOURces?, GDS?/ENAble/NICKname/POLarity/LAST?, SPARKgap:*, DEBUG:FAULT:BYPASS, CONFig:DEADtime, *SAV/*RCL/CONFig:PROFile:*, EXTernal:TRIGger:LATency?, with a set_pin() hook for tests.
+  Flowcharts: python/command_flow_kit.py (the drawing kit, byte-identical in firmware/xrex and firmware/hbridge, listed in check_shared.py); gen_command_flow.py now uses it. XREX chart: the optional saved-profile
+  step, the !EVT default, notes on profiles and the dead time, band titles no longer overlap their subtitles. New HBRIDGE chart (firmware/hbridge/docs/hbridge_command_flow.{html,svg,md}). Both generators also
+  write a self-contained copy into host/operator_ui/static/help/, which the console lists in its menu.
+  Portability: a copy of the host folder alone, run with the system Python 3.9.6 in an empty environment, served the page, connected to the simulated controller and quit cleanly.
+  Tests: host suite 245 tests; the only failures are the two in test_wham_hub.SlowClientTests, which failed before this change. New: tests/test_shot_file.py (10); in test_operator_ui.py the tunnel states and
+  forced close (with injected process lookup, so no real ssh is touched), disconnect-all, quit, shot parsing, the help pages, and the simulator's new commands.
+  Not done: nothing was sent to a real controller; the Windows path of the port lookup (netstat, tasklist, taskkill) is written but was not run; closed-loop set-up still has no screen.
+
 2026-11-16  -  CONFig:DEADtime: the dead time of every phase is a runtime setting (default 100 ns)  [host-tested, builds clean; flashed: see the bench note below]
 -----------------------------------------------------------------------
   Request: one command to change the dead time, the same on all phases, default 100 ns, at runtime, for the Limiter, the ECH-HVPS and the XREX controller.
@@ -27,6 +50,60 @@ WHAM-XREX-PFMG474 Firmware Changelog
   (24 clocks) now follows the dead time (counts + 7, = 24 at 100 ns), so a longer dead time cannot get the output-off gap to cut a phase during its dead time.
   Not saved in a profile (RAM only, the default returns at every boot) -- say so if it should be. The hub lists the command under "limits" (shoot-through if set too small).
   Tests: make -C tests passes in both repos (the command table collision test covers the new pattern); host test_dangerous_commands passes.
+
+2026-11-12  -  Host side: operator UI records the PFM_Input capture (carrier and duty), open loop too  [no firmware change]
+-----------------------------------------------------------------------
+  Request: after a Limiter shot started from the UI left no PFM data. Cause found from the hub log and the code: the UI's "Record data for the next shot"
+  only armed the closed-loop waveform log (LOG:ARM), the UI had no PFMIN support at all, the shot was open loop (PID:LOOPMODE 0 0 0), and ARM came from LabVIEW,
+  so nothing was armed and PFMIN:STATus? read 0 on every input. Now (HBRIDGE only: Limiter, HVPS): Shot data tab, "PFM input capture" with inputs 1-6 (default the
+  phases that are on), both edges (period and duty) or rising only (period), and cycles (empty = from the shot: highest programmed carrier x length, capped at 3800
+  with a note that the end is missing). The waveform log is now optional: untick every phase to record only the PFM capture.
+  New host/operator_ui/pfm_capture.py (pure, stdlib only: PFMIN:DATA?/RAW? page parsing with the check sum, both-edge decoder, statistics, comparison with the
+  programmed shot read back with SHOT?/SHOT:POINt? -- input n is taken as phase U/V/W for n = 1..3). recorder.py: arms PFMIN:EDGes + PFMIN:CAPTURE, reads each
+  input back (100 values per page, up to 8 tries on a damaged page), puts the modes back afterwards (also on cancel, when IDLE), refuses a mode change while ARMED
+  with the reason ("DISARM first"). The firmware allows PFMIN:EDGes only in IDLE (cmd_pfmin_edges), so with PFM ticked the page arms the recording BEFORE it sends
+  ARM; a declined or refused ARM cancels the recording. shot_data.py: PFM section in the report (duty and carrier plots with the programmed value dashed, per-input
+  statistics, OVERCAP, start-up/odd-period flags), pfm.csv, "pfm_inputs" in the recording list; a recording may have no waveform log. wham_sim.py: PFMIN:CAPTURE/
+  STATus?/EDGes/DATA?/RAW? with synthetic data (duty 2 points below programmed) and a test hook that damages replies. Guide: docs/operator_ui_guide.md section 4.
+  Tests: test_pfm_capture.py (15), PfmRecordingTests in test_operator_ui.py (12: open-loop both-edge, rising only, lossy link, log + PFM together, ARMED refusal,
+  cancel, disarm before the shot, bad requests, XREX refusal, read-now). All run against the simulator. Also checked by driving the page itself against the
+  simulator in the browser (record, ARM, declined ARM, confirmed ARM, FIRE, report).
+  NOT checked: any of it on the real Limiter (nothing was sent to it); the real firmware's reply to PFMIN:CAPTURE while ARMED (assumed accepted: its handler has
+  no state check); whether the real timer's both-edge capture of a full 15 ms shot reads back whole through the hub (the bench bridge loses characters: pages are
+  re-asked, but a very lossy link could exhaust the 8 tries); XREX (no PFM capture offered there); a shot that ends between two polls of the state (the
+  recorder follows the polled state, so an ARM and shot completing inside one poll interval would leave it "waiting": arm the recording first, as the page does).
+
+2026-11-12  -  Host side: wham_connect.py, one terminal command for tunnel + hub session of one device; --watch supervision mode  [no firmware change]
+-----------------------------------------------------------------------
+  Request: "a single terminal tool that opens a tunnel and then a connection to the hub for a specific device", then "I want to be able to supervise the log as
+  others join and communicate with the controller". host/wham_connect.py (stdlib only): `limiter | xrex | ech | <serial> | <port>` -> (1) tunnel for that
+  device's one hub port, using the operator UI's Tunnel class (BatchMode ssh; a tunnel already up is reused and left open on exit, one it started is closed
+  unless --keep-tunnel; host andrew / $WHAM_TUNNEL_HOST / --tunnel-host); (2) identity check: a quiet connection sends *IDN?, and the SN= must match the device's serial
+  (wrong board, ERR from the hub, or silence stops before anything is sent; --force overrides); (3) the interactive session (hub timestamps on, `!hub clients` listed
+  first, joins/leaves yellow and DANGEROUS red when the terminal has colour). --watch is read-only and sends nothing but the set-up lines, so it can supervise;
+  --hide-polls drops other clients' STATE?/!hub status and their replies (counted at exit); --transcript FILE appends everything shown; --send is one-shot.
+  The device table (ports, serials) is checked against host/config/*.yaml and devices.csv by a test.
+  Tests: host/tests/test_wham_connect.py (16: lookup, identity against a stand-in hub, poll filter, styling, one-shot, tunnel start/reuse/failure with a stand-in
+  for ssh). Checked live on the bench through the existing tunnel: identity check, one-shot STATE?/*IDN?, and --watch while a second client connected, queried and left
+  (the watcher showed the join, the command, the reply and the leave; polls hidden with --hide-polls). NOT checked: this tool starting a real ssh tunnel (the
+  bench tunnel was already up and in use, so it was not closed to test that; the ssh command line is the operator UI's, tested there); interactive typing and Ctrl-D.
+
+2026-11-11  -  Host side: "Open tunnel" button on the operator UI's start screen; stale preset notes corrected  [no firmware change]
+-----------------------------------------------------------------------
+  Request (after being unable to find the limiter from the UI: the ssh tunnel was not running and the UI said only "nobody is listening"). host/operator_ui/wham_ui.py: Tunnel class (ssh -N -L p:127.0.0.1:p ... <host>,
+  BatchMode, ExitOnForwardFailure, a child of the console; the host comes from --tunnel-host / WHAM_TUNNEL_HOST, default andrew, never from the page's request; ports = the saved hub entries on 127.0.0.1, default
+  5101-5103; state found by binding the ports, not connecting, so the hubs see no phantom client), /api/state carries it, POST /api/tunnel {on}. static/app.js: a bar on the start screen with Open/Close tunnel
+  (a tunnel started in a terminal shows as open and is not closed by the page); the connect error now points at the button. Preset notes now name the live hubs (xrex-ctrl, lmtr-ctrl, ech-hvps on andrew).
+  Tests: TunnelTests in host/tests/test_operator_ui.py (a stand-in for ssh). Checked on the real bench: the button opened the tunnel and the page identified the limiter (WB-0002-6, v0.11, IDLE).
+
+2026-11-10  -  Host side: "Host log" tab in the operator web UI, backed by a new hub command (!hub log)  [no firmware change]
+-----------------------------------------------------------------------
+  Request: a way in the controller web UI to look at the host logs generally, to evaluate recent activity. The hub logs only on its own machine, so the hub got a query command and the page a tab.
+  host/wham_hub.py: `!hub log [n] [since=..] [before=<t>] [kind=..] [client=..] [all] [grep=..]` (read_log(): newest-first over the day files, stops when it has enough, at most 14 files / 1500 rows;
+  runs in an executor so a big file cannot stall the serial link). The service's own heartbeat/handshake queries and web pages' `!hub status`/`!hub log` are hidden unless `all`; `!hub log` is not itself logged.
+  host/operator_ui: Connection.hub_log, GET /api/hostlog (every argument validated before it reaches the host), "Host log" tab (range, row kinds, who, text search, problems only, counters, load earlier,
+  save as text, 5 s refresh). Hub mode only. Tests: host/tests/test_wham_hub.py (HostLogQueryTests, HostLogReaderTests), test_operator_ui.py. Docs: operator_ui_guide, device_identity_and_host_service, operator_hub_connection.
+  Needs the hubs on the host updated and restarted to take effect (an older hub makes the tab say so). Not yet deployed. Note: SlowClientTests (2 tests) in test_wham_hub.py already failed before this change on this Mac.
 
 2026-11-09  -  The live !EVT stream is OFF by default (SYS:EVENT 0 at every boot)
 -----------------------------------------------------------------------

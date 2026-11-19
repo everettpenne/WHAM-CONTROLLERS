@@ -90,7 +90,7 @@ in `firmware/<product>/docs/command_reference.md`.
 |---|---|
 | `CONFig:CHANnels?` | Channel count (4). |
 | `SOURce:ENAble <ch> <0\|1>` / `?`, `CHANnel:NICKname <ch> <name>` | Enable a channel; label it. |
-| `SHOT:TIMing <rampS> <flatS>` / `?`, `SHOT:CURRent <ch> <amps>` / `?`, `SHOT:STARt` | Define and start a shot (needs ARMED; **owner's OK**). |
+| `SHOT:TIMing <rampUpS> <flatTopS> <rampDownS>` / `?`, `SHOT:CURRent <ch> <amps>` / `?`, `SHOT:STARt` | Define and start a shot (needs ARMED; **owner's OK**). |
 | `SOURce:SETpoint <ch> <hz>`, `SOURce:RUN`, `SOURce:STATus? <ch>` | Continuous run to a frequency setpoint. |
 | `PID:GAINS <ch> <kp> <ki> <kd>`, `PID:LOOPMODE <ch> <0\|1>` | Gains; open or closed loop (0 = all channels). |
 | `EXTernal:ENAble <0\|1>`, `EXTernal:INPut?` | PF13 interlock on/off; its raw level. |

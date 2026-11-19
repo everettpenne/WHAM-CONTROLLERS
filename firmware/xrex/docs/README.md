@@ -12,7 +12,8 @@ that first.
   the safety model, step-by-step shot procedures, fault response, and what has and has not been verified.
 - [`xrex_command_flow.md`](xrex_command_flow.md) — a flowchart of the command sequence by operating state; GitHub draws it from
   `xrex_command_flow.svg` (the `.html` copy opens in a browser from a checkout). Regenerate all three with
-  `python3 python/gen_command_flow.py` after changing the command flow.
+  `python3 python/gen_command_flow.py` after changing the command flow. The script also refreshes the operator console's copy
+  (`host/operator_ui/static/help/`); its drawing kit, `python/command_flow_kit.py`, is shared with `firmware/hbridge`.
 - [`labview_interface.md`](labview_interface.md) — the LabVIEW front-end command contract (see its note about the hub).
 - [`serial_reflash_guide.md`](serial_reflash_guide.md) — the `BOOT`/`stm32flash`
   reflash mechanism, the VTOR/MEMRMP fix, troubleshooting.

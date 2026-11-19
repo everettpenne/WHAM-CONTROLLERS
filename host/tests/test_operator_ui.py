@@ -3,6 +3,7 @@ and against the real hub service with a fake controller behind it (hub mode)."""
 import asyncio
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -144,6 +145,11 @@ class DirectModeTests(UiBase):
         self.assertEqual(code, 200)
         self.assertLess(waited, 5.0)
 
+    def test_host_log_is_for_hub_connections_only(self):
+        code, r = self.http.call(f"/api/hostlog?id={self.cid}")
+        self.assertEqual(code, 400)
+        self.assertIn("through the host", r["error"])
+
     def test_hub_lines_are_refused_outside_hub_mode(self):
         code, r = self.http.call("/api/send", {"id": self.cid, "command": "!hub status"})
         self.assertEqual(code, 400)
@@ -190,6 +196,176 @@ class DirectModeTests(UiBase):
         self.http.call("/api/disconnect", {"id": self.cid})
         _, st = self.http.call("/api/state")
         self.assertEqual(st["connections"], [])
+
+    def send(self, cmd, confirmed=True):
+        return self.http.call("/api/send", {"id": self.cid, "command": cmd, "confirmed": confirmed})[1]
+
+    def ask(self, cmd):
+        return self.http.call("/api/query", {"id": self.cid, "commands": [cmd]})[1]["results"][0]["reply"]
+
+    def test_disconnect_all_closes_every_connection_and_leaves_the_controllers_alone(self):
+        self.send("ARM")
+        other = wham_sim.SimController("xrex", 0, label="t2")
+        other.start()
+        self.addCleanup(other.stop)
+        code, st = self.http.call("/api/connect", {"mode": "direct", "host": "127.0.0.1", "port": other.port, "name": "sim2"})
+        self.assertEqual(code, 200, st)
+        code, r = self.http.call("/api/disconnect_all", {})
+        self.assertEqual((code, r["closed"]), (200, 2))
+        _, st = self.http.call("/api/state")
+        self.assertEqual(st["connections"], [])
+        self.assertEqual(self.sim.sim.state, "ARMED", "disconnecting must not change what the controller is doing")
+        code, r = self.http.call("/api/disconnect_all", {})
+        self.assertEqual((code, r["closed"]), (200, 0))
+        code, _ = self.http.call("/api/disconnect_all", {}, token=False)
+        self.assertEqual(code, 403)
+
+    def test_a_shot_file_is_parsed_for_the_table_and_a_bad_one_is_explained(self):
+        code, r = self.http.call("/api/shot/parse", {"text": "SHOT:STEP 0 20086 50\nSHOT:STEP 1000 0 0\nSHOT:STEP 2000 20100 50\nSHOT:STEP 3000 20100 50\n", "name": "../x<y>.csv"})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(len(r["rows"]), 4)
+        self.assertTrue(r["rows"][1]["off"])
+        self.assertIn("4 setpoints, 3 ms", r["summary"])
+        self.assertNotIn("<", r["summary"])
+        self.assertNotIn("/", r["summary"].split(":")[0])
+        code, r = self.http.call("/api/shot/parse", {"text": "hello world"})
+        self.assertEqual(code, 422)
+        self.assertIn("does not look like a shot", r["error"])
+        code, r = self.http.call("/api/shot/parse", {"text": "0 20000 50\n"}, token=False)
+        self.assertEqual(code, 403)
+        _, r = self.http.call("/api/query", {"id": self.cid, "commands": ["SHOT?"]})
+        self.assertTrue(r["results"][0]["reply"].startswith("OK 0 "), "parsing a file sends nothing to the controller")
+
+    def test_help_pages_are_listed_and_served(self):
+        code, r = self.http.call("/api/help", token=False)
+        self.assertEqual(code, 200)
+        for page in r["pages"]:
+            self.assertTrue(page["title"])
+            with urllib.request.urlopen(f"{self.http.base}/static/help/{page['file']}") as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn("text/html", resp.headers["Content-Type"])
+                self.assertIn(b"<svg", resp.read())
+        self.assertEqual(sorted(p["file"] for p in r["pages"]), sorted(wham_ui.HELP_TITLES), "the console ships both command flowcharts")
+
+    def test_an_off_setpoint_uploads_and_reads_back(self):
+        self.send("CONFig:MODE HVPS")
+        for cmd in ("SHOT:BEGin", "SHOT:STEP 0 20000 50", "SHOT:STEP 4000 20000 50", "SHOT:STEP 4010 0 0", "SHOT:STEP 8000 21000 50", "SHOT:STEP 12000 21000 50"):
+            self.assertTrue(self.send(cmd)["ok"], cmd)
+        self.assertEqual(self.send("SHOT:END")["reply"], "OK 5 12000")
+        self.assertEqual(self.ask("SHOT:POINt? 2").split()[:3], ["OK", "4010", "0"])
+        self.send("SHOT:BEGin")
+        self.assertFalse(self.send("SHOT:STEP 0 0 0")["ok"], "the first setpoint cannot be an off one")
+
+    def test_fault_inputs_latch_a_fault_and_say_which(self):
+        self.assertEqual(self.ask("FAULT:SOURces?"), "OK PC10=0 GATEDRV=0 TABLE=0 TEST=0 OVP=0 FB=0 SPARK=0")
+        self.assertTrue(self.ask("GDS?").startswith("OK 01=HIGH 02=HIGH"))
+        self.sim.set_pin(3, 0)                                               # normally HIGH: a LOW input is a fault
+        c = self.http.wait(self.cid, lambda c: c["state"] == "FAULT", "FAULT from a gate-driver input")
+        self.assertIn("GATEDRV=1", self.ask("FAULT:SOURces?"))
+        self.assertIn("03=LOW", self.ask("GDS?"))
+        self.assertEqual(self.ask("GDS:LAST?").split()[1], "FFB")            # the levels at the fault: every input HIGH but input 3
+        self.assertFalse(self.send("FAULT:CLEar")["reply"] == "OK" and self.ask("STATE?") == "OK IDLE", "a fault that is still there does not clear")
+        code, r = self.http.call("/api/send", {"id": self.cid, "command": "GDS:ENAble 3 0"})
+        self.assertEqual(code, 409, "switching a fault input off must ask first")
+        self.assertEqual(r["category"], "interlock")
+        self.assertTrue(self.send("GDS:ENAble 3 0")["ok"])
+        self.assertEqual(self.ask("GDS:ENAble?").split()[3], "03=0")
+        self.send("FAULT:CLEar")
+        self.http.wait(self.cid, lambda c: c["state"] == "IDLE", "IDLE once the input is switched off")
+        self.assertTrue(self.send("GDS:NICKname 3 PhaseU_Hi")["ok"])
+        self.assertIn("03=PhaseU_Hi", self.ask("GDS:NICKname?"))
+        self.assertFalse(self.send("GDS:NICKname 3 a_name_longer_than_15")["ok"])
+
+    def test_the_spark_gap_input_and_the_polarity(self):
+        self.sim.set_pin("spark", 0)
+        self.http.wait(self.cid, lambda c: c["state"] == "FAULT", "FAULT from the spark-gap input")
+        self.assertIn("SPARK=1", self.ask("FAULT:SOURces?"))
+        self.assertEqual(self.ask("SPARKgap:INPut?"), "OK 0")
+        self.assertTrue(self.send("SPARKgap:ENAble 0")["ok"])
+        self.send("FAULT:CLEar")
+        self.http.wait(self.cid, lambda c: c["state"] == "IDLE", "IDLE with the spark-gap input off")
+        self.assertEqual(self.ask("GDS:POLarity?"), "OK NORMALLY_HIGH")
+        code, _ = self.http.call("/api/send", {"id": self.cid, "command": "GDS:POLarity NORMALLY_LOW"})
+        self.assertEqual(code, 409)
+        self.send("GDS:POLarity NORMALLY_LOW")                               # every input reads HIGH, so each is now in fault
+        self.http.wait(self.cid, lambda c: c["state"] == "FAULT", "FAULT after the polarity change")
+
+    def test_the_bypass_keeps_a_bad_input_from_latching(self):
+        code, _ = self.http.call("/api/send", {"id": self.cid, "command": "DEBUG:FAULT:BYPASS 1"})
+        self.assertEqual(code, 409)
+        self.send("DEBUG:FAULT:BYPASS 1")
+        self.sim.set_pin(1, 0)
+        time.sleep(0.3)
+        self.assertEqual(self.ask("STATE?"), "OK IDLE")
+        self.assertEqual(self.ask("DEBUG:FAULT:BYPASS?"), "OK 1")
+        self.send("DEBUG:FAULT:BYPASS 0", confirmed=False)                   # turning the protection back on needs no confirmation
+        self.http.wait(self.cid, lambda c: c["state"] == "FAULT", "FAULT once the bypass is off")
+
+    def test_dead_time_is_confirmed_and_read_back_as_the_timer_holds_it(self):
+        self.assertEqual(self.ask("CONFig:DEADtime?"), "OK 100")
+        code, r = self.http.call("/api/send", {"id": self.cid, "command": "CONFig:DEADtime 150"})
+        self.assertEqual((code, r["category"]), (409, "limits"))
+        self.assertTrue(self.send("CONFig:DEADtime 150")["ok"])
+        self.assertEqual(self.ask("CONFig:DEADtime?"), "OK 153")
+        for bad in ("49", "3001", "abc"):
+            self.assertFalse(self.send(f"CONFig:DEADtime {bad}")["ok"], bad)
+
+    def test_saved_profiles_round_trip(self):
+        self.assertEqual(self.ask("CONFig:PROFile:CATalog?").split()[1:3], ["1=empty", "2=empty"])
+        self.send("CONFig:MODE HVPS")
+        for cmd in ("SHOT:BEGin", "SHOT:STEP 0 20000 50", "SHOT:STEP 5000 20000 50", "SHOT:END"):
+            self.send(cmd)
+        self.assertEqual(self.send("*SAV 2 two-point")["reply"], "OK")
+        self.assertIn("2=two-point/", self.ask("CONFig:PROFile:CATalog?"))
+        self.assertEqual(self.ask("CONFig:PROFile:DIFF? 2"), "OK SAME")
+        self.send("CONFig:DEADtime 200")
+        self.send("GDS:ENAble 5 0")
+        diff = self.ask("CONFig:PROFile:DIFF? 2")
+        self.assertIn("DEADtime=200>100", diff)
+        self.assertIn("GDS:ENAble=", diff)
+        reply = self.send("*RCL 2")["reply"]
+        self.assertTrue(reply.startswith("OK APPLIED="), reply)
+        self.assertIn("FAILED=0", reply)
+        self.assertEqual(self.ask("CONFig:DEADtime?"), "OK 100")
+        self.assertEqual(self.ask("GDS:ENAble?").split()[5], "05=1")
+        self.assertEqual(self.ask("CONFig:PROFile:DIFF? 2"), "OK SAME")
+        self.send("GDS:ENAble 5 0")
+        self.send("*SAV 3")
+        self.send("GDS:ENAble 5 1")
+        self.assertIn("GDSOFF=1", self.send("*RCL 3")["reply"])              # a recall that leaves an input off says so
+        self.send("ARM")
+        self.assertTrue(self.send("*RCL 2")["reply"].startswith("ERR 13"))   # only while IDLE
+        self.send("DISARM")
+        self.assertTrue(self.send("CONFig:PROFile:CLEar 2")["ok"])
+        self.assertTrue(self.ask("CONFig:PROFile:DIFF? 2").startswith("ERR 18"))
+        self.assertFalse(self.send("*SAV 9")["ok"])
+        self.assertFalse(self.send("*SAV 1 a_label_longer_than_15")["ok"])
+
+    def test_start_latency_is_reported_after_a_shot(self):
+        self.assertTrue(self.ask("EXTernal:TRIGger:LATency?").startswith("ERR 13"))
+        self.send("CONFig:MODE HVPS")
+        for cmd in ("SHOT:BEGin", "SHOT:STEP 0 20000 50", "SHOT:STEP 5000 20000 50", "SHOT:END", "ARM", "FIRE"):
+            self.assertTrue(self.send(cmd)["ok"], cmd)
+        kv = dict(t.split("=") for t in self.ask("EXTernal:TRIGger:LATency?").split()[1:])
+        self.assertEqual(kv["prepared"], "1")
+        self.assertEqual(kv["total_us"], "NA")                               # started by FIRE, not by the trigger edge
+        self.assertGreater(float(kv["start_us"]), 0)
+
+
+class QuitTests(UiBase):
+    def test_quit_answers_then_stops_serving(self):
+        code, _ = self.http.call("/api/quit", {}, token=False)
+        self.assertEqual(code, 403)
+        code, r = self.http.call("/api/quit", {})
+        self.assertEqual((code, r["ok"]), (200, True))
+        end = time.time() + 5
+        while time.time() < end:
+            try:
+                self.http.call("/api/state")
+            except (urllib.error.URLError, ConnectionError, OSError):
+                return
+            time.sleep(0.1)
+        self.fail("the console kept serving after Quit")
 
 
 class ConnectErrorTests(UiBase):
@@ -291,6 +467,378 @@ class HubModeTests(UiBase):
         code, r = self.http.call("/api/send", {"id": self.cid, "command": "!hub status"})
         self.assertEqual(code, 200)
         self.assertIn("serial=WB-0001-8", r["reply"])
+
+    def test_host_log_shows_recent_activity_and_filters(self):
+        self.http.call("/api/send", {"id": self.cid, "command": "ECHO findme"})
+        code, r = self.http.call(f"/api/hostlog?id={self.cid}&n=50")
+        self.assertEqual(code, 200)
+        lines = [x["line"] for x in r["rows"]]
+        self.assertIn("ECHO findme", lines)
+        self.assertEqual(r["info"]["dev"], "WB-0001-8")
+        self.assertEqual(r["info"]["rows"], len(r["rows"]))
+        code, r = self.http.call(f"/api/hostlog?id={self.cid}&kind=cmd&grep=FINDME")
+        self.assertEqual([x["line"] for x in r["rows"]], ["ECHO findme"])
+        self.assertTrue(r["rows"][0]["client"])
+        code, r = self.http.call(f"/api/hostlog?id={self.cid}&grep=zzz-not-there")
+        self.assertEqual((code, r["rows"]), (200, []))
+
+    def test_host_log_arguments_are_checked_before_they_reach_the_host(self):
+        for bad in ("since=soon", "kind=cmd%0A!hub%20confirm", "client=a%20b", "n=ten", "before=x"):
+            code, r = self.http.call(f"/api/hostlog?id={self.cid}&{bad}")
+            self.assertEqual(code, 400, bad)
+        self.assertNotIn("!hub confirm", self.ctl.received)
+
+    def test_host_log_arguments_are_composed_in_the_order_the_host_wants(self):
+        q = {"n": ["100"], "since": ["2h"], "kind": ["cmd,reply"], "client": ["bob"], "all": ["1"], "grep": ["a b\nc"]}
+        self.assertEqual(wham_ui.host_log_args(q), "100 since=2h kind=cmd,reply client=bob all grep=a b c")
+
+
+class PfmRecordingTests(UiBase):
+    """Shot data with the PFM_Input capture: armed before the shot, read back after, open loop or closed, over a lossy link."""
+    SHOT = ("SHOT:BEGin", "SHOT:STEP 0 100000 20 50 80", "SHOT:STEP 10000 100000 80 50 20", "SHOT:END")
+
+    def connect(self, product="hbridge"):
+        self.sim = wham_sim.SimController(product, 0, label="t", min_fire_s=0.4)
+        self.sim.start()
+        self.addCleanup(self.sim.stop)
+        code, st = self.http.call("/api/connect", {"mode": "direct", "host": "127.0.0.1", "port": self.sim.port, "name": "sim"})
+        self.cid = st["id"]
+        self.http.wait(self.cid, lambda c: c["identified"] and c["state"], "identity")
+
+    def send(self, cmd):
+        code, r = self.http.call("/api/send", {"id": self.cid, "command": cmd, "confirmed": True})
+        self.assertEqual(code, 200, (cmd, r))
+        self.assertTrue(r["ok"], (cmd, r))
+
+    def upload(self):
+        self.send("CONFig:MODE LIMiter")
+        for c in self.SHOT:
+            self.send(c)
+
+    def wait_rec(self, states, secs=20):
+        return self.http.wait(self.cid, lambda c: c["rec"] and c["rec"]["state"] in states, f"recording in {states}", secs)["rec"]
+
+    def arm_record(self, **kw):
+        body = {"id": self.cid, "channels": [], "duration_s": 0.01, "pfm": {"inputs": [1, 2, 3], "edges": "both", "cycles": None}}
+        body.update(kw)
+        return self.http.call("/api/record/arm", body)
+
+    def shot(self):
+        self.send("ARM")
+        self.http.wait(self.cid, lambda c: c["rec"] and c["rec"]["state"] == "armed", "recording armed")      # as an operator would: the page sees ARMED first
+        self.send("FIRE")
+
+    def file(self, sid, name):
+        req = urllib.request.Request(f"{self.http.base}/api/shot/file?sid={sid}&name={name}", headers={"X-WHAM-Token": self.app.token})
+        with urllib.request.urlopen(req) as resp:
+            return resp.read().decode()
+
+    def test_open_loop_both_edge_capture_is_recorded_reported_and_the_modes_put_back(self):
+        self.connect()
+        self.upload()
+        code, r = self.arm_record()
+        self.assertEqual(code, 200, r)
+        self.assertTrue(r["rec"]["pfm"])
+        self.assertEqual(self.sim.sim.pfm_modes[:3], ["B", "B", "B"])
+        self.assertTrue(1000 < r["rec"]["pfm_cycles"] < 1100)
+        self.shot()
+        rec = self.wait_rec(("done", "failed", "empty"))
+        self.assertEqual(rec["state"], "done", rec)
+        self.assertIn("PFM capture of inputs 1, 2, 3", rec["message"])
+        self.assertEqual(self.sim.sim.pfm_modes, ["R"] * 6, "the capture modes this page changed are put back")
+        code, d = self.http.call(f"/api/shot?sid={rec['sid']}")
+        self.assertEqual(d["channels"], [])
+        self.assertEqual([i["n"] for i in d["pfm"]["inputs"]], [1, 2, 3])
+        self.assertIn("pfm.csv", d["files"])
+        self.assertNotIn("shot.csv", d["files"])
+        self.assertIn("<svg", d["pfm"]["svg_duty"])
+        self.assertIn("<svg", d["pfm"]["svg_freq"])
+        stats = dict(d["pfm"]["inputs"][0]["stats"])
+        self.assertIn("measured minus programmed", " ".join(stats))
+        err = stats["Duty, measured minus programmed"]
+        self.assertTrue(err.startswith("mean -2.0") or err.startswith("mean -1.9"), err)
+        self.assertTrue(stats["Cycles"].startswith("1001 over"), stats["Cycles"])
+        csv_text = self.file(rec["sid"], "pfm.csv")
+        self.assertEqual(len(csv_text.strip().split("\n")), 1 + 3 * 1001)
+        self.assertIn("PFM input capture", self.file(rec["sid"], "report.html"))
+        self.assertIn("PFM Input 3 (phase W)", self.file(rec["sid"], "report.md"))
+        with open(os.path.join(self.tmp.name, "shots", rec["sid"], "summary.json")) as f:
+            self.assertEqual(json.load(f)["pfm_inputs"], [1, 2, 3])
+        code, _ = self.http.call(f"/api/shot/file?sid={rec['sid']}&name=shot.csv")
+        self.assertEqual(code, 404)                                                # no waveform log, so no such file
+
+    def test_rising_edge_capture_gives_carrier_only(self):
+        self.connect()
+        self.upload()
+        self.assertEqual(self.arm_record(pfm={"inputs": [1], "edges": "rising", "cycles": 500})[0], 200)
+        self.assertEqual(self.sim.sim.pfm_modes[0], "R")
+        self.shot()
+        rec = self.wait_rec(("done", "failed", "empty"))
+        self.assertEqual(rec["state"], "done", rec)
+        _, d = self.http.call(f"/api/shot?sid={rec['sid']}")
+        inp = d["pfm"]["inputs"][0]
+        stats = dict(inp["stats"])
+        self.assertIn("rising", stats["Capture"])
+        self.assertNotIn("Duty (measured)", stats)
+        self.assertEqual(d["pfm"]["svg_duty"], "")
+        self.assertTrue(stats["Cycles"].startswith("500 over"))
+        self.assertIn("the capture filled", " ".join(d["notes"] + d["pfm"]["notes"]))        # 500 cycles asked, the shot is longer
+
+    def test_lost_characters_on_the_link_are_asked_again(self):
+        self.connect()
+        self.upload()
+        self.sim.sim.pfm_glitch_every = 4                                            # every 4th page reply loses a character
+        self.arm_record()
+        self.shot()
+        rec = self.wait_rec(("done", "failed", "empty"))
+        self.assertEqual(rec["state"], "done", rec)
+        _, d = self.http.call(f"/api/shot?sid={rec['sid']}")
+        self.assertTrue(dict(d["pfm"]["inputs"][2]["stats"])["Cycles"].startswith("1001 over"))
+
+    def test_waveform_log_and_pfm_in_one_recording(self):
+        self.connect()
+        self.upload()
+        self.send("PID:LOOPMODE 1 1")
+        self.assertEqual(self.arm_record(channels=[1], pfm={"inputs": [1], "edges": "both", "cycles": None})[0], 200)
+        self.shot()
+        rec = self.wait_rec(("done", "failed", "empty"))
+        self.assertEqual(rec["state"], "done", rec)
+        _, d = self.http.call(f"/api/shot?sid={rec['sid']}")
+        self.assertEqual(len(d["channels"]), 1)
+        self.assertEqual(len(d["pfm"]["inputs"]), 1)
+        self.assertIn("shot.csv", d["files"])
+        self.assertIn("pfm.csv", d["files"])
+
+    def test_open_loop_log_is_empty_but_the_pfm_capture_is_kept(self):
+        self.connect()
+        self.upload()
+        code, r = self.arm_record(channels=[1])
+        self.assertIn("open loop", " ".join(r["rec"]["warnings"]))
+        self.assertIn("recorded anyway", " ".join(r["rec"]["warnings"]))
+        self.shot()
+        rec = self.wait_rec(("done", "failed", "empty"))
+        self.assertEqual(rec["state"], "done", rec)
+        _, d = self.http.call(f"/api/shot?sid={rec['sid']}")
+        self.assertEqual(d["channels"], [])
+        self.assertIn("waveform log is empty", " ".join(d["notes"]))
+
+    def test_a_mode_change_while_armed_is_refused_with_the_reason(self):
+        self.connect()
+        self.upload()
+        self.send("ARM")
+        code, r = self.arm_record()
+        self.assertEqual(code, 409)
+        self.assertIn("DISARM", r["error"])
+        self.assertEqual(self.sim.sim.pfm_modes, ["R"] * 6)
+
+    def test_inputs_already_in_the_wanted_mode_need_no_change_while_armed(self):
+        self.connect()
+        self.upload()
+        self.send("PFMIN:EDGes 1 BOTH")
+        self.send("ARM")
+        code, r = self.arm_record(pfm={"inputs": [1], "edges": "both", "cycles": 300})
+        self.assertEqual(code, 200, r)
+        self.assertEqual(self.sim.sim.pfm_modes[0], "B")                              # left as the operator had set it
+
+    def test_cancelling_puts_the_modes_back(self):
+        self.connect()
+        self.upload()
+        self.arm_record()
+        self.assertEqual(self.sim.sim.pfm_modes[:3], ["B"] * 3)
+        code, r = self.http.call("/api/record/cancel", {"id": self.cid})
+        self.assertEqual(r["rec"]["state"], "cancelled")
+        self.assertEqual(self.sim.sim.pfm_modes, ["R"] * 6)
+
+    def test_disarming_before_the_shot_gives_an_empty_recording(self):
+        self.connect()
+        self.upload()
+        self.arm_record()
+        self.send("ARM")
+        self.http.wait(self.cid, lambda c: c["rec"] and c["rec"]["state"] == "armed", "armed recording")
+        self.send("DISARM")
+        rec = self.wait_rec(("empty", "done", "failed"))
+        self.assertEqual(rec["state"], "empty", rec)
+        self.assertIn("PFM capture is empty", rec["message"])
+        self.assertEqual(self.sim.sim.pfm_modes, ["R"] * 6)
+
+    def test_bad_requests_are_explained(self):
+        self.connect()
+        self.upload()
+        for kw, word in (({"pfm": {"inputs": [], "edges": "both"}}, "at least one PFM input"),
+                         ({"pfm": {"inputs": [9], "edges": "both"}}, "PFM input"),
+                         ({"pfm": {"inputs": [1], "edges": "falling"}}, "edges"),
+                         ({"pfm": {"inputs": [1], "edges": "both", "cycles": 99999}}, "3800"),
+                         ({"pfm": None}, "at least one phase")):
+            code, r = self.arm_record(**kw)
+            self.assertEqual(code, 409, (kw, r))
+            self.assertIn(word, r["error"])
+        self.assertEqual(self.sim.sim.pfm_modes, ["R"] * 6, "a refused request leaves the modes alone")
+
+    def test_xrex_has_no_pfm_capture(self):
+        self.connect("xrex")
+        code, r = self.arm_record(channels=[1])
+        self.assertEqual(code, 409)
+        self.assertIn("HBRIDGE", r["error"])
+
+    def test_read_the_capture_now_for_a_shot_this_page_did_not_arm(self):
+        self.connect()
+        self.upload()
+        self.send("PFMIN:EDGes 2 BOTH")
+        self.send("PFMIN:CAPTURE 300")
+        self.send("ARM")
+        self.send("FIRE")
+        time.sleep(0.2)
+        self.http.wait(self.cid, lambda c: c["state"] == "IDLE", "shot over")
+        code, r = self.http.call("/api/record/collect", {"id": self.cid, "channels": [], "pfm": {"inputs": [2], "edges": "both"}})
+        self.assertEqual(code, 200, r)
+        rec = self.wait_rec(("done", "failed", "empty"))
+        self.assertEqual(rec["state"], "done", rec)
+        _, d = self.http.call(f"/api/shot?sid={rec['sid']}")
+        self.assertEqual([i["n"] for i in d["pfm"]["inputs"]], [2])
+        self.assertTrue(dict(d["pfm"]["inputs"][0]["stats"])["Cycles"].startswith("300 over"))
+
+
+class TunnelTests(UiBase):
+    """The start screen's tunnel button. A stand-in for ssh (a Python one-liner that listens on the ports) is used, so no
+    network or key is needed; the real command line is checked separately."""
+
+    FAKE = ("import socket,sys,time\nss=[]\nfor p in map(int,sys.argv[1:]):\n s=socket.socket(); s.bind(('127.0.0.1',p)); s.listen(1); ss.append(s)\ntime.sleep(60)\n")
+
+    def setUp(self):
+        super().setUp()
+        self.ports = [free_port(), free_port()]
+        self.app.tunnel.ports_fn = lambda: self.ports
+        self.app.tunnel.ssh = "x"
+
+    def fake(self, ports):
+        return [sys.executable, "-c", self.FAKE] + [str(p) for p in ports]
+
+    def test_the_real_command_line_forwards_each_port_without_asking_questions(self):
+        t = wham_ui.Tunnel(host="lab", ports_fn=lambda: [5101, 5102], ssh="/usr/bin/ssh")
+        cmd = t.command([5101, 5102])
+        self.assertEqual(cmd[0], "/usr/bin/ssh")
+        self.assertIn("BatchMode=yes", cmd)
+        self.assertIn("ExitOnForwardFailure=yes", cmd)
+        self.assertEqual(cmd[-1], "lab")
+        self.assertEqual([cmd[i + 1] for i, a in enumerate(cmd) if a == "-L"], ["5101:127.0.0.1:5101", "5102:127.0.0.1:5102"])
+
+    def test_open_then_close_from_the_page_and_state_reports_it(self):
+        self.app.tunnel.command = self.fake
+        code, st = self.http.call("/api/state")
+        self.assertEqual(st["tunnel"]["state"], "closed")
+        code, r = self.http.call("/api/tunnel", {"on": True})
+        self.assertEqual((code, r["tunnel"]["state"]), (200, "open"), r)
+        code, st = self.http.call("/api/state")
+        self.assertEqual(st["tunnel"]["state"], "open")
+        self.assertEqual(st["tunnel"]["ports"], sorted(self.ports))
+        code, r = self.http.call("/api/tunnel", {"on": False})
+        self.assertEqual(r["tunnel"]["state"], "closed")
+        self.assertFalse(any(wham_ui.port_in_use(p) for p in self.ports))
+
+    def test_a_tunnel_that_is_already_up_is_recognised_and_not_closed_by_the_page(self):
+        outside = subprocess.Popen(self.fake(self.ports))
+        self.addCleanup(lambda: (outside.kill(), outside.wait()))
+        end = time.time() + 5
+        while time.time() < end and not all(wham_ui.port_in_use(p) for p in self.ports):
+            time.sleep(0.05)
+        _, st = self.http.call("/api/state")
+        self.assertEqual(st["tunnel"]["state"], "open-elsewhere")
+        self.http.call("/api/tunnel", {"on": False})
+        self.assertTrue(all(wham_ui.port_in_use(p) for p in self.ports), "a tunnel the page did not start must stay up")
+
+    def test_a_failing_ssh_reports_its_own_message(self):
+        self.app.tunnel.command = lambda ports: [sys.executable, "-c", "import sys; sys.stderr.write('Permission denied (publickey).\\n'); sys.exit(255)"]
+        _, r = self.http.call("/api/tunnel", {"on": True})
+        self.assertEqual(r["tunnel"]["state"], "closed")
+        self.assertIn("Permission denied (publickey)", r["tunnel"]["error"])
+
+    def test_a_port_held_by_something_else_is_explained(self):
+        import socket as _s
+        blocker = _s.socket(); blocker.bind(("127.0.0.1", self.ports[0])); blocker.listen(1)
+        self.addCleanup(blocker.close)
+        self.app.tunnel.command = self.fake
+        _, r = self.http.call("/api/tunnel", {"on": True})
+        self.assertEqual(r["tunnel"]["state"], "partial")                  # one of the two ports answers: not a whole tunnel
+        self.assertEqual(r["tunnel"]["listening"], [self.ports[0]])
+        self.assertIn("already used", r["tunnel"]["error"])
+        self.assertFalse(wham_ui.port_in_use(self.ports[1]), "nothing was started")
+
+    def outside(self, ports):
+        """A tunnel started outside the console (the ssh stand-in as a separate process), listening on the given ports."""
+        proc = subprocess.Popen(self.fake(ports))
+        self.addCleanup(lambda: (proc.kill(), proc.wait()))
+        end = time.time() + 5
+        while time.time() < end and not all(wham_ui.port_in_use(p) for p in ports):
+            time.sleep(0.05)
+        return proc
+
+    def test_a_tunnel_opened_elsewhere_is_closed_only_on_an_explicit_request_and_only_if_it_is_ssh(self):
+        proc = self.outside(self.ports)
+        ended = []
+        self.app.tunnel.listeners_fn = lambda ports: {p: (proc.pid, "ssh") for p in ports}
+        self.app.tunnel.end_fn = lambda pid: (ended.append(pid), proc.terminate(), True)[-1]
+        _, st = self.http.call("/api/state")
+        t = st["tunnel"]
+        self.assertEqual((t["state"], t["closable"]), ("open-elsewhere", True))
+        self.assertEqual(t["foreign"], [{"pid": proc.pid, "name": "ssh", "ports": sorted(self.ports), "ssh": True}])
+        self.http.call("/api/tunnel", {"on": False})                        # the ordinary Close: leaves it
+        self.assertEqual(ended, [])
+        _, r = self.http.call("/api/tunnel", {"on": False, "force": True})
+        self.assertEqual(ended, [proc.pid])
+        self.assertEqual((r["tunnel"]["state"], r["tunnel"]["error"]), ("closed", None), r)
+        self.assertFalse(any(wham_ui.port_in_use(p) for p in self.ports))
+
+    def test_a_port_held_by_another_program_is_named_and_left_alone(self):
+        proc = self.outside(self.ports)
+        ended = []
+        self.app.tunnel.listeners_fn = lambda ports: {p: (proc.pid, "nginx") for p in ports}
+        self.app.tunnel.end_fn = lambda pid: ended.append(pid) or True
+        _, st = self.http.call("/api/state")
+        self.assertFalse(st["tunnel"]["closable"])
+        _, r = self.http.call("/api/tunnel", {"on": False, "force": True})
+        self.assertEqual(ended, [], "a program that is not ssh must never be stopped")
+        self.assertEqual(r["tunnel"]["state"], "open-elsewhere")
+        self.assertIn("nginx", r["tunnel"]["error"])
+        self.assertIn("not ssh", r["tunnel"]["error"])
+        self.assertTrue(all(wham_ui.port_in_use(p) for p in self.ports))
+
+    def test_a_tunnel_for_one_controller_is_reported_as_partial_and_can_be_closed(self):
+        proc = self.outside(self.ports[:1])
+        self.app.tunnel.listeners_fn = lambda ports: {p: (proc.pid, "ssh") for p in ports}
+        self.app.tunnel.end_fn = lambda pid: (proc.terminate(), True)[-1]
+        _, st = self.http.call("/api/state")
+        t = st["tunnel"]
+        self.assertEqual((t["state"], t["listening"], t["closable"]), ("partial", self.ports[:1], True))
+        _, r = self.http.call("/api/tunnel", {"on": False, "force": True})
+        self.assertEqual(r["tunnel"]["state"], "closed")
+
+    def test_an_unknown_holder_is_reported_not_guessed(self):
+        self.outside(self.ports)
+        self.app.tunnel.listeners_fn = lambda ports: {}                     # the system tools found nothing (no lsof, another user's process)
+        self.app.tunnel.end_fn = lambda pid: self.fail("nothing may be stopped")
+        _, r = self.http.call("/api/tunnel", {"on": False, "force": True})
+        self.assertEqual(r["tunnel"]["state"], "open-elsewhere")
+        self.assertIn("could not find which program", r["tunnel"]["error"])
+
+    def test_the_listener_lookup_finds_this_computers_own_listening_process(self):
+        proc = self.outside(self.ports[:1])
+        found = wham_ui.find_listeners(self.ports)
+        if not found:
+            self.skipTest("no lsof/ss/netstat on this computer")
+        self.assertEqual(list(found), self.ports[:1])
+        self.assertEqual(found[self.ports[0]][0], proc.pid)
+        self.assertFalse(wham_ui.is_ssh(found[self.ports[0]][1]), found)     # it is a Python process, so the page would not close it
+        for name, want in (("ssh", True), ("ssh.exe", True), ("/usr/bin/ssh", True), ("sshd", False), ("python3", False), ("", False)):
+            self.assertEqual(wham_ui.is_ssh(name), want, name)
+
+    def test_the_ports_follow_the_saved_hub_entries_and_the_host_is_not_settable_from_the_page(self):
+        app = wham_ui.App(presets_file=os.path.join(self.tmp.name, "p2.json"), shots_dir=self.tmp.name, tunnel_host="labhost")
+        self.assertEqual(app.tunnel.ports(), [5101, 5102, 5103])
+        app.save_presets([{"name": "a", "mode": "hub", "host": "127.0.0.1", "port": 6001}, {"name": "b", "mode": "hub", "host": "10.0.0.5", "port": 6002}])
+        self.assertEqual(app.tunnel.ports(), [6001])
+        self.assertEqual(app.tunnel.host, "labhost")
+        code, r = self.http.call("/api/tunnel", {"on": False, "host": "evil"})
+        self.assertEqual(code, 200)
 
 
 class RecordingTests(UiBase):

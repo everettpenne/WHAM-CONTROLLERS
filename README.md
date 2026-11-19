@@ -6,7 +6,7 @@ products that run on it.
 ```
 firmware/
   xrex/      WHAM-XREX-PFMG474    Transrex magnet-supply PFM PID controller
-  hbridge/   WHAM-HBRIDGE-PFMG474 3-phase H-bridge (Limiter PWM / HVPS PFM)
+  hbridge/   WHAM-HBRIDGE-PFMG474 H-bridge supplies (Limiter: PWM, one phase per electrode / HVPS: 3-phase PFM)
 hardware/    board files, pin map, hardware notes (see hardware/README.md)
 host/        host-side software that talks to the boards: the per-controller service (see docs/)
 compensation/ shot-to-shot demand compensation for open-loop shots: Limiter and ECH-HVPS (see compensation/README.md)

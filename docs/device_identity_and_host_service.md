@@ -125,6 +125,13 @@ machine by address (the LabVIEW PC, a bench laptop), never a whole subnet; the e
 (`host/tests/test_hub_with_tools.py` runs the real tools). `!hub status` / `!hub identify` / `!hub clients` / `!hub quiet` ask the service
 itself; its answers start with `#`.
 
+`!hub log [n] [since=30m|2h|1d] [before=<t>] [kind=cmd,reply,...] [client=<name>] [all] [grep=<text>]` returns the newest `n` (default 200, at most 1500) matching rows of THIS
+controller's log, oldest first, read from the day files (`log_dir/<serial>/YYYY-MM-DD.jsonl`) off the event loop: one `# log {json}` line per row (`t`, `kind`, `line`, and when present `client`,
+`danger`, `epoch`, `session`, `truncated`), then `# log-end {"rows":..,"dev":..,"name":..,"now":..,"files":..,"truncated":..}` (`truncated` true = more matching rows exist earlier). `grep=` is
+case-insensitive and takes the rest of the line; `before=` is the `t` of the earliest row you already have (paging backwards). By default the service's own queries (the `*IDN?` heartbeat and
+handshake, and `!hub status`/`!hub log` from web pages) are left out; `all` includes them. A bad argument answers `# hub: <why>` and the usage line. `!hub log` itself is not logged. The operator
+web UI's Host log tab is built on it (`GET /api/hostlog`).
+
 - One command is in flight to the controller at a time, in arrival order across all clients. The service's own queries (the handshake, the
   heartbeat) use the same queue and go first. Every command a client sends gets exactly one reply line, to that client:
   the controller's line, or `ERR hub ...` when there is none: `timeout` (`command_timeout_s`, 5 s; `long_command_timeout_s`, 30 s for the

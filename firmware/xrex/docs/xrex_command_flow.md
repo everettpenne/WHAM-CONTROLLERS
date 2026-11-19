@@ -6,13 +6,17 @@ Key: a filled orange dot marks a command the hub logs and announces as dangerous
 
 ![XREX command flow](xrex_command_flow.svg)
 
-*Each band is an operating state. Work moves down the bands, a fault from any band moves right, and every finish returns through the rail on the left to IDLE.* The chart is also available as a standalone page, [xrex_command_flow.html](xrex_command_flow.html), to open in a browser from a checkout, or as the [SVG](xrex_command_flow.svg) alone.
+*Each band is an operating state. Work moves down the bands, a fault from any band moves right, and every finish returns through the rail on the left to IDLE.* The chart is also available as a standalone page, [xrex_command_flow.html](xrex_command_flow.html), to open in a browser from a checkout, or as the [SVG](xrex_command_flow.svg) alone. The operator console carries a copy under its menu.
 
 **When fault pins are read.** Water, temperature, Enerpro and overcurrent pins are all polled continuously (water, temperature and Enerpro since firmware built 2026-11-09; older images read them only on a pin change, at boot and in `FAULT:CLEar`). A disabled channel's pins are ignored. `FAULT:CLEar` in IDLE or ARMED does nothing. In FAULT, `STATE?` ends with `ACTIVE=`, the list of every fault measured.
 
 **Commands that act outside IDLE.** `SOURce:ENAble`, `XREX:CHANnel:ENAOut` and `CONTactOut` take effect immediately in any state. While ARMED or FIRING, an enabled channel whose ready lines are not both HIGH faults, so set the lines before enabling.
 
-**A reset forgets the setup.** A `!BOOT` line can arrive at any time. Enables, gains and shot timing are gone unless a stored profile is recalled. Re-identify, tell the operator, and do not resend the old setup silently.
+**A reset forgets the setup.** A `!BOOT` line can arrive at any time. Enables, gains and shot timing are gone: nothing is recalled at boot. Re-identify, tell the operator, and set up again or recall a saved profile (`*RCL <slot>`, eight slots, IDLE only; `CONFig:PROFile:DIFF? <slot>` shows first what it would change). Do not resend the old setup silently.
+
+**Saved profiles and the dead time.** A profile keeps the control rates and calibration, the fault polarities, the shot timing and, per channel, the gains, loop mode and currents. It does not keep channel enables, the ready lines or the external-enable setting. `CONFig:DEADtime <ns>` (50 to 3000, 100 at every boot) is announced as dangerous and is not in a profile on XREX.
+
+**Events.** The live `!EVT` lines are off at every boot since 2026-11-09 (`SYS:EVENT 1` turns them on for this boot). A program that polls `STATE?` needs nothing else; `SYS:EVLOG?` has the history either way.
 
 **Not on this chart.** `DEBUG:FAULT:BYPASS 1` makes the controller ignore its fault detection. It is for a bench with nothing connected and is not a recovery step.
 

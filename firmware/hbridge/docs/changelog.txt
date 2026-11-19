@@ -1,6 +1,14 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-19  -  Command flowchart for the HBRIDGE controllers (docs/hbridge_command_flow.*); operator UI updated for the November firmware  [documentation and host tools; no firmware change]
+-----------------------------------------------------------------------
+  New python/gen_command_flow.py draws docs/hbridge_command_flow.{html,svg,md}: connect and identify (hub ports 5102 Limiter, 5103 ECH-HVPS), the optional *RCL and what it can switch off, CONFig:MODE,
+  PHASe:SELect, a look at the fault inputs, the SHOT upload with 0 Hz gaps and its refusals, the read-back, ARM, FIRE / PF15 / SOURce:RUN, polling, and the fault path (FAULT:SOURces?, GDS:LAST?,
+  SPARKgap:INPut?, PID:FAULT?, FAULT:CLEar, STATE?), with CHARGE shown as separate from the state. Its drawing kit, python/command_flow_kit.py, is shared byte-identical with firmware/xrex (check_shared.py).
+  The operator console shows both charts under its menu and now has screens for the fault inputs, saved profiles, dead time and gapped shots: see firmware/xrex/docs/changelog.txt, same date, for the host side.
+  Every command and reply on the chart was taken from docs/labview_commands.md, docs/labview_state_and_faults.md and this project's command reference; nothing on it was tried on a controller for this entry.
+
 2026-11-18  -  compensation tools talk only to MDS (read only) and the terminal; enforced by a test  [host-tested]
 -----------------------------------------------------------------------
   Request: the compensation must not talk to anything but MDS and the operator terminal that calls it -- not the hub, which the machine

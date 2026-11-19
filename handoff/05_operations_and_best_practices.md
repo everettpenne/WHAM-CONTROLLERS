@@ -77,6 +77,7 @@ Use when the serial link is dead, the board is stuck in the ROM bootloader, or t
 STATE?                        -> OK IDLE
 CONFig:MODE HVPS              (or LIMiter; discards any old shot)
 CONFig:LIMits?                the ranges that apply
+PHASe:SELect U                Limiter today: one electrode, on U (HVPS: PHASe:SELect UVW)
 PHASe:ENAble?                 which phases will drive
 EXTernal:TRIGger 0            unless you want the PF15 trigger live
 SHOT:BEGin

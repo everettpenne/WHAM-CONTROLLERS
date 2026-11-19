@@ -33,6 +33,8 @@ Consequences you should know:
 
 ## 3. Step 1 (remote computers only): open the tunnel
 
+*Shortcut:* `python3 host/wham_connect.py <limiter|xrex|ech>` does steps 1 to 3 in one command (opens the tunnel for that controller, checks `*IDN?`, starts the session; `--watch` only observes). The manual steps below are what it runs.
+
 The tunnel makes the hub's port appear on your own computer. Use a terminal window that you leave open:
 
 ```bash
@@ -45,7 +47,7 @@ ssh -N -o ServerAliveInterval=30 -L <local-port>:127.0.0.1:<hub-port> <server>
 - To close the tunnel, press Ctrl-C in its window.
 - If it prints `Operation timed out` or `Connection closed`, your network dropped: run it again. A tunnel that was open when your computer slept or changed network is dead even if its window is still open: close it and open a new one.
 
-On the lab network, skip this step and use the hub's address directly (your administrator will say whether that is permitted from your computer).
+On the lab network you still need a way to reach the hub's port: `net_client.py` only connects to `127.0.0.1`, so either open the tunnel anyway, or use `python3 host/wham_connect.py <controller> --no-tunnel --hub-host <server>` (your administrator will say whether connecting directly is permitted from your computer). Hub ports for each controller are in `docs/bench_devices.md`, and `python3 host/wham_connect.py --list` prints them.
 
 ## 4. Step 2: connect
 
@@ -84,6 +86,7 @@ STATE?
 | `STATE?` | `OK IDLE` before you begin | Read the state's meaning in your operators' guide. `ARMED` or `FIRING` that you did not cause means someone else did: find out who before you touch anything. |
 | `!hub status` | `connected=1` | `connected=0` means the hub has lost the controller (power, cable): nothing you type will reach it. |
 | `!hub clients` | the list of everyone connected | If anyone else is listed, **agree with them who is operating** (section 6). |
+| `!hub log 50 since=1h` | the last hour of what the hub saw, as `# log {...}` lines (the web console's *Host log* tab shows the same thing readably) | Add `kind=cmd`, `client=<name>` or `grep=<text>` to narrow it down. |
 
 `*IDN?` also reports the board's serial number and firmware version, which is worth noting in your log. `SN=UNSET` means the board has not had a serial assigned yet.
 

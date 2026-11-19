@@ -39,7 +39,7 @@ The HBRIDGE controller drives two supplies, selected by an operator setting call
 | **Limiter** | **PWM**: the pulse width (duty) varies, the frequency stays high | 75 – 125 kHz | 5 – 95 % |
 | **HVPS** | **PFM**: the frequency varies, the duty stays near half | 10 – 30 kHz | 40 – 60 % |
 
-Both are **three-phase H-bridges**: phases **U, V and W**. Each phase has a main output and its complement, with a short **dead time** between them (so the two never conduct together),
+The controller has three output **phases**, **U, V and W**. On the **HVPS** they drive one **three-phase H-bridge**. The **Limiter** is **single-phase per electrode**: each phase (for example U/UN) drives one electrode, and each electrode is biased independently with its own duty waveform. The Limiter has one electrode today and may have up to three. Each phase has a main output and its complement, with a short **dead time** between them (so the two never conduct together),
 sent to gate drivers. The three phases run from one clock: they share one carrier frequency and one timeline, spaced one third of a period apart, but **each phase can have its own duty**,
 and each can be switched on or off individually.
 
@@ -275,6 +275,11 @@ PHASe:ENAble?                    -> OK U=1 V=1 W=1
 ```
 
 A phase you leave out is **never connected to its output pins** while the shot runs: its gate drivers see no switching at all. `ARM` refuses if no phase is enabled.
+
+**Limiter today:** the Limiter has **one electrode, driven by phase U**, so select `PHASe:SELect U` (V and W are spare). It may get up to three electrodes; a second or third
+is driven by V or W, selected with `PHASe:SELect UV` or `UVW`, and given its own duty with the per-phase form of `SHOT:STEP` (section 6.3). Before using V or W, its electrode
+bridge must be wired to that phase's gate-drive pair, its gate-driver status signals to free GDS inputs (switched on with `GDS:ENAble`), and, for closed loop, its feedback to that
+loop's analog input (V = PA1, W = PB0 by default). See the SOP, section "Run an HBRIDGE shot".
 
 ### 6.3 Enter an open-loop shot
 

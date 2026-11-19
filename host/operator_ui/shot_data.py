@@ -9,6 +9,9 @@ sampled on the control tick: the SETPOINT the loop was driving to, the MEASURED 
   HBRIDGE  target and measured in volts (milli-volts on the wire), output in Hz (HVPS) or % duty (Limiter) (milli-units on the wire).
            The controller logs only during a closed-loop run.
 
+A recording may also carry the PFM_Input capture of the same shot (rec["pfm"], see pfm_capture.py): the carrier period of each
+switching cycle and, from a both-edge capture, its duty. It works open loop too, and a recording may hold only that (no waveform log).
+
 Everything here is pure (no sockets), so it is tested without hardware. A saved recording is a folder
     <shots_dir>/<controller>/<YYYYmmdd-HHMMSS>/   shot.json  shot.csv  report.html  report.md  summary.json
 and its id ("sid") is "<controller>/<YYYYmmdd-HHMMSS>".
@@ -22,8 +25,10 @@ import math
 import os
 import re
 
+import pfm_capture as pc
+
 SID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,80}/[0-9]{8}-[0-9]{6}(-[0-9]{1,3})?$")
-FILES = ("shot.json", "shot.csv", "report.html", "report.md")
+FILES = ("shot.json", "shot.csv", "report.html", "report.md", "pfm.csv")
 XREX_NOTE = ("Amps are estimated from the controller's linear frequency-to-current calibration (CONFig:TURNONHz, MAXFREQHz, MAXCURRent). "
              "That calibration is a placeholder until it is measured on a real Transrex, so treat the amps as indicative; the Hz values are exact.")
 
@@ -71,7 +76,7 @@ def channel_name(product, n):
     return f"Channel {n}" if product == "xrex" else f"Phase {'UVW'[n - 1]}"
 
 
-def build_recording(product, controller, outcome, rate_hz, decim, raw, calib=None, mode=None, meta=None, notes=None, started=None):
+def build_recording(product, controller, outcome, rate_hz, decim, raw, calib=None, mode=None, meta=None, notes=None, started=None, pfm=None):
     """raw: {channel number: [[setpoint...], [measured...], [output...]]} straight from the log.
     Native units: XREX Hz; HBRIDGE volts and (HVPS) Hz or (Limiter) % duty."""
     started = started or datetime.datetime.now().astimezone()
@@ -90,6 +95,8 @@ def build_recording(product, controller, outcome, rate_hz, decim, raw, calib=Non
     rec = {"version": 1, "product": product, "controller": controller, "started": started.isoformat(timespec="seconds"),
            "outcome": outcome, "rate_hz": rate_hz, "decim": decim, "count": count, "duration_s": (count / rate_hz) if rate_hz else 0.0,
            "mode": mode, "calib": calib or {}, "meta": meta or {}, "notes": list(notes or []), "channels": chans}
+    if pfm:
+        rec["pfm"] = pfm
     rec["notes"] += [n for n in diagnose(rec) if n not in rec["notes"]]
     return rec
 
@@ -269,9 +276,64 @@ def plot_svg(rec, n, unit="native", width=640):
     return "".join(parts)
 
 
+def pfm_plot_svg(pfm, kind, width=640):
+    """Duty (kind 'duty', inputs captured on both edges) or carrier frequency (kind 'freq') of every captured cycle, one line per input,
+    with the programmed value dashed under it when the shot is known. Cycles flagged as start-up or odd are left out of the lines."""
+    series = []                                                            # (input, t ms list, values, programmed values or None)
+    for inp in pfm["inputs"]:
+        pd, pf = pc.overlay(inp, pfm.get("programmed"))
+        vals, prog = (inp["duty_pct"], pd) if kind == "duty" else ([f / 1e3 for f in inp["freq_hz"]], None if pf is None else [f / 1e3 for f in pf])
+        if vals is None:
+            continue
+        keep = [i for i, f in enumerate(inp["flag"]) if not f] or list(range(len(vals)))
+        series.append((inp, [inp["t_s"][i] * 1e3 for i in keep], [vals[i] for i in keep], None if prog is None else [prog[i] for i in keep]))
+    if not series or not any(s[1] for s in series):
+        return ""
+    unit, title = ("%", "duty of every cycle (both-edge inputs)") if kind == "duty" else ("kHz", "carrier frequency of every cycle")
+    L, R, T, B, PH = 80, 12, 46, 38, 220                # T leaves a band above the axes for the title and the legend
+    height = T + PH + B
+    t_end = max(s[1][-1] for s in series if s[1]) or 1.0
+    allv = [v for s in series for v in s[2] + (s[3] or [])]
+    lo, hi = min(allv), max(allv)
+    min_span = 4.0 if kind == "duty" else 2.0                       # a nearly constant value should look nearly constant, not like a ramp
+    if hi - lo < min_span:
+        mid = (hi + lo) / 2
+        lo, hi = mid - min_span / 2, mid + min_span / 2
+    pad = (hi - lo) * 0.08
+    yt = _nice_ticks(lo - pad, hi + pad)
+    ylo, yhi = min(yt[0], lo - pad), max(yt[-1], hi + pad)
+    X = lambda t: L + (width - L - R) * t / t_end
+    Y = lambda v: T + PH - PH * (v - ylo) / (yhi - ylo)
+    parts = [f'<svg class="plot" viewBox="0 0 {width} {height}" role="img" aria-label="PFM {html.escape(title)}" xmlns="http://www.w3.org/2000/svg">',
+             f'<text class="ttl" x="{L}" y="15">PFM input: {html.escape(title)}{" (dashed: programmed)" if any(sr[3] is not None for sr in series) else ""}</text>']
+    for v in yt:
+        parts.append(f'<line class="grid" x1="{L}" x2="{width - R}" y1="{Y(v):.1f}" y2="{Y(v):.1f}"/>'
+                     f'<text class="tick" x="{L - 6}" y="{Y(v) + 4:.1f}" text-anchor="end">{_tick_label(v)}</text>')
+    for v in _nice_ticks(0, t_end):
+        if v > t_end * 1.001:
+            continue
+        parts.append(f'<line class="grid v" x1="{X(v):.1f}" x2="{X(v):.1f}" y1="{T}" y2="{T + PH}"/>'
+                     f'<text class="tick" x="{X(v):.1f}" y="{T + PH + 16}" text-anchor="middle">{_tick_label(v)}</text>')
+    parts.append(f'<rect class="ax" x="{L}" y="{T}" width="{width - L - R}" height="{PH}" fill="none"/>')
+    parts.append(f'<text class="ylab" x="13" y="{T + PH / 2:.0f}" transform="rotate(-90 13 {T + PH / 2:.0f})" text-anchor="middle">({unit})</text>')
+    for inp, ts, vs, prog in series:
+        cls = f"p{min(inp['n'], 6)}"
+        if prog is not None:
+            parts.append(f'<polyline class="prog {cls}" fill="none" points="{" ".join(f"{X(t):.1f},{Y(v):.1f}" for t, v in zip(ts, prog))}"/>')
+        parts.append(f'<polyline class="pm {cls}" fill="none" points="{" ".join(f"{X(t):.1f},{Y(v):.1f}" for t, v in zip(ts, vs))}"/>')
+    lx = width - R                                                    # the legend: one line above the axes, right to left
+    for inp, _, _, _ in reversed(series):
+        parts.append(f'<text class="leg p{min(inp["n"], 6)}" x="{lx}" y="{T - 8}" text-anchor="end">{html.escape(inp["name"])}</text>')
+        lx -= 7 * len(inp["name"]) + 16
+    parts.append(f'<text class="ylab" x="{(L + width - R) / 2:.0f}" y="{height - 4}" text-anchor="middle">time since the first captured cycle (ms)</text></svg>')
+    return "".join(parts)
+
+
 # ---- files -----------------------------------------------------------------------------------------------------------
 def to_csv(rec):
     """One row per sample. Native units, plus amps for a calibrated XREX."""
+    if not rec["channels"]:
+        return ""                                  # a PFM-only recording: its numbers are in pfm.csv
     cols, data = ["t_s"], []
     n_samples = rec["count"]
     for ch in rec["channels"]:
@@ -298,7 +360,16 @@ def _header_rows(rec):
     c = rec["controller"]
     rows = [("Controller", f"{c.get('label') or c.get('name') or '-'} ({c.get('board', '-')})"), ("Board serial", c.get("serial", "-")),
             ("Firmware", c.get("fw", "-")), ("Recorded", rec["started"]), ("Outcome", rec["outcome"]),
-            ("Samples", f"{rec['count']} at {rec['rate_hz']:g} samples/s, {rec['duration_s']:.4g} s")]
+            ]
+    if rec["channels"]:
+        rows.append(("Samples", f"{rec['count']} at {rec['rate_hz']:g} samples/s, {rec['duration_s']:.4g} s"))
+    else:
+        rows.append(("Waveform log", "not recorded"))
+    pfm = rec.get("pfm")
+    if pfm:
+        req = pfm.get("requested") or {}
+        rows.append(("PFM capture", f"inputs {', '.join(str(i['n']) for i in pfm['inputs']) or 'none'}, "
+                                    f"{'both edges' if req.get('edges') == 'both' else 'rising edges'}, up to {req.get('cycles', '?')} cycles"))
     if rec.get("mode"):
         rows.insert(3, ("Supply", rec["mode"]))
     return rows
@@ -317,6 +388,13 @@ def to_markdown(rec, unit="native"):
     for ch in rec["channels"]:
         rows, _ = stats(rec, ch["n"], unit)
         L += ["", f"## {ch['name']}", "", "| | |", "|---|---|"] + [f"| {a} | {b} |" for a, b in rows]
+    pfm = rec.get("pfm")
+    if pfm:
+        for note in pfm.get("notes", []):
+            L += ["", f"> {note}"]
+        for inp in pfm["inputs"]:
+            rows, _ = pc.input_stats(inp, pfm.get("programmed"))
+            L += ["", f"## PFM {inp['name']}", "", "| | |", "|---|---|"] + [f"| {a} | {b} |" for a, b in rows]
     return "\n".join(L) + "\n"
 
 
@@ -330,6 +408,9 @@ h1{font-size:1.4rem}h2{font-size:1.1rem;margin:.2rem 0 .6rem}table{border-collap
 svg.plot .grid{stroke:var(--line);stroke-width:1}svg.plot .ax{stroke:var(--muted);stroke-width:1}svg.plot text{fill:var(--muted);font:13px system-ui,sans-serif}
 svg.plot .ttl{fill:var(--ink);font-weight:600;font-size:15px}svg.plot .sp{stroke:var(--sp);stroke-width:1.6;stroke-dasharray:6 3}
 svg.plot .pv{stroke:var(--pv);stroke-width:1.8}svg.plot .out{stroke:var(--out);stroke-width:1.4}
+svg.plot .pm{stroke-width:1.5}svg.plot .prog{stroke-dasharray:6 3;opacity:.7}
+svg.plot .p1{stroke:var(--sp)}svg.plot .p2{stroke:var(--out)}svg.plot .p3{stroke:var(--pv)}svg.plot .p4{stroke:#b8860b}svg.plot .p5{stroke:#8e44ad}svg.plot .p6{stroke:#7f8c8d}
+svg.plot text.leg.p1{fill:var(--sp)}svg.plot text.leg.p2{fill:var(--out)}svg.plot text.leg.p3{fill:var(--pv)}svg.plot text.leg.p4{fill:#b8860b}svg.plot text.leg.p5{fill:#8e44ad}svg.plot text.leg.p6{fill:#7f8c8d}
 svg.plot text.leg.sp{fill:var(--sp)}svg.plot text.leg.pv{fill:var(--pv)}svg.plot text.leg.out{fill:var(--out)}
 """
 
@@ -354,6 +435,18 @@ def to_html(rec, unit="native"):
         h.append(f"<section><h2>{html.escape(ch['name'])}</h2>{plot_svg(rec, ch['n'], unit)}<table>")
         h += [f"<tr><td>{html.escape(a)}</td><td>{html.escape(b)}</td></tr>" for a, b in rows]
         h.append("</table></section>")
+    pfm = rec.get("pfm")
+    if pfm and pfm["inputs"]:
+        h.append("<section><h2>PFM input capture</h2>")
+        h += [f"<p class=note>{html.escape(n)}</p>" for n in pfm.get("notes", [])]
+        for kind in ("duty", "freq"):
+            h.append(pfm_plot_svg(pfm, kind))
+        for inp in pfm["inputs"]:
+            rows, _ = pc.input_stats(inp, pfm.get("programmed"))
+            h.append(f"<h2>{html.escape(inp['name'])}</h2><table>")
+            h += [f"<tr><td>{html.escape(a)}</td><td>{html.escape(b)}</td></tr>" for a, b in rows]
+            h.append("</table>")
+        h.append("</section>")
     h.append("</main></html>")
     return "".join(h)
 
@@ -363,7 +456,8 @@ def summary_of(rec, sid):
     pk = {c["name"]: max(c["pv"]) if c["pv"] else None for c in ch}
     return {"sid": sid, "started": rec["started"], "outcome": rec["outcome"], "product": rec["product"], "count": rec["count"],
             "duration_s": rec["duration_s"], "rate_hz": rec["rate_hz"], "channels": [c["name"] for c in ch], "measured_peak": pk,
-            "serial": rec["controller"].get("serial"), "label": rec["controller"].get("label")}
+            "serial": rec["controller"].get("serial"), "label": rec["controller"].get("label"),
+            "pfm_inputs": [i["n"] for i in (rec.get("pfm") or {}).get("inputs", [])]}
 
 
 def controller_dir(controller):
@@ -388,8 +482,12 @@ def save(root, rec, unit="A"):
     unit = "A" if has_amps else "native"
     with open(os.path.join(folder, "shot.json"), "w") as f:
         json.dump(rec, f)
-    with open(os.path.join(folder, "shot.csv"), "w") as f:
-        f.write(to_csv(rec))
+    if rec["channels"]:
+        with open(os.path.join(folder, "shot.csv"), "w") as f:
+            f.write(to_csv(rec))
+    if rec.get("pfm") and rec["pfm"]["inputs"]:
+        with open(os.path.join(folder, "pfm.csv"), "w") as f:
+            f.write(pc.to_csv(rec["pfm"]))
     with open(os.path.join(folder, "report.html"), "w") as f:
         f.write(to_html(rec, unit))
     with open(os.path.join(folder, "report.md"), "w") as f:
@@ -416,8 +514,11 @@ def load(root, sid):
 def read_file(root, sid, name):
     if name not in FILES:
         raise KeyError("no such file")
-    with open(os.path.join(_folder(root, sid), name), "rb") as f:
-        return f.read()
+    try:
+        with open(os.path.join(_folder(root, sid), name), "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise KeyError("no such file")
 
 
 def list_recordings(root, controller, limit=50):
@@ -442,5 +543,12 @@ def describe(rec, sid, unit="A"):
         rows, raw = stats(rec, ch["n"], unit)
         chans.append({"n": ch["n"], "name": ch["name"], "svg": plot_svg(rec, ch["n"], unit), "stats": rows, "raw": raw})
     notes = list(rec.get("notes", [])) + [n for n in diagnose(rec) if n not in rec.get("notes", [])]     # recordings saved before diagnose() existed
+    pfm = rec.get("pfm")
+    pfm_view = None
+    if pfm and pfm["inputs"]:
+        pfm_view = {"notes": pfm.get("notes", []), "svg_duty": pfm_plot_svg(pfm, "duty"), "svg_freq": pfm_plot_svg(pfm, "freq"),
+                    "inputs": [{"n": i["n"], "name": i["name"], "stats": pc.input_stats(i, pfm.get("programmed"))[0]} for i in pfm["inputs"]]}
+    files = (["shot.csv"] if chans else []) + (["pfm.csv"] if pfm_view else []) + ["report.html", "report.md", "shot.json"]
     return {"sid": sid, "summary": summary_of(rec, sid), "header": _header_rows(rec), "notes": notes, "meta": rec.get("meta", {}),
-            "unit": unit, "can_amps": has_amps, "amps_note": XREX_NOTE if rec["product"] == "xrex" else None, "channels": chans}
+            "unit": unit, "can_amps": has_amps, "amps_note": XREX_NOTE if rec["product"] == "xrex" else None, "channels": chans,
+            "pfm": pfm_view, "files": files}

@@ -15,4 +15,6 @@ of [WHAM-PFMG474-V4](https://github.com/everettpenne/WHAM-PFMG474-V4)
 is where the newer platform features were built first; they are being
 ported here in phases. See [`AGENTS.md`](AGENTS.md) for the full
 orientation and [`docs/changelog.txt`](docs/changelog.txt) for the dated
-history.
+history. The order of commands for a shot, and the way out of a fault, is drawn
+in [`docs/hbridge_command_flow.md`](docs/hbridge_command_flow.md)
+(regenerate with `python3 python/gen_command_flow.py`).
