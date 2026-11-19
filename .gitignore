@@ -16,3 +16,12 @@ host/operator_ui/controllers.json.tmp
 host/operator_ui/shots/
 # a hub site's own settings (allowed client addresses, expected serial): host/config/<name>.local.yaml, never committed
 host/config/*.local.yaml
+# the Eclipse/CubeIDE workspace folder and KiCad's lock files
+.metadata/
+**/~*.lck
+# LaTeX build intermediates (the .tex and the compiled .pdf are kept)
+docs/sop/*.aux
+docs/sop/*.log
+docs/sop/*.out
+docs/sop/*.tdo
+docs/sop/*.toc
