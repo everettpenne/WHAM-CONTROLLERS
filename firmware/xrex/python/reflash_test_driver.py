@@ -68,7 +68,8 @@ def verify(ver):
 
 def flash(ver):
     r = subprocess.run([sys.executable, "python/fw_update.py", "--target", "simulator",
-                        "--url", "socket://localhost:5001", "--name", "fw_update", "--yes"],
+                        "--url", "socket://localhost:5001", "--name", "fw_update", "--yes",
+                        "--allow-uncommitted"],     # each iteration bumps the version in ctrlr_config.h: dirty on purpose
                        cwd=ROOT,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     out = r.stdout

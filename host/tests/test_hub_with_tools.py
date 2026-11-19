@@ -76,7 +76,8 @@ class ToolTests(HubBase):
             f.write(IMAGE)
             f.flush()
             code, out = await self.run_tool(os.path.join(PYTHON, "fw_update.py"), "--url", f"socket://127.0.0.1:{self.listen}",
-                                            "--target", "simulator", "--bin", f.name, "--yes", "--name", "fw_update")
+                                            "--target", "simulator", "--bin", f.name, "--yes", "--name", "fw_update",
+                                            "--allow-uncommitted")   # a made-up image with no build record: this tests the hub, not the image
         self.assertEqual(code, 0, out)
         self.assertIn("[ok] now running v9.9 abc1234 from bank 2", out)
         self.assertEqual(self.ctl.bank, 2)
@@ -96,7 +97,8 @@ class ToolTests(HubBase):
             f.write(IMAGE)
             f.flush()
             code, out = await self.run_tool(os.path.join(PYTHON, "fw_update.py"), "--url", f"socket://127.0.0.1:{self.listen}",
-                                            "--target", "simulator", "--bin", f.name, "--yes", "--name", "fw_update")
+                                            "--target", "simulator", "--bin", f.name, "--yes", "--name", "fw_update",
+                                            "--allow-uncommitted")   # a made-up image with no build record: this tests the hub, not the image
         self.assertEqual(code, 0, out)
         seen = await watcher.quiet(0.5)
         self.assertIn("[fw_update] > FWUP:SWAP", seen)

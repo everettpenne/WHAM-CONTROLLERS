@@ -157,6 +157,15 @@ def main():
         shutil.copyfile(os.path.join(DEBUG_DIR, f"WHAM-XREX-PFMG474.{ext}"),
                         os.path.join(BUILD_DIR, f"{stem}.{ext}"))
     print(f"\n--- published build/{stem}.elf/.bin/.map ---")
+    # The build record beside the image: which commit it is, and whether that code was committed. Every flashing
+    # script checks it (python/firmware_image.py) and refuses an image built from uncommitted code.
+    import firmware_image
+    rec = firmware_image.write_record(os.path.join(BUILD_DIR, f"{stem}.bin"), regenerated=not args.no_git_version)
+    print(f"--- build record build/{stem}.bin{firmware_image.RECORD_SUFFIX}: {firmware_image.describe(rec)} ---")
+    if rec["dirty"] or not rec["git_version_regenerated"]:
+        print("\nNOTE: this image was built from UNCOMMITTED code"
+              + (": " + ", ".join(rec["dirty_files"][:8]) if rec["dirty_files"] else "")
+              + ".\n      The flashing scripts refuse it. Commit, rebuild, then flash (or --allow-uncommitted on a bench board).")
 
     if args.target == "simulator":
         sim_elf_path = os.path.join(DEBUG_DIR, SIM_ELF_NAME)

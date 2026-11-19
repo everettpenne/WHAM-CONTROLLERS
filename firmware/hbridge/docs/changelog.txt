@@ -1,6 +1,21 @@
 WHAM-HBRIDGE-PFMG474 Firmware Changelog
 ========================================
 
+2026-11-19  -  Tools: the flashing scripts refuse an image built from uncommitted code  [no firmware change; host-tested, checked with real builds in a throwaway clone; nothing flashed]
+-----------------------------------------------------------------------
+  Request: modify the firmware flashing scripts to reject uncommitted code.
+  New python/firmware_image.py (shared byte-identical with firmware/xrex, listed in check_shared.py). wham_build.py now writes
+  build/<image>.bin.build.json beside each published image: the commit and dirty flag read from the git_version.h compiled into
+  it, the uncommitted files, the image's SHA-256 and whether git_version.h was regenerated. wham_serial_flash.py and fw_update.py
+  check it BEFORE connecting or touching the board and refuse: no build record, an image changed after the build, a
+  build with --no-git-version, an image built from uncommitted code (the files are named), a commit the repository does not have.
+  --allow-uncommitted flashes anyway with a warning (bench boards only). fw_update.py --status and --rollback load nothing and are not checked.
+  gen_git_version.py (shared too): "-dirty" now means uncommitted changes that can go into the image. build/, .settings/ (the IDE's
+  own state, which was making every build "-dirty"), docs/, python/, tests/, logs/ and Markdown files no longer count.
+  The images now in build/ have no build record, so they are refused until they are rebuilt from a committed tree.
+  Tests: host/tests/test_firmware_image.py (11). Checked for real in a throwaway clone: a clean HBRIDGE (and XREX) build passes the
+  check; a one-line edit to src/app/app.c gives "-dirty", the build prints which file, and fw_update.py refuses before connecting.
+
 2026-11-19  -  Command flowchart for the HBRIDGE controllers (docs/hbridge_command_flow.*); operator UI updated for the November firmware  [documentation and host tools; no firmware change]
 -----------------------------------------------------------------------
   New python/gen_command_flow.py draws docs/hbridge_command_flow.{html,svg,md}: connect and identify (hub ports 5102 Limiter, 5103 ECH-HVPS), the optional *RCL and what it can switch off, CONFig:MODE,

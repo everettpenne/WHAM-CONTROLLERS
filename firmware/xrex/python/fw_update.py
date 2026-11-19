@@ -144,7 +144,24 @@ def main():
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
     ap.add_argument("--name", help="connecting through net_broker.py (port 5001): name to show "
                                    "other clients, e.g. --url socket://localhost:5001 --name fw_update")
+    ap.add_argument("--allow-uncommitted", action="store_true",
+                    help="load an image built from uncommitted code (or with no build record) anyway: bench boards only "
+                         "(python/firmware_image.py)")
     args = ap.parse_args()
+
+    # Only an image built from committed code is loaded (python/firmware_image.py). Checked before connecting, so a
+    # refusal never touches the board. --status and --rollback load nothing and are not checked.
+    if not args.status and not args.rollback:
+        binpath = args.bin or os.path.join(
+            ROOT, "build", "WHAM-XREX-PFMG474-SIM.bin" if args.target == "simulator" else "WHAM-XREX-PFMG474.bin")
+        if not os.path.isfile(binpath):
+            fail(f"firmware not found: {binpath} -- build it with python/wham_build.py or pass --bin <path>")
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import firmware_image
+        try:
+            firmware_image.check_image(binpath, allow_uncommitted=args.allow_uncommitted)
+        except firmware_image.Refused as e:
+            fail(str(e))
 
     link = Link(args.url)
     if args.name:

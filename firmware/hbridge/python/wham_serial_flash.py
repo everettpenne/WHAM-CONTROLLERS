@@ -132,13 +132,23 @@ def main():
                     help="do not start the app after flashing (omit the Go)")
     ap.add_argument("--stm32flash", default=shutil.which("stm32flash"),
                     help="path to stm32flash (default: found on PATH)")
+    ap.add_argument("--allow-uncommitted", action="store_true",
+                    help="flash an image built from uncommitted code (or with no build record) anyway: "
+                         "bench boards only (python/firmware_image.py)")
     args = ap.parse_args()
 
     if not args.stm32flash:
         sys.exit("error: stm32flash not found on PATH. macOS: brew install stm32flash")
     if not os.path.isfile(args.bin):
         sys.exit(f"error: firmware not found: {args.bin}\n"
-                 f"       build it in STM32CubeIDE or pass --bin <path>")
+                 f"       build it with python/wham_build.py or pass --bin <path>")
+    # Only an image built from committed code is flashed (python/firmware_image.py). Checked before
+    # the board is touched: a refusal leaves it running what it runs now.
+    import firmware_image
+    try:
+        firmware_image.check_image(args.bin, allow_uncommitted=args.allow_uncommitted)
+    except firmware_image.Refused as e:
+        sys.exit(f"error: {e}")
 
     port = args.port or find_default_port()
     if not port:

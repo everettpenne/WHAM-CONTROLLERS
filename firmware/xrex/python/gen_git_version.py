@@ -68,9 +68,16 @@ def main():
         # hash that doesn't actually match what's running (see
         # cmd_system.c's cmd_idn() for how this renders in *IDN?).
         # Only this product's own folder counts: in the monorepo, someone else's uncommitted change
-        # elsewhere (hardware/, the other product, docs/) is not in this image.
-        status = run_git(["status", "--porcelain", "--", "."])
-        dirty = 1 if status else 0
+        # elsewhere (hardware/, the other product, docs/) is not in this image. Within it, only what can
+        # go into the image counts: build outputs, the IDE's .settings/, docs/, python/, tests/, logs/ and
+        # Markdown files do not (firmware_image.IMAGE_EXCLUDED -- the same rule the flashing scripts' check uses).
+        sys.path.insert(0, SCRIPT_DIR)
+        import firmware_image
+        changed = firmware_image.uncommitted_files(PROJECT_DIR)
+        dirty = 1 if changed is None or changed else 0
+        if changed:
+            print("[git-version] uncommitted changes that go into the image: " + ", ".join(changed[:8])
+                  + (" ..." if len(changed) > 8 else ""), file=sys.stderr)
 
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
     with open(OUT_PATH, "w") as f:

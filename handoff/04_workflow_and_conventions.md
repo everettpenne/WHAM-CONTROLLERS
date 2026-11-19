@@ -26,9 +26,14 @@ python3 python/wham_build.py # XREX simulator image: add --target simulator
 **Do not use a bare `make` for anything you will flash.** It never produces the `.bin` and never updates `build/`, so you would flash
 an old image that "verifies" perfectly (this happened on 2026-09-10). A bare `make` in `Debug/` has also been seen to run the clean goal.
 
-**`-dirty` in the version.** The commit string ends in `-dirty` when *anything* in the repository is uncommitted at build time (the whole
-monorepo, not just the product). The images flashed on 2026-11-16 are `-dirty` because unrelated host files were uncommitted. To know
-exactly what a board runs, build from a clean tree.
+**`-dirty` in the version, and only committed code is flashed (since 2026-11-19).** The commit string ends in `-dirty` when this
+product's folder had uncommitted changes that can go into the image at build time: `src/`, `Core/`, `Drivers/`, the `Debug/` makefiles
+and so on. Build outputs (`build/`), the IDE's `.settings/`, `docs/`, `python/`, `tests/`, `logs/` and Markdown files do not count.
+`wham_build.py` writes `build/<image>.bin.build.json` beside each image (commit, dirty flag, SHA-256), and every flashing script
+(`wham_serial_flash.py`, `fw_update.py`, XREX `net_flash.py`, and the console's `reflash`) checks it before touching the board. It refuses an
+image built from uncommitted code, one with no build record, one changed after the build, or one from a commit the repository lacks.
+So: commit, build, flash. `--allow-uncommitted` overrides it, with a warning, for a bench board that is not in service. The shared check is
+`python/firmware_image.py` (identical in both products).
 
 ## 4.3 Testing
 
@@ -107,7 +112,7 @@ uncommitted in the tree at the same time (as on 2026-11-16: the operator UI and 
 |---|---|
 | a command | `docs/command_reference.md` (product), `docs/labview_commands.md` (top level) if a front end would use it |
 | a saved setting | `docs/saved_profiles.md` (HBRIDGE) and the profile section of the command reference |
-| an operator procedure | `docs/operators_guide.md`, the SOP (`docs/sop/*.tex`, rebuild the PDF with `pdflatex` twice and look at it) |
+| an operator procedure | `docs/operators_guide.md`, the unified SOP (`docs/sop/wham_controllers_sop.tex`, rebuild the PDF with `pdflatex` twice and look at it; its last section says when to revise it) |
 | a board, address or hub | `docs/bench_devices.md`, `host/devices.csv`, `host/config/*.yaml` |
 | anything in this handoff | the file's Snapshot line |
 

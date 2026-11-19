@@ -128,10 +128,22 @@ def main():
     ap.add_argument("--no-boot", action="store_true", help="board is already in the bootloader")
     ap.add_argument("--no-go", action="store_true", help="do not start the application afterwards")
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    ap.add_argument("--allow-uncommitted", action="store_true",
+                    help="flash an image built from uncommitted code (or with no build record) anyway: bench boards only "
+                         "(python/firmware_image.py)")
     args = ap.parse_args()
 
     binpath = args.bin or os.path.join(
         ROOT, "build", "WHAM-XREX-PFMG474-SIM.bin" if args.target == "simulator" else "WHAM-XREX-PFMG474.bin")
+    # Only an image built from committed code is flashed (python/firmware_image.py), checked before the link is opened.
+    if not os.path.isfile(binpath):
+        sys.exit(f"error: firmware not found: {binpath} -- build it with python/wham_build.py or pass --bin <path>")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import firmware_image
+    try:
+        firmware_image.check_image(binpath, allow_uncommitted=args.allow_uncommitted)
+    except firmware_image.Refused as e:
+        sys.exit(f"error: {e}")
     fw = open(binpath, "rb").read()
     fw += b"\xff" * (-len(fw) % 4)
     npages = -(-len(fw) // PAGE)

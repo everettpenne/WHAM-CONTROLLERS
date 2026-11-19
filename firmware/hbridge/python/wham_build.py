@@ -106,6 +106,15 @@ def main():
         shutil.copyfile(os.path.join(DEBUG_DIR, f"{STEM}.{ext}"),
                         os.path.join(BUILD_DIR, f"{STEM}.{ext}"))
     print(f"\n--- published build/{STEM}.elf/.bin/.map ---")
+    # The build record beside the image: which commit it is, and whether that code was committed. Every flashing
+    # script checks it (python/firmware_image.py) and refuses an image built from uncommitted code.
+    import firmware_image
+    rec = firmware_image.write_record(os.path.join(BUILD_DIR, f"{STEM}.bin"), regenerated=not args.no_git_version)
+    print(f"--- build record build/{STEM}.bin{firmware_image.RECORD_SUFFIX}: {firmware_image.describe(rec)} ---")
+    if rec["dirty"] or not rec["git_version_regenerated"]:
+        print("\nNOTE: this image was built from UNCOMMITTED code"
+              + (": " + ", ".join(rec["dirty_files"][:8]) if rec["dirty_files"] else "")
+              + ".\n      The flashing scripts refuse it. Commit, rebuild, then flash (or --allow-uncommitted on a bench board).")
     print(f"\n[done] {bin_path} ({size} bytes). Flash with:\n"
           f"       python3 python/wham_serial_flash.py")
 
