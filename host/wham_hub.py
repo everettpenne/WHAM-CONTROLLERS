@@ -27,7 +27,8 @@ What it does
     serial, the boot epoch (counts !BOOT lines) and the session (counts connections); log_keep_days prunes old days;
   * a client line starting "!hub" is answered by the service itself:  !hub status | !hub clients (who is connected, from
     where, how long, what they last sent) | !hub identify | !hub quiet [on|off] | !hub timestamps [on|off] | !hub confirm |
-    !hub cancel;
+    !hub cancel | !hub log [n] [since=2h] [kind=..] [client=..] [grep=..] (the newest matching rows of this controller's
+    log, one "# log {json}" line each and a closing "# log-end {json}"; the operator web UI's Host log tab uses it);
   * !hub timestamps on makes EVERY line sent to that client start with the time, "[HH:MM:SS.mmm] " in the service's local
     time (the same clock as the log), for a person reading a terminal. It is per connection and OFF by default, because
     tools that parse replies (fw_update.py, wham_console.py, LabVIEW) must see them bare; net_client.py turns it on for
@@ -43,8 +44,9 @@ There is NO authentication and the default listen address is all interfaces (as 
 the port can send ARM/FIRE. allow_from (IPs and CIDRs) refuses other source addresses, and the service warns at startup
 when it listens beyond loopback without it; listen_host: 127.0.0.1 or the network restricts further.
 
-Config: a flat YAML-style file (key: value, # comments), see host/config/example.yaml for every key. Command-line options
-override it. PyYAML is used if installed, but is not required.
+Config: a flat YAML-style file (key: value, # comments), see host/config/example.yaml for every key. A <name>.local.yaml next to
+it (git-ignored) overrides keys for this site; command-line options override both. PyYAML is used if installed, but is not
+required. The server copy updates itself from the repository's deploy branch: host/deploy/hub_update.py.
 """
 import argparse
 import asyncio
@@ -121,14 +123,32 @@ def parse_flat_yaml(text):
     return out
 
 
-def load_config(path):
-    text = open(path).read()
+def read_config_file(path):
+    with open(path) as f:
+        text = f.read()
     try:
         import yaml
         data = yaml.safe_load(text) or {}
     except ImportError:
         data = parse_flat_yaml(text)
     return {k: v for k, v in data.items() if k in DEFAULTS}
+
+
+def local_config_path(path):
+    """host/config/ech-hvps.yaml -> host/config/ech-hvps.local.yaml: this site's own settings, never in git."""
+    base, ext = os.path.splitext(path)
+    return base + ".local" + (ext or ".yaml")
+
+
+def load_config(path):
+    """The config file, then its .local file next to it, if there is one: a key there replaces the same key in the tracked
+    file. A site keeps what is its own (allow_from addresses, expect_serial) in the .local file, so the tracked file can be
+    updated from git (host/deploy/hub_update.py) without a conflict."""
+    data = read_config_file(path)
+    local = local_config_path(path)
+    if os.path.exists(local):
+        data.update(read_config_file(local))
+    return data
 
 
 def parse_allow_from(value):
@@ -158,6 +178,8 @@ def build_config(args):
     cfg = dict(DEFAULTS)
     if args.config:
         cfg.update(load_config(args.config))
+        if os.path.exists(local_config_path(args.config)):
+            cfg["local_config"] = local_config_path(args.config)
     for key in DEFAULTS:
         v = getattr(args, key, None)
         if v is not None:
@@ -323,6 +345,118 @@ class DeviceLog:
         if self.fh:
             self.fh.close()
         self.fh, self.path, self.closed = None, None, True
+
+
+# ---- reading the log back --------------------------------------------------------------------------------------
+LOG_MAX_ROWS = 1500                 # most rows one !hub log answers with
+LOG_MAX_FILES = 14                  # most day files one query looks through
+DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)([smhd]?)$")
+LOG_HELP = ("# hub: !hub log [n] [since=30m|2h|1d] [before=<t>] [kind=cmd,reply,...] [client=<name>] [all] [grep=<text>]  "
+            "(grep takes the rest of the line)")
+
+
+def parse_duration(text):
+    """'90', '90s', '30m', '2h', '1d' -> seconds, or None."""
+    m = DURATION_RE.match(text.strip().lower())
+    return float(m.group(1)) * {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}[m.group(2)] if m else None
+
+
+def parse_log_query(args):
+    """The words after '!hub log' -> a dict of read_log() arguments, or raises ValueError with a message for the person."""
+    q = {"limit": 200, "since_t": None, "before_t": None, "kinds": None, "client": None, "internal": False, "grep": None}
+    words = args.split()
+    i = 0
+    while i < len(words):
+        w = words[i]
+        key, eq, val = w.partition("=")
+        key = key.lower()
+        if w.isdigit():
+            q["limit"] = max(1, min(int(w), LOG_MAX_ROWS))
+        elif w.lower() == "all":
+            q["internal"] = True
+        elif eq and key == "since":
+            d = parse_duration(val)
+            if d is None:
+                raise ValueError(f"since= wants a length of time such as 90s, 30m, 2h or 1d, not {val!r}")
+            q["since_t"] = time.time() - d
+        elif eq and key == "before":
+            try:
+                q["before_t"] = float(val)
+            except ValueError:
+                raise ValueError(f"before= wants a time in seconds since 1970 (the t of a row), not {val!r}")
+        elif eq and key == "kind":
+            q["kinds"] = {k for k in val.lower().split(",") if k}
+        elif eq and key == "client":
+            q["client"] = val.lower()
+        elif eq and key == "grep":
+            q["grep"] = " ".join([val] + words[i + 1:]).lower()      # the rest of the line, spaces included
+            break
+        else:
+            raise ValueError(f"not understood: {w}")
+        i += 1
+    return q
+
+
+def log_row_matches(rec, q):
+    if not q["internal"]:
+        if rec.get("kind") in ("hub-cmd", "hub-reply") and not rec.get("client"):
+            return False                              # the service's own *IDN?/SYS:ID? heartbeats and handshakes
+        if rec.get("kind") == "hub-cmd" and str(rec.get("line", "")).lower().split()[:2] in (["!hub", "status"], ["!hub", "log"]):
+            return False                              # a web page asking the host about itself every couple of seconds
+    if q["since_t"] is not None and rec.get("t", 0) < q["since_t"]:
+        return False
+    if q["before_t"] is not None and rec.get("t", 0) >= q["before_t"]:
+        return False
+    if q["kinds"] and rec.get("kind") not in q["kinds"]:
+        return False
+    if q["client"] and q["client"] not in str(rec.get("client", "")).lower():
+        return False
+    if q["grep"] and q["grep"] not in str(rec.get("line", "")).lower():
+        return False
+    return True
+
+
+def read_log(base, key, limit=200, since_t=None, before_t=None, kinds=None, client=None, internal=False, grep=None):
+    """The newest `limit` records of one device's log that match, oldest first.
+    Returns (rows, info): info = {"files": day files looked at, "truncated": more matching rows (or days) exist beyond what was read}.
+    Reads day files newest first and stops as soon as it has enough, so a query for recent activity is cheap."""
+    q = {"since_t": since_t, "before_t": before_t, "kinds": kinds, "client": client, "internal": internal, "grep": grep}
+    folder = os.path.join(base, key)
+    try:
+        days = sorted((n for n in os.listdir(folder) if n.endswith(".jsonl")), reverse=True)
+    except OSError:
+        return [], {"files": 0, "truncated": False}
+    rows, looked, truncated = [], 0, False
+    for name in days:
+        if looked >= LOG_MAX_FILES:
+            truncated = True
+            break
+        try:
+            day_end = datetime.datetime.combine(datetime.date.fromisoformat(name[:-6]) + datetime.timedelta(days=1),
+                                                datetime.time()).timestamp()
+        except ValueError:
+            continue
+        if since_t is not None and day_end < since_t:
+            break                                      # this day and every earlier one is older than the window
+        looked += 1
+        day = []
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue                       # a half-written last line
+                    if isinstance(rec, dict) and log_row_matches(rec, q):
+                        day.append(rec)
+        except OSError:
+            continue
+        rows = day + rows
+        if len(rows) >= limit:
+            break
+    if len(rows) > limit:
+        rows, truncated = rows[-limit:], True
+    return rows, {"files": looked, "truncated": truncated}
 
 
 # ---- the service -----------------------------------------------------------------------------------------------
@@ -888,7 +1022,8 @@ class Hub:
 
     def hub_command(self, name, writer, text):
         cmd = text[4:].strip().lower()
-        self.record("hub-cmd", text, name)
+        if cmd.split()[:1] != ["log"]:             # a log viewer asking for the log must not fill the log
+            self.record("hub-cmd", text, name)
         info = self.info_of(name)
         if cmd == "status":
             self.write_to(writer, self.status_line())
@@ -912,6 +1047,8 @@ class Hub:
                 self.write_to(writer, "# hub: too late, not sent; send the command again")
             else:
                 self.submit(writer, held[0], confirmed=True)
+        elif cmd.split()[:1] == ["log"]:
+            asyncio.ensure_future(self.log_reply(writer, text[4:].strip()[3:].strip()))
         elif cmd == "identify":
             if self.connected:
                 self.start_handshake()
@@ -928,7 +1065,27 @@ class Hub:
             self.write_to(writer, f"# hub: timestamps {'on' if info.stamp else 'off'}")
         else:
             self.write_to(writer, "# hub: commands are  !hub status  |  !hub clients  |  !hub identify  |  !hub quiet [on|off]  |  "
-                                  "!hub timestamps [on|off]  |  !hub confirm  |  !hub cancel")
+                                  "!hub timestamps [on|off]  |  !hub log [n] [since=2h] [kind=..] [grep=..]  |  !hub confirm  |  !hub cancel")
+
+    async def log_reply(self, writer, args):
+        """!hub log: answered from the day files, off the event loop (a big file must not stall the serial link)."""
+        try:
+            q = parse_log_query(args)
+        except ValueError as exc:
+            self.write_to(writer, f"# hub: {exc}")
+            self.write_to(writer, LOG_HELP)
+            return
+        key = self.dev_key()
+        rows, info = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: read_log(self.cfg["log_dir"], key, q["limit"], q["since_t"], q["before_t"], q["kinds"],
+                                   q["client"], q["internal"], q["grep"]))
+        keep = ("t", "kind", "line", "client", "danger", "epoch", "session", "truncated")
+        out = ["# log " + json.dumps({k: r[k] for k in keep if k in r}, separators=(",", ":")) for r in rows]
+        out.append("# log-end " + json.dumps({"rows": len(rows), "dev": key, "name": self.cfg["name"], "now": round(time.time(), 3),
+                                              **info}, separators=(",", ":")))
+        if writer.is_closing():
+            return
+        self.write_to(writer, "\r\n".join(out))
 
     async def run(self):
         server = await asyncio.start_server(self.handle_client, self.cfg["listen_host"], self.cfg["listen_port"])
@@ -938,6 +1095,8 @@ class Hub:
         warning = listen_warning(self.cfg)
         if warning:
             print(f"[{self.cfg['name']}] {warning}", flush=True)
+        if self.cfg.get("local_config"):
+            print(f"[{self.cfg['name']}] site settings from {self.cfg['local_config']}", flush=True)
         self.log.prune()
         up = asyncio.ensure_future(self.upstream_loop())
         await self.stop.wait()
@@ -964,7 +1123,14 @@ def main(argv=None):
     ap.add_argument("--heartbeat-s", dest="heartbeat_s", type=float, help="idle seconds before an *IDN? heartbeat (0 = off)")
     ap.add_argument("--confirm-dangerous", dest="confirm_dangerous", action="store_const", const=True, default=None,
                     help="hold dangerous commands until the sender types !hub confirm")
-    cfg = build_config(ap.parse_args(argv))
+    ap.add_argument("--check", action="store_true", help="load and check the configuration, print it, and exit (hub_update.py uses it)")
+    args = ap.parse_args(argv)
+    cfg = build_config(args)
+    if args.check:
+        print(f"[{cfg['name']}] config ok: controller {cfg['host']}:{cfg['port']}, clients on {cfg['listen_host']}:{cfg['listen_port']}, "
+              f"allow_from {cfg['allow_from'] or 'any'}, expect_serial {cfg['expect_serial'] or '-'}"
+              + (f", site settings from {cfg['local_config']}" if cfg.get("local_config") else ""))
+        return
 
     async def runner():
         hub = Hub(cfg)

@@ -14,3 +14,5 @@ hardware/*.zip
 host/operator_ui/controllers.json
 host/operator_ui/controllers.json.tmp
 host/operator_ui/shots/
+# a hub site's own settings (allowed client addresses, expected serial): host/config/<name>.local.yaml, never committed
+host/config/*.local.yaml

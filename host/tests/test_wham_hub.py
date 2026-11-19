@@ -1479,6 +1479,113 @@ class LogRetentionTests(unittest.TestCase):
             self.assertIn("2001-01-01.jsonl", os.listdir(dev))
 
 
+class HostLogQueryTests(HubBase):
+    """!hub log: the newest matching rows of the controller's log, for the operator web UI's Host log tab."""
+
+    @staticmethod
+    def rows(lines):
+        out = [json.loads(l[len("# log "):]) for l in lines if l.startswith("# log ") and not l.startswith("# log-end")]
+        end = [json.loads(l[len("# log-end "):]) for l in lines if l.startswith("# log-end ")]
+        return out, end[0] if end else None
+
+    async def ask(self, client, text):
+        await client.send(text)
+        lines = await client.lines_until(lambda l: l.startswith("# log-end") or "# hub:" in l)
+        return self.rows(lines)
+
+    async def test_returns_recent_rows_oldest_first_and_hides_the_services_own_queries(self):
+        hub = await self.start_hub()
+        a = await Client.connect(self.listen, "alice")
+        await a.lines_until(lambda l: l.startswith("--- connected"))
+        for word in ("one", "two", "three"):
+            await a.send(f"ECHO {word}")
+            await a.lines_until(lambda l: l == f"OK {word}")
+        rows, end = await self.ask(a, "!hub log")
+        lines = [r["line"] for r in rows]
+        self.assertEqual([l for l in lines if l.startswith("ECHO")], ["ECHO one", "ECHO two", "ECHO three"])
+        self.assertTrue(all(r["kind"] not in ("hub-reply",) or r.get("client") for r in rows), "handshake replies are hidden")
+        self.assertNotIn("*IDN?", lines)
+        self.assertEqual(end["rows"], len(rows))
+        self.assertEqual(end["dev"], hub.dev_key())
+        ts = [r["t"] for r in rows]
+        self.assertEqual(ts, sorted(ts))
+        all_rows, _ = await self.ask(a, "!hub log all")
+        self.assertGreater(len(all_rows), len(rows), "'all' adds the service's own queries")
+
+    async def test_count_kind_client_and_grep_filters(self):
+        hub = await self.start_hub()
+        a = await Client.connect(self.listen, "alice")
+        b = await Client.connect(self.listen, "bob")
+        await a.lines_until(lambda l: l.startswith("--- connected"))
+        await b.lines_until(lambda l: l.startswith("--- connected"))
+        for who, word in ((a, "AAA"), (b, "BBB"), (a, "CCC Dd")):
+            await who.send(f"ECHO {word}")
+            await who.lines_until(lambda l: l.startswith("OK "))
+        rows, end = await self.ask(a, "!hub log 2")
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(end["truncated"])
+        rows, _ = await self.ask(a, "!hub log kind=cmd")
+        self.assertEqual({r["kind"] for r in rows}, {"cmd"})
+        rows, _ = await self.ask(a, "!hub log client=bob kind=cmd")
+        self.assertEqual([r["line"] for r in rows], ["ECHO BBB"])
+        rows, _ = await self.ask(a, "!hub log grep=ccc dd")       # case-insensitive, rest of the line, spaces kept
+        self.assertTrue(rows and all("ccc dd" in r["line"].lower() for r in rows))
+        rows, _ = await self.ask(a, "!hub log since=1h grep=echo bbb")
+        self.assertTrue(rows)
+
+    async def test_bad_arguments_get_a_message_not_silence(self):
+        hub = await self.start_hub()
+        a = await Client.connect(self.listen, "alice")
+        await a.lines_until(lambda l: l.startswith("--- connected"))
+        await a.send("!hub log since=soon")
+        out = await a.lines_until(lambda l: "!hub log [n]" in l)
+        self.assertIn("since= wants", out[-2])
+        await a.send("!hub log nonsense")
+        out = await a.lines_until(lambda l: "!hub log [n]" in l)
+        self.assertIn("not understood: nonsense", out[-2])
+
+
+class HostLogReaderTests(unittest.TestCase):
+    def write_day(self, base, key, day, recs):
+        os.makedirs(os.path.join(base, key), exist_ok=True)
+        with open(os.path.join(base, key, day + ".jsonl"), "w") as fh:
+            for r in recs:
+                fh.write(json.dumps(r) + "\n")
+            fh.write('{"t": 1, "kind": "cm')                 # a half-written last line is skipped
+
+    def test_reads_back_across_days_and_stops_when_it_has_enough(self):
+        with tempfile.TemporaryDirectory() as base:
+            today = datetime.date.today()
+            for back in range(5):
+                day = today - datetime.timedelta(days=back)
+                t0 = datetime.datetime.combine(day, datetime.time(12)).timestamp()
+                self.write_day(base, "SN1", day.isoformat(), [{"t": t0 + i, "kind": "cmd", "line": f"d{back}-{i}"} for i in range(3)])
+            rows, info = wh.read_log(base, "SN1", limit=4)
+            self.assertEqual([r["line"] for r in rows], ["d1-2", "d0-0", "d0-1", "d0-2"])
+            self.assertTrue(info["truncated"])
+            self.assertEqual(info["files"], 2)                # stopped at the second day file
+            rows, info = wh.read_log(base, "SN1", limit=100, since_t=time.time() - 36 * 3600)
+            self.assertLessEqual(info["files"], 3)
+            self.assertTrue(rows and all(r["t"] >= time.time() - 36 * 3600 for r in rows))
+            rows, _ = wh.read_log(base, "SN1", limit=100, before_t=rows[0]["t"])
+            self.assertTrue(rows and rows[-1]["t"] < time.time() - 36 * 3600 + 1)
+
+    def test_unknown_device_and_nonsense_names_are_empty_not_errors(self):
+        with tempfile.TemporaryDirectory() as base:
+            self.assertEqual(wh.read_log(base, "nope")[0], [])
+            os.makedirs(os.path.join(base, "SN2"))
+            with open(os.path.join(base, "SN2", "notaday.jsonl"), "w") as fh:
+                fh.write("{}\n")
+            self.assertEqual(wh.read_log(base, "SN2")[0], [])
+
+    def test_durations(self):
+        self.assertEqual(wh.parse_duration("90"), 90)
+        self.assertEqual(wh.parse_duration("30m"), 1800)
+        self.assertEqual(wh.parse_duration("2h"), 7200)
+        self.assertEqual(wh.parse_duration("1d"), 86400)
+        self.assertIsNone(wh.parse_duration("soon"))
+
+
 class ConfigTests(unittest.TestCase):
     def test_flat_yaml(self):
         d = wh.parse_flat_yaml("# comment\nname: magnet2\nhost: 192.168.130.138   # the bridge\nport: 5000\n"

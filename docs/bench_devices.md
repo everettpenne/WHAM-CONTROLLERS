@@ -5,9 +5,9 @@ The three controllers on the bench network, the serial-to-Ethernet module (WIZne
 
 | Name (UI card) | Firmware | Bridge MAC | Bridge IP | Hub instance | Hub port | Status |
 |---|---|---|---|---|---|---|
-| WHAM-PFM-G474-XREX-CTRL | XREX | 00:08:DC:74:8A:9E | 192.168.130.138 | `xrex-ctrl` | 5101 | running (as `bench2`) |
-| WHAM-PFM-G474-LMTR-CTRL | HBRIDGE (Limiter) | 00:08:DC:74:8B:D7 | 192.168.130.253 | `lmtr-ctrl` | 5102 | running (as `xrexsim`) |
-| WHAM-PFM-G474-ECH-HVPS | HBRIDGE (ECH gyrotron HVPS, board WB-0001-8) | 00:08:DC:74:8D:BB | 192.168.130.250 | `ech-hvps` | 5103 | bridge and board answer (2026-11-04); hub not started yet |
+| WHAM-PFM-G474-XREX-CTRL | XREX | 00:08:DC:74:8A:9E | 192.168.130.138 | `xrex-ctrl` | 5101 | running |
+| WHAM-PFM-G474-LMTR-CTRL | HBRIDGE (Limiter) | 00:08:DC:74:8B:D7 | 192.168.130.253 | `lmtr-ctrl` | 5102 | running |
+| WHAM-PFM-G474-ECH-HVPS | HBRIDGE (ECH gyrotron HVPS, board WB-0001-8) | 00:08:DC:74:8D:BB | 192.168.130.250 | `ech-hvps` | 5103 | running |
 
 The hub configs are `host/config/xrex-ctrl.yaml`, `lmtr-ctrl.yaml` and `ech-hvps.yaml`. On 2026-11-04 the two running hubs used
 hand-made, untracked files on `andrew` (`bench2.yaml`, `xrexsim.yaml`) with the same addresses and ports; the tracked files
@@ -16,39 +16,49 @@ replace them and only change the instance names, so ports and the operators' ssh
 The Limiter's bridge is a WIZnet WIZ5XXSR-RP (firmware 1.0.5): static IP, TCP server mode on port 5000, 8 data bits, no parity,
 1 stop bit, no flow control. A WIZnet server accepts ONE client, so only the hub may be connected to it.
 
-## What the administrator needs to do on `andrew`
+## How the hubs run on `andrew`
 
-The `whamdata` account has no sudo, so these steps need an account that has it. Nothing here changes the controllers.
+Three systemd services, `wham-hub@xrex-ctrl`, `wham-hub@lmtr-ctrl` and `wham-hub@ech-hvps` (unit file
+`host/deploy/wham-hub@.service`: `User=whamdata`, `Restart=always`), run `/opt/WHAM-CONTROLLERS/host/wham_hub.py` with
+`host/config/<name>.yaml`. The renaming from the hand-made `bench2`/`xrexsim` services and the start of the ECH hub were done
+by the administrator; the three services have run since 2026-11-09.
 
-1. **Update the checkout** `/opt/WHAM-CONTROLLERS` to the current `main` of `everettpenne/WHAM-CONTROLLERS` (it holds
-   `host/config/xrex-ctrl.yaml`, `lmtr-ctrl.yaml`, `ech-hvps.yaml`). Today it is at `e533f3a` with `bench2.yaml` and `xrexsim.yaml`
-   untracked in `host/config/`; leave them in place until step 3 is done.
-2. **Check that the unit file** `/etc/systemd/system/wham-hub@.service` is unchanged (`User=whamdata`, paths under
-   `/opt/WHAM-CONTROLLERS`). `host/deploy/wham-hub@.service` is the reference; no edit is needed for the new names.
-3. **Rename the two running hubs.** Each moves the controller's one bridge connection from the old service to the new one,
-   so do one at a time, and expect a few seconds with no hub for that controller. Nobody should be mid-shot:
+**This site's own settings** (the extra allowed client addresses, `expect_serial`) go in `host/config/<name>.local.yaml` next
+to the tracked file: git ignores those files, and a key there replaces the same key in the tracked file. Never edit the
+tracked `.yaml` files on the server: an edit there can block an update.
 
-   ```
-   sudo systemctl disable --now wham-hub@bench2
-   sudo systemctl enable --now  wham-hub@xrex-ctrl
-   sudo systemctl disable --now wham-hub@xrexsim
-   sudo systemctl enable --now  wham-hub@lmtr-ctrl
-   ```
+## Updates: the hubs follow the `deploy` branch
 
-   Stop the old service BEFORE starting the new one: the bridge accepts one client, so a second hub is refused until the first
-   lets go. Then check `systemctl status wham-hub@xrex-ctrl wham-hub@lmtr-ctrl` and ask each hub `!hub status` (it should say
-   `connected=1`). Restarting also loads whatever hub code the updated checkout contains; the running hubs were started on
-   2026-10-26.
-4. **Remove the old configs** once the new services work: `host/config/bench2.yaml` and `host/config/xrexsim.yaml` (keep a
-   copy if wanted; they are untracked).
-5. **Start the ECH-HVPS hub.** Its bridge (WIZnet WIZ5XXSR-RP, MAC 00:08:DC:74:8D:BB) is already on the network at
-   192.168.130.250 with the same settings as the Limiter's (static IP, TCP server on port 5000, 8N1, no flow control), and on
-   2026-11-04 the board behind it answered `*IDN?` as WHAM-HBRIDGE-PFMG474 v0.10, SN=WB-0001-8, label ECH-HVPS. `host/config/ech-hvps.yaml`
-   already points at it, so:
-   - `sudo systemctl enable --now wham-hub@ech-hvps`;
-   - confirm with `!hub status` on port 5103: `connected=1`, `product=WHAM-HBRIDGE-PFMG474`, `serial=WB-0001-8`.
-6. **Operators' tunnels** keep working for 5101 and 5102. To use the ECH hub from a laptop, add `-L 5103:localhost:5103` to the
-   ssh command.
+The server's checkout updates itself, with no sudo, from the `whamdata` crontab (`host/deploy/hub_update.py`, whose header
+has the full description):
+
+- **03:30 every day, `hub_update.py update`:** fetches the `deploy` branch of `everettpenne/WHAM-CONTROLLERS`. If it moved,
+  the new commit is tested first in a temporary folder: the hub tests, and every running hub's config loaded by the new code
+  (`wham_hub.py --check`). Only if both pass does the checkout switch to it. A commit that fails is logged and not tried
+  again until `deploy` moves.
+- **Every 15 minutes, `hub_update.py restart`:** a hub still running the older code is restarted (SIGTERM; systemd starts it
+  again on the new code) **only when it is quiet**: no client other than the updater, and its controller not ARMED or
+  FIRING. Otherwise it waits for the next run. Restarting a hub never touches the controller: a shot in progress carries on,
+  and only the hub's connections drop (clients reconnect).
+- If a restarted hub does not listen and answer `!hub status` within 60 s, the checkout goes back to the previous commit and
+  the commit is marked bad.
+
+Releasing a change to the server is a deliberate step: pushing to `main` does nothing there.
+
+```
+git push origin <commit>:deploy          # the server picks it up at the next 03:30
+```
+
+On the server, as `whamdata`:
+
+```
+python3 /opt/WHAM-CONTROLLERS/host/deploy/hub_update.py status      # commit, deploy, each hub, pending restarts, local edits
+python3 /opt/WHAM-CONTROLLERS/host/deploy/hub_update.py update      # now instead of at 03:30
+python3 /opt/WHAM-CONTROLLERS/host/deploy/hub_update.py rollback    # back to the commit before the last update
+python3 /opt/WHAM-CONTROLLERS/host/deploy/hub_update.py install-cron # or uninstall-cron
+```
+
+The log is `/var/lib/wham/hub/update/update.log` (cron's own output: `cron.log` beside it).
 
 ## Open items
 

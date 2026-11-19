@@ -1,6 +1,23 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-19  -  Host side: the hubs on the lab server update themselves from the repository's deploy branch  [no firmware change; host-tested]
+-----------------------------------------------------------------------
+  Request: have the hub update itself from GitHub once a day; follow a deploy branch, not main.
+  New host/deploy/hub_update.py, run from the whamdata crontab (no sudo): "update" at 03:30 fetches origin/deploy, tests the new
+  commit in a temporary folder (test_wham_hub, test_dangerous_commands, test_hub_update, and wham_hub.py --check on every
+  running hub's config with this site's .local.yaml files), and only then switches the checkout (git checkout -B deploy). A
+  failing commit is recorded and not retried until deploy moves. "restart" every 15 min restarts a hub that runs older code only
+  when it is quiet (no other client, controller not ARMED/FIRING), by SIGTERM; systemd's Restart=always brings it back on the
+  new code. A hub that does not answer !hub status within 60 s rolls the checkout back. Also "status", "rollback",
+  "install-cron"/"uninstall-cron"; log in /var/lib/wham/hub/update/.
+  wham_hub.py: host/config/<name>.local.yaml (git-ignored) overrides keys of the tracked config, so the server's own settings
+  (extra allow_from addresses, expect_serial) no longer live as edits to tracked files; --check loads the config and exits.
+  docs/bench_devices.md: the hub section rewritten (the rename is done; how updates and releases work).
+  Tests: host/tests/test_hub_update.py (17: real git repositories for GitHub and the server, a fake systemd, and the quiet
+  check against a real hub). The hub tests that gate an update all pass on andrew's Python 3.14 (110 tests, 2026-11-19); on
+  macOS two SlowClientTests fail, as before.
+
 2026-11-16  -  CONFig:DEADtime: the dead time of every phase is a runtime setting (default 100 ns)  [host-tested, builds clean; flashed: see the bench note below]
 -----------------------------------------------------------------------
   Request: one command to change the dead time, the same on all phases, default 100 ns, at runtime, for the Limiter, the ECH-HVPS and the XREX controller.
