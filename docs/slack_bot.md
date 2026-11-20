@@ -28,11 +28,25 @@ Open a direct message with the bot (or use `/wham <words>`).
 | `log all 20 since=1h` | the *stored* logs of every hub, merged in time order (same filters as `.log`) |
 | `diary write <text>`, `diary read [date\|all]`, `diary last`, `diary search <text>`, `diary index`, `diary file` | the operators' shared diary on the server: every entry carries its date, time and writer. See `docs/diary.md` |
 | `.users` | who is authorized to use the bot, by name, and whether anyone may send dangerous commands |
+| `where` | what you are connected to right now (controller, hub-log, watch) and where each kind of line you type will go. Works at any time, with or without the dot |
 | `repo` | the link to the project's public repository, https://github.com/everettpenne/WHAM-CONTROLLERS (through a hub: `!hub repo`) |
 | `help` | the list of commands. It works at any time, with or without the dot, also while connected (it is never sent to a controller) |
 
 While connected, a line that starts with a **dot** is for the bot and everything else goes to the controller. Not
 connected, the dot is optional, and `ech state` or `ech SHOT?` asks one thing without opening a session (read only).
+
+**Telling things apart.** Every line relayed from a session starts with its source:
+
+| You see | It is |
+|---|---|
+| `[ech] STATE? → OK IDLE` | the controller's reply to the command you sent |
+| `[ech hub] # hub name=...` | the hub answering one of your `!hub` lines |
+| `[ech event] !EVT 12 STATE ARMED` | something the controller said by itself |
+| `[ech traffic] [labview] > STATE?` | other people's traffic (hub-log mode), and people joining or leaving |
+
+Anything not in such a block is the bot speaking. The bot also puts a **reaction on each message you send**, showing where
+it went: ⚙️ sent to the controller, 🗄️ sent to the hub, 🤖 handled by the bot, ⏳ waiting for your `.confirm`, 🚫 not sent.
+(Reactions need the Slack app's `reactions:write` permission; without it they are skipped and everything else works.)
 
 **Which controllers.** Every hub the server runs. The bot reads the hub configuration files next to it
 (`host/config/<name>.yaml`, the same files the hub services start from) about twice a minute, so **a controller that gets a
@@ -61,8 +75,10 @@ add `/list` and `/connect` as slash commands of the app too: the bot understands
 
 A session is an ordinary hub client named `slack-<your Slack name>`: the hub's log records who sent what, other clients see
 your commands as anyone's, and the operator console lists you under "People on this controller". A watch is one such
-client on every hub, named `slack-<you>-watch`. A session or a watch that hears nothing from you for 30 minutes is closed
-(`session_idle_min`), so a forgotten one does not hold up a hub update (a hub is updated only when nobody is connected).
+client on every hub, named `slack-<you>-watch`. Sessions and watches stay open as long as you like during the day. **Every
+night at 03:15** (the server's clock; `session_close_at` in the settings) the bot closes all of them, with a note in each
+conversation, so the hubs can take their nightly update at 03:30 (a hub is updated only when nobody is connected).
+`session_idle_min` can additionally close one after that many minutes without a message; it is off (0) by default.
 When the bot itself is stopped or restarted, it first says **goodbye** in every conversation with an open session or
 watch, closes them, and says when to connect again. It restarts by itself only when no session is open.
 
@@ -86,7 +102,7 @@ watch, closes them, and says when to connect again. It restarts by itself only w
          usage_hint: help | list | connect <xrex|limiter|ech> | users
    oauth_config:
      scopes:
-       bot: [app_mentions:read, chat:write, im:history, commands, users:read, files:write]
+       bot: [app_mentions:read, chat:write, im:history, commands, users:read, files:write, reactions:write]
    settings:
      event_subscriptions:
        bot_events: [app_mention, message.im]

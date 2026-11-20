@@ -4,7 +4,8 @@
   "allow_users": ["U0123ABCD"],
   "allow_channels": [],
   "danger_users": [],
-  "session_idle_min": 30,
+  "session_close_at": "03:15",
+  "session_idle_min": 0,
   "rate_per_minute": 30,
   "controllers": {
     "xrex": {"host": "127.0.0.1", "port": 5101, "aliases": ["magnets", "transrex"]},

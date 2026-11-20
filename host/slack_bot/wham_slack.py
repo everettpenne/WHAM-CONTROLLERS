@@ -13,6 +13,14 @@ In a direct message with the bot (or with /wham <words>, or by mentioning it):
     .disconnect              close the session
     .users                   who is authorized to use the bot
     repo                     the link to the project's public repository
+    where                    what you are connected to right now, and where each kind of line you type will go
+
+Telling things apart. Every line relayed from a session starts with its source: "[ech] STATE? -> OK IDLE" is the
+controller's reply to your command, "[ech hub] ..." is the hub answering a !hub line, "[ech event] ..." is something
+the controller said by itself, "[ech traffic] ..." is other people's traffic (hub-log). The bot also puts a reaction on
+each message you send, showing where it went: gear = sent to the controller, file cabinet = sent to the hub, robot =
+handled by the bot, hourglass = waiting for .confirm, no-entry = not sent. (Reactions need the app's reactions:write
+permission; without it everything else works.)
     diary write <text>       add an entry to the operators' diary (the time and your name are recorded)
     diary read [date|all]    read it: today, a date, yesterday, or all; also diary last [n], diary search <text>, diary dates
     diary file               send the whole diary as a text file to download (needs the app's files:write permission)
@@ -42,8 +50,10 @@ the hub services are started from) and offers each one, so a controller that get
 installed ones their short names. A controller with no hub cannot be reached: the bot never talks to a bridge directly.
 
 A session is a real hub client named "slack-<user>": the hub's log records who sent what, the other clients see the commands
-as they see anyone's, and "People on this controller" in the operator console lists it. A session nobody types in for
-session_idle_min minutes (default 30) is closed, so a forgotten one does not keep hub_update.py from restarting a hub.
+as they see anyone's, and "People on this controller" in the operator console lists it. Sessions and watches
+stay open as long as you like during the day and are all closed once a night, at session_close_at (default 03:15, the
+server's clock, just before the hubs' nightly update), each with a note saying so: a forgotten one therefore holds up a
+hub update for a day at most. session_idle_min (0 = off, the default) can also close one after that long without a message.
 
 How it talks to Slack: Socket Mode. The bot opens an outgoing connection to Slack; nothing listens on this machine and no
 port is opened in the lab's network. It needs two tokens from a Slack app you create (docs/slack_bot.md): an app-level
@@ -91,7 +101,9 @@ LOCAL_CONFIG = os.path.join(HERE, "slack_bot.local.json")
 CRON_MARK = "# wham slack bot"
 DEFAULTS = {
     "app_token": "", "bot_token": "", "allow_channels": [], "allow_users": [], "danger_users": [], "rate_per_minute": 30,
-    "session_idle_min": 30, "confirm_s": 30,
+    "session_idle_min": 0,           # close a session or watch after this long without a message; 0 = never (the default)
+    "session_close_at": "03:15",     # every night at this time (the server's clock) all sessions and watches are closed; "" = never
+    "confirm_s": 30,
     "discover": True, "discover_dir": os.path.join(HOST_DIR, "config"),     # offer every hub configured on this server
     "diary_file": None,              # the operators' diary; default: the file the hubs use (beside their log folder)
     "state_dir": "/var/lib/wham/hub/slack",
@@ -107,25 +119,34 @@ REPO_TEXT = (f"*WHAM-CONTROLLERS*, the project's public repository: {REPO_URL}\n
              "Firmware for both controllers, the board design files, the hubs, the operator console, this bot and the guides. "
              f"Start with the guides: {REPO_URL}/tree/main/docs (this bot: `docs/slack_bot.md`; the diary: `docs/diary.md`).")
 HELP = """*WHAM-PFM-Controller-Link: the WHAM controllers, through their hubs*
-`help`  this list (works at any time, connected or not)
-`list`  the controllers: state, fault, who is connected
-`connect <controller>`  open a session; then every line you type goes to the controller and its reply comes back
-`.hublog on` / `.hublog off`  show all traffic of that hub (other people's commands and replies, events)
-`.log [n] [since=1h] [grep=text] [kind=cmd]`  the hub's stored log (n up to 30)
-`.log file [today|yesterday|YYYY-MM-DD] [raw]`  a whole day of the hub's log as a file; `log all file` every hub merged; `log <controller> file` when not connected; `log days` the days kept
-`.who`  who is connected to that hub      `.disconnect`  close the session
-`.users`  who is authorized to use this bot
-`repo`  the link to the project's public repository (code, board files, guides)
-`diary write <text>`  add an entry to the operators' diary (time and your name are recorded)
-`diary read [today|yesterday|YYYY-MM-DD|all]`, `diary last [n]`, `diary search <text>`, `diary dates`  read it
-`diary file`  the whole diary as a text file to download, however long it is
-`diary index [date]`  who wrote when and where, without the texts; `diary index file` sends that list as a file
-`watch all` / `watch off`  the traffic of every controller at once, each line marked `[controller]` (watching only: nothing you type goes to them)
-`log all [n] [since=1h] [grep=text]`  the stored logs of every hub, merged in time order
-While connected, a line starting with a dot is for me; anything else (except `help`) is sent to the controller.
-Not connected the dot is optional, and `<controller> state` or `<controller> <QUERY?>` asks one thing (read only).
-Controllers: {names}.
-Dangerous commands (ARM, FIRE, FAULT:CLEar, CHARGE, protections) are refused unless you are on the danger list; then they need `.confirm`.
+*Any time* (with or without a dot)
+\u2022 `help`  this list
+\u2022 `where`  what you are connected to right now, and where each kind of line will go
+\u2022 `list`  the controllers: state, fault, who is connected
+\u2022 `connect <controller>`  open a session; then every line you type goes to the controller and its reply comes back
+\u2022 `watch all` / `watch off`  the traffic of every controller at once, each line marked `[controller]` (watching only)
+\u2022 `log all [n] [since=1h] [grep=text]`  the stored logs of every hub, merged in time order
+\u2022 `diary write <text>`  add an entry to the operators' diary (time and your name are recorded)
+\u2022 `diary read [today|yesterday|YYYY-MM-DD|all]`, `diary last [n]`, `diary search <text>`, `diary dates`  read it
+\u2022 `diary index [date]`  who wrote when, without the texts; `diary file`, `diary index file`  as a file to download
+\u2022 `repo`  the link to the project's public repository (code, board files, guides)
+*While connected* (a line starting with a dot is for me; anything else is sent to the controller)
+\u2022 `STATE?`, `SHOT?`, ...  any command for the controller
+\u2022 `!hub status`, `!hub clients`, `!hub shotnumber <n>`, `!hub read shotnumber <n>`  lines for the hub
+\u2022 `.hublog on` / `.hublog off`  show all traffic of that hub (other people's commands and replies, events)
+\u2022 `.log [n] [since=1h] [grep=text] [kind=cmd]`  the hub's stored log (n up to 30)
+\u2022 `.log file [today|yesterday|YYYY-MM-DD] [raw]`  a whole day of the hub's log as a file; `.log days`  the days kept
+\u2022 `.who`  who is connected to that hub
+\u2022 `.users`  who is authorized to use this bot
+\u2022 `.disconnect`  close the session
+*Not connected*
+\u2022 `<controller> state`, `<controller> <QUERY?>`  ask one thing (read only)
+\u2022 `log <controller> file [date]`, `log all file`, `log <controller> days`  hub logs as files
+*Reading the answers*
+\u2022 Controllers: {names}.
+\u2022 Replies are labelled: `[ech] CMD \u2192 reply` controller, `[ech hub]` the hub, `[ech event]` the controller by itself, `[ech traffic]` other people.
+\u2022 Reactions on your messages: :gear: sent to the controller \u00b7 :file_cabinet: sent to the hub \u00b7 :robot_face: handled by me \u00b7 :hourglass_flowing_sand: waiting for `.confirm` \u00b7 :no_entry_sign: not sent
+\u2022 Dangerous commands (ARM, FIRE, FAULT:CLEar, CHARGE, protections) are refused unless you are on the danger list; then they need `.confirm`.
 Project repository and guides: https://github.com/everettpenne/WHAM-CONTROLLERS"""
 MAX_LINES = 20                      # lines of one Slack message sent to a controller
 
@@ -328,6 +349,7 @@ class Session:
                 self.outbox.close()
             raise
         self.hublog = not quiet
+        self.sent = collections.deque(maxlen=300)   # commands waiting for the controller's reply, oldest first
         self.confirm = None          # (command, time) waiting for .confirm
         self.last_input = time.monotonic()
         self.closed = False
@@ -338,7 +360,24 @@ class Session:
     def send(self, line):
         self.last_input = time.monotonic()
         with self.lock:
+            if not line.startswith("!"):
+                self.sent.append(line)             # the hub answers each command with exactly one line, in order
             self.sock.sendall((line + "\n").encode())
+
+    def label(self, text):
+        """A line from the hub with its source in front, so a controller's reply, the hub's own answer, an event and
+        other people's traffic cannot be mistaken for one another (or for something the bot said)."""
+        if self.prefix:
+            return self.prefix + text              # a watch: everything is that controller's traffic
+        if text.startswith("#"):
+            return f"[{self.name} hub] {text}"
+        if text.startswith("!"):
+            return f"[{self.name} event] {text}"
+        if text.startswith(("--- ", "[")):
+            return f"[{self.name} traffic] {text}"
+        with self.lock:
+            cmd = self.sent.popleft() if self.sent else None
+        return f"[{self.name}] {cmd} \u2192 {text}" if cmd else f"[{self.name}] {text}"
 
     def set_hublog(self, on):
         self.hublog = bool(on)
@@ -358,13 +397,13 @@ class Session:
                     raw, buf = buf.split(b"\n", 1)
                     text = raw.decode(errors="replace").rstrip()
                     if text and text not in ("# hub: quiet on", "# hub: quiet off") and not text.startswith("--- connected as "):
-                        self.outbox.add(self.prefix + text)
+                        self.outbox.add(self.label(text))
             except socket.timeout:
                 pass
             except OSError as e:
                 why = None if self.closed else f"the connection to the hub failed ({e})"
                 break
-            if time.monotonic() - self.last_input > self.idle_s:
+            if self.idle_s and time.monotonic() - self.last_input > self.idle_s:
                 why = f"nothing was typed for {self.idle_s / 60:.0f} minutes"
                 break
         self.close(why)
@@ -466,6 +505,8 @@ class Bot:
         self.recent = collections.defaultdict(collections.deque)      # user -> times of recent requests
         self.sessions = {}                                            # (channel, user) -> Session
         self.watches = {}                                             # (channel, user) -> Watch
+        self.closing = None                                           # (the next nightly closing time, the setting it came from)
+        self.marking = threading.local()                              # the mark function of the message this thread is handling
         self.configured = json.loads(json.dumps(cfg["controllers"]))  # as given in the settings, before discovery
         self.scanned = None
         self.rescan()
@@ -490,7 +531,8 @@ class Bot:
         except (OSError, ValueError) as e:
             log_line(f"the settings file could not be read, keeping the old lists: {e}")
             return False
-        for key in ("allow_users", "allow_channels", "danger_users", "rate_per_minute", "session_idle_min", "confirm_s"):
+        for key in ("allow_users", "allow_channels", "danger_users", "rate_per_minute", "session_idle_min", "confirm_s",
+                    "session_close_at"):
             self.cfg[key] = new[key]
         log_line(f"settings reloaded: {len(self.cfg['allow_users'])} users, {len(self.cfg['allow_channels'])} channels, "
                  f"{len(self.cfg['danger_users'])} on the danger list")
@@ -815,6 +857,27 @@ class Bot:
                     "\n`diary file` sends the whole diary as a text file.")
         return f"Diary: {out['note']}.\n```\n" + "\n".join(out["lines"]).replace("```", "` ` `") + "\n```" + more
 
+    def where(self, key):
+        """where: what this conversation is connected to, and where each kind of line goes."""
+        s, w = self.sessions.get(key), self.watches.get(key)
+        out = ["*Where you are*"]
+        if s is not None:
+            out.append(f"\u2022 Connected to *{s.name}* as `{s.who}`" + (" with hub-log ON (you see everyone's traffic)." if s.hublog else "."))
+            out.append(f"\u2022 A plain line goes to the *{s.name} controller* (reply shown as `[{s.name}] command \u2192 reply`).")
+            out.append(f"\u2022 A `!hub ...` line goes to the *{s.name} hub* (shown as `[{s.name} hub] ...`): status, clients, log, shotnumber, read shotnumber.")
+            out.append("\u2022 A line starting with a dot is for me: `.disconnect`, `.hublog on|off`, `.log`, `.who`, `.users`.")
+        else:
+            out.append("\u2022 Not connected to a controller: *everything you type is for me* (the bot). `connect <controller>` opens a session.")
+            out.append("\u2022 One question without connecting: `<controller> state` or `<controller> <QUERY?>` (read only).")
+        out.append("\u2022 Watching all traffic of " + ", ".join(w.sessions) + " (`watch off` stops it)." if w is not None
+                   else "\u2022 Not watching (`watch all` shows every controller's traffic).")
+        out.append("\u2022 Always mine, with or without a dot: `help`, `where`, `list`, `diary ...`, `repo`, `watch all|off`, `log all`.")
+        if s is not None or w is not None:
+            out.append("\u2022 Open sessions and watches: " + self.closing_rule() + ".")
+        out.append("Reactions on your messages: :gear: controller \u00b7 :file_cabinet: hub \u00b7 :robot_face: me \u00b7 "
+                   ":hourglass_flowing_sand: waiting for `.confirm` \u00b7 :no_entry_sign: not sent")
+        return "\n".join(out)
+
     def users(self):
         """Who is authorized: names only (a Slack mention here would notify every one of them)."""
         allowed, danger = self.cfg["allow_users"], self.cfg["danger_users"]
@@ -853,22 +916,48 @@ class Bot:
             return "No hub could be reached: " + "; ".join(f"{n} ({e})" for n, e in w.failed.items())
         self.watches[key] = w
         return (f"Watching *{', '.join(w.sessions)}*: all their traffic is shown here, each line marked with its controller. "
-                "This only watches: nothing you type is sent to them. `watch off` stops it; it stops by itself after "
-                f"{self.cfg['session_idle_min']:g} minutes without a message from you."
+                "This only watches: nothing you type is sent to them. `watch off` stops it; " + self.closing_rule() + "."
                 + ("\nNot reachable: " + "; ".join(f"{n} ({e})" for n, e in w.failed.items()) if w.failed else ""))
 
-    def goodbye(self, why="I am being restarted (an update or maintenance)"):
+    def closing_rule(self):
+        """When an open session or watch ends by itself, in words."""
+        at, idle = str(self.cfg.get("session_close_at") or ""), float(self.cfg.get("session_idle_min") or 0)
+        parts = ([f"after {idle:g} minutes without a message from you"] if idle else []) + ([f"at {at} every night"] if at else [])
+        return "it is closed " + " or ".join(parts) if parts else "it stays open until you close it"
+
+    def next_close(self, now):
+        """The next nightly closing time after `now` (a datetime), or None when there is none."""
+        m = re.fullmatch(r"(\d{1,2}):(\d{2})", str(self.cfg.get("session_close_at") or "").strip())
+        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+            return None
+        t = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+        return t if t > now else t + datetime.timedelta(days=1)
+
+    def tick(self, now=None):
+        """Called every few seconds: at the nightly closing time, close every session and watch and say so in each
+        conversation. Returns how many were closed."""
+        now = now or datetime.datetime.now()
+        if self.closing is None or str(self.cfg.get("session_close_at")) != self.closing[1]:
+            self.closing = (self.next_close(now), str(self.cfg.get("session_close_at")))     # first call, or the time was changed
+            return 0
+        if self.closing[0] is None or now < self.closing[0]:
+            return 0
+        self.closing = (self.next_close(now), self.closing[1])
+        return self.goodbye("it is the nightly closing time (sessions are closed once a night so the hubs can update)",
+                            back="any time")
+
+    def goodbye(self, why="I am being restarted (an update or maintenance)", back="in a few minutes"):
         """The bot is stopping: close every session and watch, and tell each conversation so, once."""
         told = 0
         for s in list(self.sessions.values()):
             s.announce = False
             s.close()
             s.post(f"Goodbye: {why}, so your session with *{s.name}* is closed. What the controller is doing keeps going. "
-                   f"I should be back within a few minutes: `connect {s.name}` again then.")
+                   f"`connect {s.name}` again {back}.")
             told += 1
         for w in list(self.watches.values()):
             w.close()
-            w.post(f"Goodbye: {why}, so the watch is stopped. `watch all` again in a few minutes.")
+            w.post(f"Goodbye: {why}, so the watch is stopped. `watch all` again {back}.")
             told += 1
         return told
 
@@ -907,6 +996,8 @@ class Bot:
             return self.users()
         if verb in ("repo", "repository", "github", "source", "about"):
             return REPO_TEXT
+        if verb in ("where", "whereami", "mode"):
+            return self.where(key)
         if verb == "diary":
             return self.diary(text.strip()[5:], user, s.name if s else "general", key[0])
         w = self.watches.get(key)
@@ -967,14 +1058,22 @@ class Bot:
             if user not in self.cfg["danger_users"]:
                 return "Not sent."
             s.send(had[0])
+            self.mark("controller")
             return f"Sent `{had[0]}` to *{s.name}*."
         return f"I do not know `.{verb}`. `.help` lists what I understand."
+
+    def mark(self, kind):
+        """Note where the message being handled went (controller, hub, bot, confirm, refused): shown as a reaction."""
+        m = getattr(self.marking, "fn", None)
+        if m is not None:
+            m(kind)
 
     def converse(self, user, channel, text, user_name, post):
         """One message in a conversation that may hold a session. Returns what to post now (or None); a session's own
         traffic arrives later through `post`."""
         key = (channel, user)
         if re.match(r"^\.?diary\b", text.strip(), re.I):              # the diary is the bot's, and an entry may have several lines
+            self.mark("bot")
             return self.bot_command(key, text.strip().lstrip(".").strip(), user, user_name, post)
         lines = [l.strip() for l in text.splitlines() if l.strip()]
         if not lines:
@@ -985,11 +1084,13 @@ class Bot:
             for x in w.sessions.values():
                 x.last_input = time.monotonic()
         first = lines[0].lower().split()
-        own = len(lines) == 1 and (first[0] in ("help", "?", "repo", "github") or first[:2] in (["watch", "all"], ["watch", "off"], ["log", "all"]))
+        own = len(lines) == 1 and (first[0] in ("help", "?", "repo", "github", "where") or first[:2] in (["watch", "all"], ["watch", "off"], ["log", "all"]))
         if s is None or lines[0].startswith(".") or own:               # the bot's own words are never controller commands
+            self.mark("bot")
             return self.bot_command(key, lines[0].lstrip(".").strip(), user, user_name, post)   # help is never a controller command
         s.confirm = None                                               # anything else typed cancels a pending question
         if len(lines) > MAX_LINES:
+            self.mark("refused")
             return f"That is {len(lines)} lines; at most {MAX_LINES} are sent from one message. Nothing was sent."
         for n, line in enumerate(lines):
             verdict, why = session_check(line, user in self.cfg["danger_users"])
@@ -997,23 +1098,30 @@ class Bot:
                 try:
                     s.send(line)
                 except OSError as e:
+                    self.mark("refused")
                     s.close(f"the connection to the hub failed ({e})")
                     return None
+                self.mark("hub" if line.startswith("!") else "controller")
                 continue
             rest = f" The {len(lines) - n - 1} line(s) after it were not sent either." if n < len(lines) - 1 else ""
             if verdict == "confirm":
                 s.confirm = (line, self.now())
+                self.mark("confirm")
                 return (f":warning: {why} Controller: *{s.name}*. Reply `.confirm` within {self.cfg['confirm_s']} s to send it; "
                         f"anything else cancels.{rest}")
+            self.mark("refused")
             return why + rest
         return None
 
-    def handle(self, user, channel, text, user_name=None, post=None):
+    def handle(self, user, channel, text, user_name=None, post=None, mark=None):
         """What to post now for one Slack message, or None (nothing to say, or someone who is not allowed). With `post`
-        (a function that posts into the conversation) sessions are available; without it, only one-off questions."""
+        (a function that posts into the conversation) sessions are available; without it, only one-off questions.
+        `mark(kind)` is told where the message went: controller, hub, bot, confirm or refused."""
         if not self.allowed(user, channel):
             return None
+        self.marking.fn = mark
         if self.too_fast(user):
+            self.mark("refused")
             return f"Slow down: at most {self.cfg['rate_per_minute']} messages a minute."
         try:
             if post is not None:
@@ -1128,6 +1236,10 @@ def slack_api(method, token, payload=None, timeout=15.0):
         return json.loads(r.read())
 
 
+REACTIONS = {"controller": "gear", "hub": "file_cabinet", "bot": "robot_face", "confirm": "hourglass_flowing_sand",
+             "refused": "no_entry_sign"}
+
+
 def send_bytes(url, data, timeout=60.0):
     """POST raw bytes to the upload address Slack handed out."""
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/octet-stream"})
@@ -1144,6 +1256,7 @@ class SlackLink:
         self.bot_user = None
         self.seen = collections.deque(maxlen=500)             # event ids already handled (Slack retries)
         self.names, self.people = {}, {}
+        self.react_off_until = 0.0
         self.stop = threading.Event()
         bot.person = lambda user: self.lookup(user)[1]
 
@@ -1197,9 +1310,24 @@ class SlackLink:
             return                                             # in a channel: a mention, or a line of an open session
         if kind not in ("app_mention", "message"):
             return
-        self.incoming(ev["user"], ev.get("channel", ""), re.sub(r"<@[A-Z0-9]+>", " ", text))
+        self.incoming(ev["user"], ev.get("channel", ""), re.sub(r"<@[A-Z0-9]+>", " ", text), ev.get("ts"))
 
-    def incoming(self, user, channel, text):
+    def react(self, channel, ts, kind, done):
+        """Put the reaction for `kind` on the person's own message (once per kind). Never worth failing over: without the
+        reactions:write permission it is skipped, and tried again ten minutes later."""
+        name = REACTIONS.get(kind)
+        if not name or not ts or kind in done or time.monotonic() < self.react_off_until:
+            return
+        done.add(kind)
+        try:
+            r = self.api("reactions.add", self.bot.cfg["bot_token"], {"channel": channel, "timestamp": ts, "name": name})
+            if not r.get("ok") and r.get("error") in ("missing_scope", "not_allowed_token_type"):
+                self.react_off_until = time.monotonic() + 600
+                self.log("no reactions: the Slack app lacks the reactions:write permission")
+        except (OSError, ValueError):
+            pass
+
+    def incoming(self, user, channel, text, ts=None):
         """One message for the bot, from an event or from /wham."""
         text = re.sub(r"<[^|>]+\|([^>]+)>", r"\1", text).replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
         text = re.sub(r"<(https?://[^>]+)>", r"\1", text).replace("`", " ").strip()
@@ -1207,7 +1335,9 @@ class SlackLink:
             self.log(f"ignored a message from {user} in {channel}: not in allow_channels / allow_users")
             return
         self.log(f"{self.user_name(user)} in {channel}: {text[:80]!r}")
-        out = self.bot.handle(user, channel, text, self.user_name(user), post=lambda t: self.post(channel, t))
+        done = set()
+        out = self.bot.handle(user, channel, text, self.user_name(user), post=lambda t: self.post(channel, t),
+                              mark=lambda kind: self.react(channel, ts, kind, done))
         if out:
             self.post(channel, out)
 
@@ -1242,6 +1372,7 @@ class SlackLink:
         try:
             quiet = 0
             while not self.stop.is_set() and not should_stop():
+                self.bot.tick()
                 msg = ws.recv(timeout=20.0)
                 if msg is None:
                     quiet += 1

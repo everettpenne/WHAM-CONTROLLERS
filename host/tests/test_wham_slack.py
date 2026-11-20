@@ -256,6 +256,47 @@ class BotTests(HubBase):
         self.assertIsNone(await self.say(".who"))
         await self.posted("hub clients: 1")
 
+    async def test_sessions_stay_open_all_day_and_are_closed_at_the_nightly_time(self):
+        import datetime
+        T = datetime.datetime
+        self.assertEqual((ws.DEFAULTS["session_idle_min"], ws.DEFAULTS["session_close_at"]), (0, "03:15"))
+        self.bot.cfg["session_idle_min"] = 0
+        self.bot.cfg["session_close_at"] = "03:15"
+        self.assertEqual(self.bot.next_close(T(2026, 11, 20, 12, 0)), T(2026, 11, 21, 3, 15))
+        self.assertEqual(self.bot.next_close(T(2026, 11, 20, 1, 0)), T(2026, 11, 20, 3, 15))
+        others = []
+        out = await self.say("connect ech")
+        started = await asyncio.to_thread(self.bot.handle, "UDANGER", "D2", "watch all", "dan", others.append)
+        self.assertIn("it is closed at 03:15 every night", started)
+        for s in self.bot.sessions.values():
+            s.last_input -= 10 * 3600                                                     # ten hours without a word
+        await asyncio.sleep(0.8)
+        self.assertEqual(len(self.bot.sessions), 1, "no idle timeout any more")
+        self.assertEqual(self.bot.tick(T(2026, 11, 20, 12, 0)), 0)                        # the first call only sets the clock
+        self.assertEqual(self.bot.tick(T(2026, 11, 20, 23, 59)), 0)
+        self.assertEqual(len(self.hub.clients), 2)
+        closed = await asyncio.to_thread(self.bot.tick, T(2026, 11, 21, 3, 15, 5))
+        self.assertEqual(closed, 2)
+        note = [p for p in self.posts if p.startswith("Goodbye")]
+        self.assertEqual(len(note), 1)
+        self.assertIn("nightly closing time", note[0])
+        self.assertIn("`connect ech` again any time", note[0])
+        self.assertTrue(any("nightly closing time" in p and "watch is stopped" in p for p in others))
+        await asyncio.sleep(0.4)
+        self.assertEqual((self.bot.sessions, self.bot.watches, len(self.hub.clients)), ({}, {}, 0))
+        self.assertEqual(self.bot.tick(T(2026, 11, 21, 3, 16)), 0, "once a night")
+        await self.say("connect ech")
+        self.assertEqual(await asyncio.to_thread(self.bot.tick, T(2026, 11, 22, 3, 15, 1)), 1)
+        self.bot.cfg["session_close_at"] = ""                                             # switched off
+        await self.say("connect ech")
+        self.assertEqual(self.bot.tick(T(2026, 11, 23, 3, 16)), 0)
+        self.assertEqual(self.bot.tick(T(2026, 11, 24, 3, 16)), 0)
+        self.assertEqual(len(self.bot.sessions), 1)
+        self.assertEqual(self.bot.closing_rule(), "it stays open until you close it")
+        self.assertIsNone(self.bot.next_close(T(2026, 1, 1)) if not self.bot.cfg["session_close_at"] else 1)
+        self.bot.cfg["session_close_at"] = "25:99"
+        self.assertIsNone(self.bot.next_close(T(2026, 1, 1)))
+
     async def test_an_idle_session_is_closed_and_says_so(self):
         self.bot.cfg["session_idle_min"] = 0.01                                           # 0.6 s
         await self.say("connect ech")
@@ -278,6 +319,72 @@ class BotTests(HubBase):
             self.assertIn("`.users`", await self.say(word), word)
         await asyncio.sleep(0.3)
         self.assertFalse([c for c in self.ctl.received if c.lower() in ("help", "?")], "help is the bot's, not a controller command")
+
+    async def test_every_relayed_line_says_where_it_came_from(self):
+        await self.say("connect ech")
+        await self.say("STATE?\nECHO one\nNOSUCH")
+        await self.posted("[ech] STATE? \u2192 OK IDLE")
+        await self.posted("[ech] ECHO one \u2192 OK one")
+        await self.posted("[ech] NOSUCH \u2192 ERR 1 Unknown command")
+        await self.say("!hub status")
+        await self.posted("[ech hub] # hub name=t1")
+        await self.ctl.push("!EVT 7 STATE ARMED")
+        await self.posted("[ech event] !EVT 7 STATE ARMED")
+        await self.say(".hublog on")
+        other = await Client.connect(self.listen, "labview")
+        await asyncio.sleep(0.3)
+        await other.send("ECHO theirs")
+        await self.posted("[ech traffic] [labview] > ECHO theirs")
+        await self.posted("[ech traffic] [labview] < OK theirs")
+        await self.posted("[ech traffic] --- labview")
+        await self.say("ECHO mine-again")
+        await self.posted("[ech] ECHO mine-again \u2192 OK mine-again")
+        for p in self.posts:                                            # every relayed line carries a label
+            if p.startswith("```"):
+                self.assertTrue(all(l.startswith("[ech") for l in p.strip("`\n").splitlines()), p)
+
+    async def test_where_says_what_you_are_connected_to_and_where_lines_go(self):
+        out = await self.say("where")
+        self.assertIn("Not connected to a controller: *everything you type is for me*", out)
+        self.assertIn("Not watching", out)
+        await self.say("connect ech")
+        out = await self.say("where")                                   # no dot needed, and never sent to the controller
+        self.assertIn("Connected to *ech* as `slack-ann`.", out)
+        self.assertIn("A plain line goes to the *ech controller*", out)
+        self.assertIn("A `!hub ...` line goes to the *ech hub*", out)
+        self.assertIn("at 03:15 every night", out)
+        await self.say(".hublog on")
+        self.assertIn("hub-log ON", await self.say(".where"))
+        await self.say("watch all")
+        self.assertIn("Watching all traffic of ech", await self.say("where"))
+        await asyncio.sleep(0.3)
+        self.assertFalse([c for c in self.ctl.received if "where" in c.lower()])
+        self.assertIn("`where`", await self.say("help"))
+
+    async def test_the_bot_says_where_each_message_went(self):
+        marks = []
+
+        async def went(text, user="U1", channel="D1"):
+            marks.clear()
+            await asyncio.to_thread(self.bot.handle, user, channel, text, "ann", self.posts.append, marks.append)
+            return sorted(set(marks))
+        self.assertEqual(await went("list"), ["bot"])
+        self.assertEqual(await went("diary read"), ["bot"])
+        self.assertEqual(await went("connect ech"), ["bot"])
+        self.assertEqual(await went("STATE?"), ["controller"])
+        self.assertEqual(await went("!hub status"), ["hub"])
+        self.assertEqual(await went("STATE?\n!hub clients"), ["controller", "hub"])
+        self.assertEqual(await went(".who"), ["bot"])
+        self.assertEqual(await went("help"), ["bot"])
+        self.assertEqual(await went("ARM"), ["refused"])
+        self.assertEqual(await went("ECHO a\nFIRE\nECHO b"), ["controller", "refused"])
+        self.assertEqual(await went("!hub confirm"), ["refused"])
+        self.assertEqual(await went("list", user="USTRANGER", channel="D9"), [], "a stranger gets nothing, not even a reaction")
+        await went("connect ech", user="UDANGER", channel="D2")
+        self.assertEqual(await went("ARM", user="UDANGER", channel="D2"), ["confirm"])
+        self.assertEqual(await went(".confirm", user="UDANGER", channel="D2"), ["bot", "controller"])
+        self.bot.cfg["rate_per_minute"] = 0
+        self.assertEqual(await went("help"), ["refused"])
 
     async def test_repo_gives_the_link_and_is_never_sent_to_a_controller(self):
         for word in ("repo", ".repo", "github", "repository"):
@@ -709,7 +816,10 @@ class SlackLinkTests(HubBase):
         self.assertEqual(calls[0][:2], ("auth.test", "xoxb-test"))
         self.assertIn(("apps.connections.open", "xapp-test", None), calls)
         event("2", {"type": "message", "channel_type": "im", "user": "U1", "channel": "D1", "text": "`STATE?`", "ts": "2.0"})
-        self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("OK IDLE" in p["text"] and p["channel"] == "D1" for p in posts())), posts())
+        self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("[ech] STATE? \u2192 OK IDLE" in p["text"] and p["channel"] == "D1" for p in posts())), posts())
+        reacts = [c[2] for c in calls if c[0] == "reactions.add"]
+        self.assertIn({"channel": "D1", "timestamp": "1.0", "name": "robot_face"}, reacts)        # connect: handled by the bot
+        self.assertIn({"channel": "D1", "timestamp": "2.0", "name": "gear"}, reacts)              # STATE?: sent to the controller
         n = len(posts())
         event("2", {"type": "message", "channel_type": "im", "user": "U1", "channel": "D1", "text": "STATE?", "ts": "2.0"})   # Slack retries
         event("3", {"type": "message", "channel_type": "im", "user": "U1", "channel": "D1", "text": "x", "bot_id": "B1"})      # a bot
@@ -732,6 +842,16 @@ class SlackLinkTests(HubBase):
         self.assertIs(link.bot.upload.__self__, link, "the bot sends files through the link")
         event("8", None, etype="slash_commands", extra={"user_id": "U1", "channel_id": "D1", "text": ".disconnect", "command": "/wham"})
         self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("Disconnected" in p["text"] for p in posts())), posts())
+        # without the permission the reaction is skipped, quietly, and nothing else is affected
+        missing = {"ok": False, "error": "missing_scope"}
+        link.api = lambda method, token, payload=None, timeout=15.0: (calls.append((method, token, payload)), missing if method == "reactions.add" else api(method, token, payload))[1]
+        n_react = len([c for c in calls if c[0] == "reactions.add"])
+        event("9", {"type": "message", "channel_type": "im", "user": "U1", "channel": "D1", "text": "help", "ts": "9.0"})
+        self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("WHAM-PFM-Controller-Link" in p["text"] for p in posts())), posts())
+        event("10", {"type": "message", "channel_type": "im", "user": "U1", "channel": "D1", "text": "where", "ts": "10.0"})
+        self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("Where you are" in p["text"] for p in posts())), posts())
+        self.assertEqual(len([c for c in calls if c[0] == "reactions.add"]), n_react + 1, "asked once, then left alone for a while")
+        self.assertTrue(any("reactions:write" in l for l in logs))
         link.stop.set()
         srv.push(json.dumps({"type": "disconnect", "reason": "refresh_requested"}))
         await asyncio.to_thread(t.join, 5)

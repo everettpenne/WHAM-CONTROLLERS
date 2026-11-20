@@ -18,6 +18,13 @@ WHAM-XREX-PFMG474 Firmware Changelog
   without a number, the recent shot numbers. The lookup reads only "shot" rows, back through up to 400 day files.
   The Slack bot passes both lines on in a session. hub_update.py's gate runs tests.test_hub_shots. Tests: test_hub_shots (8).
   Also "repo" in the Slack bot and "!hub repo" in the hubs: the link to the project's public repository.
+  Then the Slack bot's 30-minute idle close became a nightly one: sessions and watches stay open during the day and are
+  all closed at session_close_at (default 03:15, before the 03:30 hub update) with a note; session_idle_min defaults to 0.
+  And, to tell the kinds of traffic apart in one Slack conversation: every relayed line carries its source ("[ech] CMD ->
+  reply" pairs each controller reply with the command that caused it, "[ech hub]", "[ech event]", "[ech traffic]"); "where"
+  says what the conversation is connected to and where each kind of line goes; and the bot reacts to each message with where
+  it went (gear controller, file cabinet hub, robot bot, hourglass waiting for .confirm, no-entry not sent; needs the app's
+  reactions:write scope, skipped quietly without it). Tests: test_wham_slack 35.
 
 2026-11-20  -  Host side: the operators' diary, one text file on the host, from the hubs and from Slack  [no firmware change; host-tested]
 -----------------------------------------------------------------------
