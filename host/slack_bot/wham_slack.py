@@ -305,13 +305,40 @@ def reply_line(lines):
 
 
 class Bot:
-    def __init__(self, cfg, request=hub_request, now=time.time):
+    def __init__(self, cfg, request=hub_request, now=time.time, config_path=None):
         self.cfg, self.request, self.now = cfg, request, now
+        self.config_path, self.config_mtime = config_path, self._mtime(config_path)
         self.recent = collections.defaultdict(collections.deque)      # user -> times of recent requests
         self.sessions = {}                                            # (channel, user) -> Session
 
     # -- access
+    @staticmethod
+    def _mtime(path):
+        try:
+            return os.path.getmtime(path) if path else None
+        except OSError:
+            return None
+
+    def refresh(self):
+        """Take over who is allowed (and the limits) when the settings file was edited: no restart, open sessions stay.
+        The tokens and the controllers are read only at start."""
+        m = self._mtime(self.config_path)
+        if m is None or m == self.config_mtime:
+            return False
+        self.config_mtime = m
+        try:
+            new = load_config(self.config_path)
+        except (OSError, ValueError) as e:
+            log_line(f"the settings file could not be read, keeping the old lists: {e}")
+            return False
+        for key in ("allow_users", "allow_channels", "danger_users", "rate_per_minute", "session_idle_min", "confirm_s"):
+            self.cfg[key] = new[key]
+        log_line(f"settings reloaded: {len(self.cfg['allow_users'])} users, {len(self.cfg['allow_channels'])} channels, "
+                 f"{len(self.cfg['danger_users'])} on the danger list")
+        return True
+
     def allowed(self, user, channel):
+        self.refresh()
         return channel in self.cfg["allow_channels"] or user in self.cfg["allow_users"]
 
     def too_fast(self, user):
@@ -633,9 +660,16 @@ class WebSocket:
 
 
 # ---- Slack ----------------------------------------------------------------------------------------------------------
+FORM_METHODS = ("users.info",)      # Slack's read methods take their arguments form-encoded, not as a JSON body
+
+
 def slack_api(method, token, payload=None, timeout=15.0):
-    req = urllib.request.Request("https://slack.com/api/" + method, data=json.dumps(payload or {}).encode(),
-                                 headers={"Authorization": "Bearer " + token, "Content-Type": "application/json; charset=utf-8"})
+    if method in FORM_METHODS:
+        data, ctype = urllib.parse.urlencode(payload or {}).encode(), "application/x-www-form-urlencoded"
+    else:
+        data, ctype = json.dumps(payload or {}).encode(), "application/json; charset=utf-8"
+    req = urllib.request.Request("https://slack.com/api/" + method, data=data,
+                                 headers={"Authorization": "Bearer " + token, "Content-Type": ctype})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
@@ -816,7 +850,7 @@ def main(argv=None):
         return 0                                               # another copy is running: cron's check, nothing to do
     started, checked = checkout_commit(), [time.monotonic()]
 
-    bot = Bot(cfg)
+    bot = Bot(cfg, config_path=args.config)
 
     def moved():                                               # the checkout was updated: stop, cron starts the new code
         if time.monotonic() - checked[0] < 120 or bot.sessions:

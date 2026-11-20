@@ -75,7 +75,7 @@ in for 30 minutes is closed (`session_idle_min`), so a forgotten one does not ho
 2. **On the server**, as the hubs' account, copy `host/slack_bot/slack_bot.example.json` to
    `host/slack_bot/slack_bot.local.json` (git ignores it), put in the two tokens, and list who may use it:
    `allow_users` (Slack member IDs, `U...`: profile → ⋮ → *Copy member ID*) and/or `allow_channels` (`C...`). With both
-   empty the bot answers nobody. `chmod 600` the file. **Never put a token in a tracked file: the repository is public.**
+   empty the bot answers nobody. `chmod 600` the file. Later edits to the three lists (`allow_users`, `allow_channels`, `danger_users`) take effect at the next message, without a restart; the tokens are read only when the bot starts. **Never put a token in a tracked file: the repository is public.**
 3. `python3 host/slack_bot/wham_slack.py check` (tokens accepted, each hub answers; changes nothing), then
    `python3 host/slack_bot/wham_slack.py install-cron`: cron starts the bot at boot and again within 5 minutes if it stops.
    No sudo is needed. Its log is `/var/lib/wham/hub/slack/bot.log`.

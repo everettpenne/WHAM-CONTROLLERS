@@ -55,6 +55,47 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(ws.find_controller(c, "hvps"), "ech")
         self.assertIsNone(ws.find_controller(c, "nope"))
 
+    def test_an_edited_settings_file_changes_who_is_allowed_without_a_restart(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "s.json")
+            with open(path, "w") as f:
+                json.dump({"allow_users": ["U1"], "bot_token": "xoxb-a"}, f)
+            bot = ws.Bot(ws.load_config(path, env={}), config_path=path)
+            self.assertTrue(bot.allowed("U1", "D1"))
+            self.assertFalse(bot.allowed("U2", "D2"))
+            with open(path, "w") as f:
+                json.dump({"allow_users": ["U2"], "danger_users": ["U2"], "bot_token": "xoxb-CHANGED"}, f)
+            os.utime(path, (time.time() + 5, time.time() + 5))
+            self.assertTrue(bot.allowed("U2", "D2"))
+            self.assertFalse(bot.allowed("U1", "D1"))
+            self.assertEqual(bot.cfg["danger_users"], ["U2"])
+            self.assertEqual(bot.cfg["bot_token"], "xoxb-a", "tokens are read only at start")
+            with open(path, "w") as f:
+                f.write("{ not json")
+            os.utime(path, (time.time() + 10, time.time() + 10))
+            self.assertTrue(bot.allowed("U2", "D2"), "a broken file keeps the lists that were in force")
+
+    def test_user_names_are_asked_for_the_way_slack_reads_them(self):
+        seen = {}
+
+        class Resp:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'{"ok": true}'
+
+        def fake_open(req, timeout=0):
+            seen[req.full_url.rsplit("/", 1)[1]] = (req.data, req.get_header("Content-type"))
+            return Resp()
+        real, ws.urllib.request.urlopen = ws.urllib.request.urlopen, fake_open
+        try:
+            ws.slack_api("users.info", "xoxb-t", {"user": "U1"})
+            ws.slack_api("chat.postMessage", "xoxb-t", {"channel": "D1", "text": "x"})
+        finally:
+            ws.urllib.request.urlopen = real
+        self.assertEqual(seen["users.info"], (b"user=U1", "application/x-www-form-urlencoded"))
+        self.assertTrue(seen["chat.postMessage"][1].startswith("application/json"))
+
     def test_tokens_come_from_the_environment_first_and_no_token_is_in_the_defaults(self):
         c = ws.load_config("/nonexistent", env={"SLACK_APP_TOKEN": "xapp-e", "SLACK_BOT_TOKEN": "xoxb-e"})
         self.assertEqual((c["app_token"], c["bot_token"]), ("xapp-e", "xoxb-e"))
