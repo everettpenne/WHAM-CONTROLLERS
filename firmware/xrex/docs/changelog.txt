@@ -1,6 +1,24 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-20  -  Host side: shot records in the hub log (!hub shotnumber <n>, !hub read shotnumber <n>)  [no firmware change; host-tested against fake HBRIDGE and XREX boards; NOT yet run against a real controller]
+-----------------------------------------------------------------------
+  Request: a hub command that quietly records a block about the controller's configuration in the hub log under a shot
+  number, at least the last shot parameters (waveform), with the right parameters for HBRIDGE and for XREX; and a command
+  that returns the block for a shot number to the operator who asked.
+  wham_hub.py: !hub shotnumber <number> asks the controller (queries only, through the hub's own queue, one at a time, clients'
+  commands in between) and writes rows of kind "shot": "<n> BEGIN product= serial= fw= hub= by=", "<n> <query> = <reply>" per
+  query, "<n> END items= unanswered=". HBRIDGE: state, fault sources, mode, limits, phases, dead time, loop modes, target,
+  trigger status and latency, charger, GDS enables and polarity, spark-gap enable, bypass, SHOT? and every SHOT:POINt?
+  (a TABle upload is noted, not read back). XREX: state, SHOT:TIMing?, interlock and trigger, dead time, bypass, and per
+  channel enable, current, loop mode, gains, maximum current, ready lines, status. The product is taken from the identity
+  handshake; an unknown product records nothing. No announcement to other clients; one reply line to the sender when done
+  ("recorded", "recorded INCOMPLETE" when a query got no answer, "NOT recorded: why"). One record at a time per hub.
+  !hub read shotnumber <number> returns the newest block to the asking client only ("# shot ..." lines, "# shot-end {json}");
+  without a number, the recent shot numbers. The lookup reads only "shot" rows, back through up to 400 day files.
+  The Slack bot passes both lines on in a session. hub_update.py's gate runs tests.test_hub_shots. Tests: test_hub_shots (8).
+  Also "repo" in the Slack bot and "!hub repo" in the hubs: the link to the project's public repository.
+
 2026-11-20  -  Host side: the operators' diary, one text file on the host, from the hubs and from Slack  [no firmware change; host-tested]
 -----------------------------------------------------------------------
   Request: a diary stored with the host that operators can read and write (write, read <date>, read all), each entry with a
@@ -17,6 +35,10 @@ WHAM-XREX-PFMG474 Firmware Changelog
   "diary read all" is unchanged and now points to it when it had to cut the answer.
   And "diary index [date|all]" (hubs and Slack): one line per entry with its time, writer and place, without the texts;
   "diary index file" in Slack sends the index of the whole diary as a text file. Tests: test_diary 13, test_wham_slack 29.
+  And hub logs as files from Slack: ".log file [date] [raw]" (the session's hub), "log <controller> file", "log all file"
+  (every hub's day merged by time), "log days". The readable file has one line per row and leaves out the hubs' own
+  heartbeat queries (wham_hub.log_row_matches); raw is the day file as stored. The folder comes from the hub's own
+  !hub status (log=...), read directly on the server. Tests: test_wham_slack 30.
 
 2026-11-20  -  Host side: a Slack bot that is a text terminal to the controllers through the hubs  [no firmware change; host-tested against a fake Slack and a real hub; NOT yet connected to a real Slack workspace]
 -----------------------------------------------------------------------

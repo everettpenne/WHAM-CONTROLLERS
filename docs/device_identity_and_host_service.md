@@ -132,6 +132,22 @@ case-insensitive and takes the rest of the line; `before=` is the `t` of the ear
 handshake, and `!hub status`/`!hub log` from web pages) are left out; `all` includes them. A bad argument answers `# hub: <why>` and the usage line. `!hub log` itself is not logged. The operator
 web UI's Host log tab is built on it (`GET /api/hostlog`).
 
+**Shot records.** `!hub shotnumber <number>` files what the controller holds *now* in this hub's log under that shot number,
+so a shot's set-up can be looked up later. The hub asks the controller itself (queries only, each waiting its turn, with
+clients' commands going in between) and writes one block of `kind: "shot"` rows: `<number> BEGIN product=... serial=... fw=...
+hub=... by=<client>`, then one row per query, `<number> <query> = <reply>`, then `<number> END items=<n> unanswered=<k>`.
+What is asked depends on the board. **HBRIDGE** (Limiter, ECH-HVPS): state and fault sources, supply mode and limits, phases,
+dead time, loop modes, trigger status and last start latency, charger, fault-input enables and polarity, then `SHOT?` and
+**every setpoint** (`SHOT:POINt? i`: the waveform as uploaded). **XREX**: state, `SHOT:TIMing?`, interlock and trigger
+settings, and for each of the four channels its enable, shot current, loop mode, gains, maximum current, ready lines and
+status. It is quiet: nothing is announced to other clients, and the client who asked gets one line when it is done,
+`# shot <number> recorded: HVPS, 14 setpoints, 15000 us; 31 values` (or `recorded INCOMPLETE: ...`, or `NOT recorded: <why>`).
+Send it close to the shot: it records what the controller holds at that moment, not what it held when it fired.
+`!hub read shotnumber <number>` returns the newest block recorded under that number, **to the client who asked only**:
+a header line, `# shot <query> = <reply>` lines, then `# shot-end {"shot":..,"t":..,"values":..,"complete":..,"recordings":..}`
+(`recordings` counts how many times that number was recorded; earlier ones stay in the log). Without a number it lists the
+shot numbers recorded lately. A lookup goes back through up to 400 day files of this controller's log.
+
 - One command is in flight to the controller at a time, in arrival order across all clients. The service's own queries (the handshake, the
   heartbeat) use the same queue and go first. Every command a client sends gets exactly one reply line, to that client:
   the controller's line, or `ERR hub ...` when there is none: `timeout` (`command_timeout_s`, 5 s; `long_command_timeout_s`, 30 s for the

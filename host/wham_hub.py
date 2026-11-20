@@ -32,7 +32,11 @@ What it does
     !hub diary write <text> | !hub diary read [date|all] | !hub diary last [n] | !hub diary search <text> | !hub diary dates |
     !hub diary index [date|all] (who wrote when, without the texts)
     (the operators' diary, diary.py: one text file on the host shared by every hub and the Slack bot; an entry records the
-    time, the client's name and this hub; the other clients of this hub are told when one is written);
+    time, the client's name and this hub; the other clients of this hub are told when one is written) |
+    !hub shotnumber <number> (asks the controller what it holds now -- the shot waveform and the settings that shape it,
+    with the right queries for an HBRIDGE or an XREX board -- and writes that into this log as one block filed under the
+    shot number; nobody else is told) | !hub read shotnumber <number> (returns that block to the client who asked; without
+    a number, the shot numbers recorded lately) | !hub repo (the link to the project's public repository);
   * !hub timestamps on makes EVERY line sent to that client start with the time, "[HH:MM:SS.mmm] " in the service's local
     time (the same clock as the log), for a person reading a terminal. It is per connection and OFF by default, because
     tools that parse replies (fw_update.py, wham_console.py, LabVIEW) must see them bare; net_client.py turns it on for
@@ -86,6 +90,7 @@ FLOAT_KEYS = ("reconnect_s", "confirm_timeout_s", "command_timeout_s", "long_com
               "heartbeat_timeout_s")
 INT_KEYS = ("port", "queue_max", "keepalive_idle_s", "keepalive_interval_s", "keepalive_count", "client_buffer_max",
             "log_keep_days")
+REPO_URL = "https://github.com/everettpenne/WHAM-CONTROLLERS"
 BOOT_RE = re.compile(r"^!BOOT WHAM-")
 IDN_REPLY = re.compile(r"OK WHAM-")           # the only reply that starts so: the service's own queries wait for theirs
 ID_REPLY = re.compile(r"OK serial=|ERR ")     # SYS:ID?, or ERR from firmware without it
@@ -465,6 +470,64 @@ def read_log(base, key, limit=200, since_t=None, before_t=None, kinds=None, clie
     return rows, {"files": looked, "truncated": truncated}
 
 
+# ---- shot records: what the controller held, filed under a shot number ---------------------------------------
+SHOT_NUMBER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$")
+SHOT_REPLY = re.compile(r"OK|ERR")
+SHOT_MAX_FILES = 400                # day files a lookup goes back through
+# What is asked, per product. The waveform itself follows: HBRIDGE's setpoints one by one (SHOT? says how many);
+# XREX's shot is its timing and each channel's current, so the per-channel queries are the waveform.
+SHOT_QUERIES = {
+    "hbridge": ["STATE?", "FAULT?", "FAULT:SOURces?", "CONFig:MODE?", "CONFig:LIMits?", "PHASe:ENAble?", "CONFig:DEADtime?",
+                "PID:LOOPMODE? 0", "TARGet?", "EXTernal:TRIGger:STATus?", "EXTernal:TRIGger:LATency?", "CHARGE:STATus?",
+                "GDS:ENAble?", "GDS:POLarity?", "SPARKgap:ENAble?", "DEBUG:FAULT:BYPASS?", "SHOT?"],
+    "xrex": ["STATE?", "FAULT?", "SHOT:TIMing?", "EXTernal:ENAble?", "EXTernal:INPut?", "EXTernal:TRIGger?",
+             "CONFig:DEADtime?", "DEBUG:FAULT:BYPASS?"],
+}
+XREX_CHANNEL_QUERIES = ["SOURce:ENAble? {n}", "SHOT:CURRent? {n}", "PID:LOOPMODE? {n}", "PID:GAINS? {n}", "CONFig:MAXCURRent? {n}",
+                        "XREX:CHANnel:ENAOut? {n}", "XREX:CHANnel:CONTactOut? {n}", "SOURce:STATus? {n}"]
+
+
+def product_family(product):
+    p = str(product or "").upper()
+    return "hbridge" if "HBRIDGE" in p else "xrex" if "XREX" in p else None
+
+
+def shot_blocks(base, key, number=None, max_files=SHOT_MAX_FILES):
+    """The shot records of one device's log, newest day first. With a number: (the newest complete-or-not block of that
+    shot as a list of records, how many times it was recorded). Without: the header records of every block found.
+    Only lines of kind "shot" are parsed, so going back through many large day files stays quick."""
+    folder = os.path.join(base, key)
+    try:
+        days = sorted((n for n in os.listdir(folder) if n.endswith(".jsonl")), reverse=True)[:max_files]
+    except OSError:
+        days = []
+    found, count, headers = None, 0, []
+    for name in days:
+        rows = []
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if '"kind":"shot"' not in line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(rec, dict) and rec.get("kind") == "shot":
+                        rows.append(rec)
+        except OSError:
+            continue
+        if number is None:
+            headers = [r for r in rows if str(r.get("line", "")).split()[1:2] == ["BEGIN"]] + headers
+            continue
+        mine = [r for r in rows if str(r.get("line", "")).split()[:1] == [number]]
+        starts = [i for i, r in enumerate(mine) if str(r["line"]).split()[1:2] == ["BEGIN"]]
+        count += len(starts)
+        if starts and found is None:
+            found = mine[starts[-1]:]
+    return headers if number is None else (found, count)
+
+
 # ---- the service -----------------------------------------------------------------------------------------------
 class Hub:
     def __init__(self, cfg):
@@ -492,6 +555,7 @@ class Hub:
         self.pending = []            # records written before the first handshake settled
         self.identity_settled = False
         self.ident_failed_at = None  # monotonic time the last handshake failed: retried every heartbeat_s
+        self.shot_lock = None        # one shot record at a time (made on first use, inside the event loop)
 
     # -- identity and logging
     def dev_key(self):
@@ -1057,6 +1121,12 @@ class Hub:
             asyncio.ensure_future(self.log_reply(writer, text[4:].strip()[3:].strip()))
         elif cmd.split()[:1] == ["diary"]:
             asyncio.ensure_future(self.diary_reply(writer, name, text[4:].strip()[5:].strip()))
+        elif cmd.split()[:1] == ["shotnumber"]:
+            asyncio.ensure_future(self.shot_record(writer, name, text[4:].split()[1:]))
+        elif cmd.split()[:2] == ["read", "shotnumber"]:
+            asyncio.ensure_future(self.shot_read(writer, text[4:].split()[2:]))
+        elif cmd in ("repo", "repository", "github", "about"):
+            self.write_to(writer, f"# hub: the project's public repository (firmware, board files, hubs, tools, guides): {REPO_URL}")
         elif cmd == "identify":
             if self.connected:
                 self.start_handshake()
@@ -1074,7 +1144,110 @@ class Hub:
         else:
             self.write_to(writer, "# hub: commands are  !hub status  |  !hub clients  |  !hub identify  |  !hub quiet [on|off]  |  "
                                   "!hub timestamps [on|off]  |  !hub log [n] [since=2h] [kind=..] [grep=..]  |  !hub diary write <text> | read [date|all] | "
-                                  "last [n] | search <text> | dates | index  |  !hub confirm  |  !hub cancel")
+                                  "last [n] | search <text> | dates | index  |  !hub shotnumber <number>  |  !hub read shotnumber [number]  |  !hub repo  |  "
+                                  "!hub confirm  |  !hub cancel")
+
+    # -- shot records
+    async def shot_record(self, writer, name, args):
+        """!hub shotnumber <number>: ask the controller what it holds and file the answers in the log under that number.
+        Quiet: only the client who asked gets a line (one, when it is done), and nothing is announced to the others. The
+        queries wait their turn like any command, and clients' commands go in between them."""
+        if len(args) != 1 or not SHOT_NUMBER_RE.match(args[0]):
+            self.write_to(writer, "# shot: !hub shotnumber <number>  (letters, digits, - _ . ; at most 32 characters)")
+            return
+        number = args[0]
+        if not self.connected or not self.identity:
+            self.write_to(writer, f"# shot {number} NOT recorded: the controller is not connected")
+            return
+        if self.mismatch:
+            self.write_to(writer, f"# shot {number} NOT recorded: identity mismatch: {self.mismatch}")
+            return
+        family = product_family(self.identity.get("product"))
+        if family is None:
+            self.write_to(writer, f"# shot {number} NOT recorded: {self.identity.get('product', '?')} is not a product whose shot is known here")
+            return
+        if self.shot_lock is None:
+            self.shot_lock = asyncio.Lock()
+        async with self.shot_lock:
+            i = self.identity
+            self.record("shot", f"{number} BEGIN product={i.get('product')} serial={i.get('serial')} fw={i.get('fw')} "
+                                f"hub={self.cfg['name']} by={name}", name)
+            items = unanswered = 0
+            answers = {}
+
+            async def ask(q):
+                nonlocal items, unanswered
+                try:
+                    reply = await self.query(q, SHOT_REPLY, timeout=self.cfg["command_timeout_s"], purpose="shot record")
+                except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
+                    unanswered += 1
+                    self.record("shot", f"{number} {q} = (no answer: {type(exc).__name__})", name)
+                    return None
+                items += 1
+                answers[q] = reply
+                self.record("shot", f"{number} {q} = {reply}", name)
+                return reply
+            queries = list(SHOT_QUERIES[family])
+            if family == "xrex":
+                queries += [q.format(n=n) for n in (1, 2, 3, 4) for q in XREX_CHANNEL_QUERIES]
+            for q in queries:
+                if await ask(q) is None and not self.connected:
+                    break
+            summary = ""
+            if family == "hbridge":
+                head = (answers.get("SHOT?") or "").split()
+                n = int(head[1]) if len(head) > 2 and head[0] == "OK" and head[1].isdigit() else 0
+                kind = head[3] if len(head) > 3 else "?"
+                if n and kind == "TABLE":
+                    self.record("shot", f"{number} NOTE the controller holds a TABle upload of {n} entries, not setpoints: not read back", name)
+                else:
+                    for k in range(n):
+                        if await ask(f"SHOT:POINt? {k}") is None:
+                            break                      # the controller stopped answering: do not wait for hundreds more
+                mode = (answers.get("CONFig:MODE?") or "?").replace("OK ", "", 1)
+                summary = f"{mode}, {n} setpoints, {head[2] if len(head) > 2 else '?'} us"
+            else:
+                on = [str(n) for n in (1, 2, 3, 4) if (answers.get(f"SOURce:ENAble? {n}") or "").split()[1:2] == ["1"]]
+                timing = (answers.get("SHOT:TIMing?") or "?").replace("OK ", "", 1)
+                summary = f"timing {timing} s, channels in the shot: {' '.join(on) or 'none'}"
+            self.record("shot", f"{number} END items={items} unanswered={unanswered}", name)
+        if unanswered:
+            self.write_to(writer, f"# shot {number} recorded INCOMPLETE: {summary}; {items} values, {unanswered} not answered")
+        else:
+            self.write_to(writer, f"# shot {number} recorded: {summary}; {items} values")
+
+    async def shot_read(self, writer, args):
+        """!hub read shotnumber [number]: the block recorded for that shot, to the client who asked and nobody else.
+        "# shot <query> = <reply>" lines between a header and "# shot-end {json}". Without a number: what was recorded lately."""
+        key = self.dev_key()
+        loop = asyncio.get_running_loop()
+        if not args:
+            heads = await loop.run_in_executor(None, lambda: shot_blocks(self.cfg["log_dir"], key))
+            out = ["# shot " + datetime.datetime.fromtimestamp(r.get("t", 0)).strftime("%Y-%m-%d %H:%M:%S") + "  "
+                   + str(r.get("line", "")).replace(" BEGIN", "", 1) for r in heads[-30:]]
+            out.append("# shot-end " + json.dumps({"recorded": len(heads), "shown": len(out), "dev": key}, separators=(",", ":")))
+        elif len(args) != 1 or not SHOT_NUMBER_RE.match(args[0]):
+            out = ["# shot: !hub read shotnumber [number]"]
+        else:
+            number = args[0]
+            block, count = await loop.run_in_executor(None, lambda: shot_blocks(self.cfg["log_dir"], key, number))
+            if not block:
+                out = [f"# shot {number}: nothing is recorded under that number in this controller's log ({key})"]
+            else:
+                when = datetime.datetime.fromtimestamp(block[0].get("t", 0)).strftime("%Y-%m-%d %H:%M:%S")
+                out = [f"# shot {number} recorded {when}: {str(block[0]['line']).split(' BEGIN ', 1)[-1]}"]
+                done = None
+                for r in block[1:]:
+                    body = str(r.get("line", "")).split(" ", 1)[-1]
+                    if body.startswith("END "):
+                        done = body
+                        break
+                    out.append("# shot " + body)
+                info = {"shot": number, "t": block[0].get("t"), "values": len(out) - 1, "complete": bool(done) and "unanswered=0" in done,
+                        "recordings": count, "dev": key}
+                out.append("# shot-end " + json.dumps(info, separators=(",", ":")))
+        if not writer.is_closing():
+            self.write_to(writer, "\r\n".join(out))
 
     def diary_path(self):
         return self.cfg.get("diary_file") or diary.default_path(self.cfg["log_dir"])

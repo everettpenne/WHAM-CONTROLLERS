@@ -8,8 +8,11 @@ In a direct message with the bot (or with /wham <words>, or by mentioning it):
     STATE?                   ... while connected, every line you type is sent to the controller and its reply is posted
     .hublog on               show ALL traffic of that hub: other clients' commands and replies, joins, events (.hublog off)
     .log 20 since=1h         the hub's stored log (also grep=<text>, kind=cmd, client=<name>)
+    .log file [date] [raw]   a whole day of that hub's log as a file to download (today by default; log all file: every hub,
+                             merged; log <controller> file when not connected; log days lists the days kept)
     .disconnect              close the session
     .users                   who is authorized to use the bot
+    repo                     the link to the project's public repository
     diary write <text>       add an entry to the operators' diary (the time and your name are recorded)
     diary read [date|all]    read it: today, a date, yesterday, or all; also diary last [n], diary search <text>, diary dates
     diary file               send the whole diary as a text file to download (needs the app's files:write permission)
@@ -99,14 +102,20 @@ DEFAULTS = {
     },
 }
 MAX_TEXT = 3500                     # a Slack message holds about 4000 characters
+REPO_URL = "https://github.com/everettpenne/WHAM-CONTROLLERS"
+REPO_TEXT = (f"*WHAM-CONTROLLERS*, the project's public repository: {REPO_URL}\n"
+             "Firmware for both controllers, the board design files, the hubs, the operator console, this bot and the guides. "
+             f"Start with the guides: {REPO_URL}/tree/main/docs (this bot: `docs/slack_bot.md`; the diary: `docs/diary.md`).")
 HELP = """*WHAM-PFM-Controller-Link: the WHAM controllers, through their hubs*
 `help`  this list (works at any time, connected or not)
 `list`  the controllers: state, fault, who is connected
 `connect <controller>`  open a session; then every line you type goes to the controller and its reply comes back
 `.hublog on` / `.hublog off`  show all traffic of that hub (other people's commands and replies, events)
 `.log [n] [since=1h] [grep=text] [kind=cmd]`  the hub's stored log (n up to 30)
+`.log file [today|yesterday|YYYY-MM-DD] [raw]`  a whole day of the hub's log as a file; `log all file` every hub merged; `log <controller> file` when not connected; `log days` the days kept
 `.who`  who is connected to that hub      `.disconnect`  close the session
 `.users`  who is authorized to use this bot
+`repo`  the link to the project's public repository (code, board files, guides)
 `diary write <text>`  add an entry to the operators' diary (time and your name are recorded)
 `diary read [today|yesterday|YYYY-MM-DD|all]`, `diary last [n]`, `diary search <text>`, `diary dates`  read it
 `diary file`  the whole diary as a text file to download, however long it is
@@ -116,7 +125,8 @@ HELP = """*WHAM-PFM-Controller-Link: the WHAM controllers, through their hubs*
 While connected, a line starting with a dot is for me; anything else (except `help`) is sent to the controller.
 Not connected the dot is optional, and `<controller> state` or `<controller> <QUERY?>` asks one thing (read only).
 Controllers: {names}.
-Dangerous commands (ARM, FIRE, FAULT:CLEar, CHARGE, protections) are refused unless you are on the danger list; then they need `.confirm`."""
+Dangerous commands (ARM, FIRE, FAULT:CLEar, CHARGE, protections) are refused unless you are on the danger list; then they need `.confirm`.
+Project repository and guides: https://github.com/everettpenne/WHAM-CONTROLLERS"""
 MAX_LINES = 20                      # lines of one Slack message sent to a controller
 
 
@@ -227,10 +237,12 @@ def session_check(command, may_danger=False):
         return "refuse", "Lines starting with @ are for the hub's handshake and are not passed on."
     if text.startswith("!"):
         words = text.lower().split()
-        if words[0] == "!hub" and words[1:2] and words[1] in ("status", "clients", "who", "identify", "log"):
+        if words[0] == "!hub" and words[1:2] and words[1] in ("status", "clients", "who", "identify", "log", "shotnumber"):
+            return "send", ""
+        if words[:3] == ["!hub", "read", "shotnumber"]:
             return "send", ""
         return "refuse", ("Of the hub's own commands only `!hub status`, `!hub clients`, `!hub identify` and `!hub log` are "
-                          "passed on (use `.hublog` for the traffic view).")
+                          "passed on, with `!hub shotnumber <n>` and `!hub read shotnumber <n>` (use `.hublog` for the traffic view).")
     if wham_hub.reply_spec(text)[0]:
         return "refuse", (f"`{head}` is a long dump or a firmware step: it holds the controller's serial link for seconds and "
                           "does not fit Slack. Use the operator console or the firmware tools.")
@@ -600,6 +612,115 @@ class Bot:
         return (f"{head}, newest {len(rows)} matching rows:\n```\n" + ("\n".join(text) or "(nothing)") + "\n```"
                 + ("\n" + "\n".join(notes) if notes else ""))
 
+    # -- a day of a hub's log as a file
+    def log_folder(self, name, user_name):
+        """(folder of this hub's day files, None) or (None, why): the hub says where it writes its log."""
+        f, err = self.hub_status(name, user_name)
+        if f is None:
+            return None, f"the hub does not answer ({err})"
+        path = f.get("log", "-")
+        if not path or path == "-":
+            return None, "the hub has not written a log yet"
+        return os.path.dirname(path), None
+
+    def log_days(self, names, user_name):
+        out = []
+        for c in names:
+            folder, why = self.log_folder(c, user_name)
+            if folder is None:
+                out.append(f"*{c}*: {why}")
+                continue
+            try:
+                days = sorted(n for n in os.listdir(folder) if n.endswith(".jsonl"))
+            except OSError as e:
+                out.append(f"*{c}*: the log folder could not be read ({e})")
+                continue
+            rows = [f"{n[:-6]}  {os.path.getsize(os.path.join(folder, n)) / 1e6:6.1f} MB" for n in days[-40:]]
+            out.append(f"*{c}*: {len(days)} day(s) of log kept" + (f", the newest {len(rows)}:" if len(days) > len(rows) else ":")
+                       + "\n```\n" + ("\n".join(rows) or "(none)") + "\n```")
+        return "\n".join(out)
+
+    def log_as_file(self, names, user_name, channel, words):
+        """One day of the hub log(s) as a file. Text by default: one readable line per row, without the hub's own heartbeat
+        queries, several hubs merged in time order. raw: one hub's day file exactly as stored (JSON lines, everything)."""
+        raw = "raw" in words
+        dates = [w for w in words if w not in ("raw", "file", "download")]
+        try:
+            day = diary.a_date(dates[0]) if dates else datetime.date.today().isoformat()
+        except diary.DiaryError as e:
+            return str(e)
+        if len(dates) > 1 or day is None:
+            return "Which day? `log file [today|yesterday|YYYY-MM-DD] [raw]`"
+        if raw and len(names) != 1:
+            return "`raw` gives one hub's file as stored: name one controller, for example `log ech file raw`."
+        if self.upload is None or not channel:
+            return "Files can only be sent in Slack."
+        rows, notes, data = [], [], b""
+        quiet = {"internal": False, "since_t": None, "before_t": None, "kinds": None, "client": None, "grep": None}
+        for c in names:
+            folder, why = self.log_folder(c, user_name)
+            path = os.path.join(folder, day + ".jsonl") if folder else None
+            if folder is None or not os.path.exists(path):
+                notes.append(f"*{c}*: " + (why or f"no log for {day}"))
+                continue
+            if os.path.getsize(path) > 200e6:
+                notes.append(f"*{c}*: the log of {day} is {os.path.getsize(path) / 1e6:.0f} MB, too large to send")
+                continue
+            try:
+                if raw:
+                    with open(path, "rb") as f:
+                        data = f.read()
+                    continue
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        try:
+                            r = json.loads(line)
+                        except ValueError:
+                            continue
+                        if isinstance(r, dict) and wham_hub.log_row_matches(r, quiet):
+                            rows.append((r.get("t", 0), c, r))
+            except OSError as e:
+                notes.append(f"*{c}*: the log could not be read ({e})")
+        if not (data or rows):
+            return f"Nothing to send for {day}.\n" + "\n".join(notes)
+        label = names[0] if len(names) == 1 else "all"
+        if raw:
+            name, n, what = f"wham-hublog-{label}-{day}.jsonl", data.count(b"\n"), "as the hub stored it (JSON lines, every row)"
+        else:
+            rows.sort(key=lambda x: x[0])
+            width = max(len(c) for c in names)
+            text = [f"# WHAM hub log, {', '.join(names)}, {day}: {len(rows)} rows. Columns: time, "
+                    + ("controller, " if len(names) > 1 else "") + "kind, client, line. The hubs' own heartbeat queries are left out (raw has them)."]
+            for t, c, r in rows:
+                stamp_ = datetime.datetime.fromtimestamp(t).strftime("%H:%M:%S.%f")[:12]
+                text.append(f"{stamp_} " + (f"{c:<{width}} " if len(names) > 1 else "") + f"{r.get('kind', '?'):<9} {(r.get('client') or '-'):<16} "
+                            + (f"[DANGEROUS {r['danger']}] " if r.get("danger") else "") + str(r.get("line", "")))
+            data = ("\n".join(text) + "\n").encode()
+            name, n, what = f"wham-hublog-{label}-{day}.txt", len(rows), "one line per row, without the hubs' own heartbeat queries"
+        why = self.upload(channel, name, data, f"WHAM hub log {label} {day}",
+                          f"Hub log of {', '.join(names)} for {day}: {n:,} rows, {len(data) / 1e6:.1f} MB, {what}."
+                          + ("\n" + "\n".join(notes) if notes else ""))
+        if why is None:
+            return None
+        if "missing_scope" in why or "not_allowed_token_type" in why:
+            return "I am not allowed to send files: the Slack app needs the `files:write` permission."
+        return f"The file could not be sent ({why})."
+
+    def log_files(self, key, words, user_name, session):
+        """log ... file / log ... days: which hub(s), then the file or the list of days."""
+        rest = [w for w in words if w != "log"]
+        if rest and rest[0] == "all":
+            names, rest = list(self.cfg["controllers"]), rest[1:]
+        elif rest and find_controller(self.cfg, rest[0]) and rest[0] not in ("file", "raw", "days", "dates", "today", "yesterday"):
+            names, rest = [find_controller(self.cfg, rest[0])], rest[1:]
+        elif session is not None:
+            names = [session.name]
+        else:
+            return "Of which controller? `log <controller> file [date]`, `log all file [date]`, `log <controller> days`."
+        if rest and rest[0] in ("days", "dates"):
+            return self.log_days(names, user_name)
+        return self.log_as_file(names, user_name, key[0], rest)
+
     def answer(self, text, user="U0", user_name="user"):
         """The reply to one message (the bot's mention already removed)."""
         words = text.strip().split()
@@ -784,6 +905,8 @@ class Bot:
             return HELP.format(names=", ".join(self.cfg["controllers"]))
         if verb in ("users", "authorized", "allowed"):
             return self.users()
+        if verb in ("repo", "repository", "github", "source", "about"):
+            return REPO_TEXT
         if verb == "diary":
             return self.diary(text.strip()[5:], user, s.name if s else "general", key[0])
         w = self.watches.get(key)
@@ -802,6 +925,9 @@ class Bot:
         if verb in ("watch", "hublog", "hub-log") and w is not None and len(words) > 1 and words[1].lower() in ("off", "0", "no"):
             w.close()
             return "Stopped watching." + (f" You are still connected to *{s.name}*." if s else "")
+        low = [x.lower() for x in words]
+        if "log" in low[:2] and any(x in low for x in ("file", "download", "days", "dates")):
+            return self.log_files(key, low, user_name, s)
         if verb == "log" and len(words) > 1 and words[1].lower() == "all":
             return self.log(None, user_name, words[2:])
         if verb == "connect":
@@ -859,7 +985,7 @@ class Bot:
             for x in w.sessions.values():
                 x.last_input = time.monotonic()
         first = lines[0].lower().split()
-        own = len(lines) == 1 and (first[0] in ("help", "?") or first[:2] in (["watch", "all"], ["watch", "off"], ["log", "all"]))
+        own = len(lines) == 1 and (first[0] in ("help", "?", "repo", "github") or first[:2] in (["watch", "all"], ["watch", "off"], ["log", "all"]))
         if s is None or lines[0].startswith(".") or own:               # the bot's own words are never controller commands
             return self.bot_command(key, lines[0].lstrip(".").strip(), user, user_name, post)   # help is never a controller command
         s.confirm = None                                               # anything else typed cancels a pending question

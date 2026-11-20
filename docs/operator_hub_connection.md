@@ -87,6 +87,9 @@ STATE?
 | `!hub status` | `connected=1` | `connected=0` means the hub has lost the controller (power, cable): nothing you type will reach it. |
 | `!hub clients` | the list of everyone connected | If anyone else is listed, **agree with them who is operating** (section 6). |
 | `!hub log 50 since=1h` | the last hour of what the hub saw, as `# log {...}` lines (the web console's *Host log* tab shows the same thing readably) | Add `kind=cmd`, `client=<name>` or `grep=<text>` to narrow it down. |
+| `!hub shotnumber 261120015` | files what the controller holds now (the shot waveform and the settings around it) in the hub's log under that shot number. Quiet: only you get a reply, one line when it is done | Send it close to the shot. Queries only; works for HBRIDGE and XREX boards. |
+| `!hub read shotnumber 261120015` | the block recorded for that shot, as `# shot <query> = <reply>` lines, to you only | Without a number: the shots recorded lately. |
+| `!hub diary write <text>`, `!hub diary read` | the operators' shared diary (see `docs/diary.md`) | |
 
 `*IDN?` also reports the board's serial number and firmware version, which is worth noting in your log. `SN=UNSET` means the board has not had a serial assigned yet.
 

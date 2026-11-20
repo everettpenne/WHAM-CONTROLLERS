@@ -19,12 +19,16 @@ Open a direct message with the bot (or use `/wham <words>`).
 | `STATE?`, `SHOT?`, `CONFig:MODE HVPS`, ... | while connected, **every line you type is sent to the controller** and its reply is posted. Several lines in one message are sent in order (at most 20) |
 | `.hublog on` / `.hublog off` | **hub-log mode**: everything the hub sees is shown, live: other clients' commands as `[name] > command`, their replies as `[name] < reply`, joins and leaves, the controller's events |
 | `.log 20 since=1h grep=ARM` | the hub's *stored* log (what happened earlier); also `kind=cmd`, `client=<name>` |
+| `.log file [today\|yesterday\|YYYY-MM-DD]` | **a whole day of that hub's log as a file** to download: one readable line per row (time, kind, client, line), without the hub's own heartbeat queries. Add `raw` for the day file exactly as the hub stored it (JSON lines, everything). Not connected: `log ech file`. `log all file` merges every hub's day in time order |
+| `.log days` | which days of log the hub keeps, with their sizes (`log ech days`, `log all days` when not connected) |
+| `!hub read shotnumber 261120015` | (in a session) the shot record filed under that number in this hub's log: the waveform and settings the controller held. `!hub shotnumber <number>` files one now. See `docs/device_identity_and_host_service.md` |
 | `.who` | who is connected to that hub |
 | `.disconnect` | closes the session (the controller keeps doing what it does) |
 | `watch all` / `watch off` | **every controller at once**: the live traffic of all hubs in one stream, each line marked with its controller, for example `[ech] [labview] > STATE?`. It only watches: nothing you type is sent to a controller. It works beside a session (your own lines then show twice) |
 | `log all 20 since=1h` | the *stored* logs of every hub, merged in time order (same filters as `.log`) |
 | `diary write <text>`, `diary read [date\|all]`, `diary last`, `diary search <text>`, `diary index`, `diary file` | the operators' shared diary on the server: every entry carries its date, time and writer. See `docs/diary.md` |
 | `.users` | who is authorized to use the bot, by name, and whether anyone may send dangerous commands |
+| `repo` | the link to the project's public repository, https://github.com/everettpenne/WHAM-CONTROLLERS (through a hub: `!hub repo`) |
 | `help` | the list of commands. It works at any time, with or without the dot, also while connected (it is never sent to a controller) |
 
 While connected, a line that starts with a **dot** is for the bot and everything else goes to the controller. Not

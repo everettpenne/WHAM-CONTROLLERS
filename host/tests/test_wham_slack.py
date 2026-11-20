@@ -279,6 +279,18 @@ class BotTests(HubBase):
         await asyncio.sleep(0.3)
         self.assertFalse([c for c in self.ctl.received if c.lower() in ("help", "?")], "help is the bot's, not a controller command")
 
+    async def test_repo_gives_the_link_and_is_never_sent_to_a_controller(self):
+        for word in ("repo", ".repo", "github", "repository"):
+            self.assertIn("https://github.com/everettpenne/WHAM-CONTROLLERS", await self.say(word), word)
+        await self.say("connect ech")
+        self.assertIn("https://github.com/everettpenne/WHAM-CONTROLLERS", await self.say("repo"))
+        helptext = await self.say("help")
+        self.assertIn("`repo`", helptext)
+        self.assertEqual(helptext.splitlines()[-1], "Project repository and guides: https://github.com/everettpenne/WHAM-CONTROLLERS")
+        await asyncio.sleep(0.3)
+        self.assertFalse([c for c in self.ctl.received if c.lower() in ("repo", "github")])
+        self.assertIsNone(await self.say("repo", user="USTRANGER", channel="D9"))
+
     async def test_users_lists_who_is_authorized_by_name_without_mentions(self):
         self.bot.person = {"U1": "Ann Example", "UDANGER": "Dan Example"}.get
         out = await self.say("users")
@@ -516,6 +528,57 @@ class BotTests(HubBase):
         self.assertIn("merged", await self.say("log all 5"))                              # no dot needed, never sent to the controller
         self.assertIn("*ech* hub log", await self.say(".log 5"))
         self.assertNotIn("log all 5", self.ctl.received)
+
+    async def test_a_day_of_hub_log_is_sent_as_a_file(self):
+        ctl2, hub2, listen2 = await self.second_hub()
+        self.bot.cfg["controllers"]["limiter"] = {"host": "127.0.0.1", "port": listen2, "aliases": []}
+        a = await Client.connect(self.listen, "labview")
+        b = await Client.connect(listen2, "console")
+        await a.send("ECHO on-ech")
+        await asyncio.sleep(0.3)
+        await b.send("ECHO on-limiter")
+        await asyncio.sleep(0.4)
+        today = __import__("datetime").date.today().isoformat()
+        self.assertIn("Of which controller?", await self.say("log file"))
+        self.assertIn("Files can only be sent in Slack", await self.say("log ech file"))
+        sent = []
+        self.bot.upload = lambda channel, name, data, title, comment: sent.append((channel, name, data, comment))
+        self.assertIsNone(await self.say("log ech file"))
+        channel, name, data, comment = sent[-1]
+        text = data.decode()
+        self.assertEqual((channel, name), ("D1", f"wham-hublog-ech-{today}.txt"))
+        self.assertTrue(text.startswith(f"# WHAM hub log, ech, {today}:"))
+        self.assertRegex(text, r"\n\d\d:\d\d:\d\d\.\d{3} cmd +labview +ECHO on-ech\n")
+        self.assertRegex(text, r"reply +labview +OK on-ech\n")
+        self.assertNotIn("on-limiter", text)
+        self.assertNotIn("*IDN?", text, "the hub's own handshake queries are left out of the readable file")
+        self.assertIn("rows", comment)
+        self.assertIsNone(await self.say("log ech file raw"))
+        channel, name, data, comment = sent[-1]
+        self.assertEqual(name, f"wham-hublog-ech-{today}.jsonl")
+        recs = [json.loads(l) for l in data.decode().splitlines()]
+        self.assertTrue(any(r.get("line") == "*IDN?" for r in recs), "raw is the file as stored, everything in it")
+        self.assertIsNone(await self.say("log all file"))
+        channel, name, data, comment = sent[-1]
+        lines = data.decode().splitlines()
+        self.assertEqual(name, f"wham-hublog-all-{today}.txt")
+        self.assertLess(next(i for i, l in enumerate(lines) if "on-ech" in l), next(i for i, l in enumerate(lines) if "on-limiter" in l))
+        self.assertRegex(data.decode(), r" limiter +cmd +console +ECHO on-limiter")
+        self.assertIn("name one controller", await self.say("log all file raw"))
+        n = len(sent)
+        self.assertIn("no log for 2020-01-01", await self.say("log ech file 2020-01-01"))
+        self.assertIn("Which day?", await self.say("log ech file sometime"))
+        self.assertEqual(len(sent), n)
+        out = await self.say("log ech days")
+        self.assertIn("*ech*: 1 day(s) of log kept", out)
+        self.assertIn(today, out)
+        await self.say("connect limiter")
+        self.assertIsNone(await self.say(".log file today"))                               # in a session: that controller
+        self.assertEqual(sent[-1][1], f"wham-hublog-limiter-{today}.txt")
+        self.assertIn("*limiter*: 1 day(s)", await self.say(".log days"))
+        self.assertFalse([c for c in ctl2.received if "log" in c.lower()], "nothing of this goes to a controller")
+        self.bot.upload = lambda *a: "missing_scope"
+        self.assertIn("`files:write`", await self.say(".log file"))
 
     async def test_too_many_messages_too_fast(self):
         self.bot.cfg["rate_per_minute"] = 2
