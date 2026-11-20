@@ -8,7 +8,9 @@ In a direct message with the bot (or with /wham <words>, or by mentioning it):
     STATE?                   ... while connected, every line you type is sent to the controller and its reply is posted
     .hublog on               show ALL traffic of that hub: other clients' commands and replies, joins, events (.hublog off)
     .log 20 since=1h         the hub's stored log (also grep=<text>, kind=cmd, client=<name>)
-    .disconnect              close the session            .help
+    .disconnect              close the session
+    .users                   who is authorized to use the bot
+    help                     the list of commands (at any time)
 
 While connected, a line that starts with a dot is for the bot; everything else goes to the controller. Not connected, the dot
 is optional, and "ech state" or "ech SHOT?" asks one controller one thing without opening a session.
@@ -82,14 +84,16 @@ DEFAULTS = {
     },
 }
 MAX_TEXT = 3500                     # a Slack message holds about 4000 characters
-HELP = """*WHAM controllers through the hubs*
+HELP = """*WHAM-PFM-Controller-Link: the WHAM controllers, through their hubs*
+`help`  this list (works at any time, connected or not)
 `list`  the controllers: state, fault, who is connected
 `connect <controller>`  open a session; then every line you type goes to the controller and its reply comes back
 `.hublog on` / `.hublog off`  show all traffic of that hub (other people's commands and replies, events)
 `.log [n] [since=1h] [grep=text] [kind=cmd]`  the hub's stored log (n up to 30)
 `.who`  who is connected to that hub      `.disconnect`  close the session
-While connected, a line starting with a dot is for me; anything else is sent to the controller.
-Not connected: `<controller> state`, `<controller> <QUERY?>` ask one thing (read only).
+`.users`  who is authorized to use this bot
+While connected, a line starting with a dot is for me; anything else (except `help`) is sent to the controller.
+Not connected the dot is optional, and `<controller> state` or `<controller> <QUERY?>` asks one thing (read only).
 Controllers: {names}.
 Dangerous commands (ARM, FIRE, FAULT:CLEar, CHARGE, protections) are refused unless you are on the danger list; then they need `.confirm`."""
 MAX_LINES = 20                      # lines of one Slack message sent to a controller
@@ -305,8 +309,9 @@ def reply_line(lines):
 
 
 class Bot:
-    def __init__(self, cfg, request=hub_request, now=time.time, config_path=None):
+    def __init__(self, cfg, request=hub_request, now=time.time, config_path=None, person=lambda user: user):
         self.cfg, self.request, self.now = cfg, request, now
+        self.person = person                                          # Slack member ID -> the person's name, for .users
         self.config_path, self.config_mtime = config_path, self._mtime(config_path)
         self.recent = collections.defaultdict(collections.deque)      # user -> times of recent requests
         self.sessions = {}                                            # (channel, user) -> Session
@@ -455,6 +460,22 @@ class Bot:
             return why
         return f"*{name}* `{command}`\n```\n{self.query(name, user_name, command)}\n```"
 
+    def users(self):
+        """Who is authorized: names only (a Slack mention here would notify every one of them)."""
+        allowed, danger = self.cfg["allow_users"], self.cfg["danger_users"]
+        rows = []
+        for u in allowed:
+            rows.append(f"• {self.person(u)}" + ("  (may also send dangerous commands, each with `.confirm`)" if u in danger else ""))
+        extra = [u for u in danger if u not in allowed]
+        out = f"*Authorized to use this bot* ({len(allowed)}):\n" + ("\n".join(rows) or "nobody by name")
+        if self.cfg["allow_channels"]:
+            out += f"\nAlso anyone writing in {len(self.cfg['allow_channels'])} allowed channel(s): " + ", ".join(f"<#{c}>" for c in self.cfg["allow_channels"])
+        if not any(u in allowed for u in danger):
+            out += "\nNobody may send dangerous commands (ARM, FIRE, FAULT:CLEar, CHARGE, protections) from Slack."
+        if extra:
+            out += f"\n({len(extra)} entry on the danger list is not on the allowed list, so it has no effect.)"
+        return out + "\nThe lists are kept by the bot's owner in its settings file on the lab server."
+
     # -- sessions
     def close_all(self, why):
         for s in list(self.sessions.values()):
@@ -483,6 +504,8 @@ class Bot:
         s = self.sessions.get(key)
         if verb in ("help", "?"):
             return HELP.format(names=", ".join(self.cfg["controllers"]))
+        if verb in ("users", "authorized", "allowed"):
+            return self.users()
         if verb in ("list", "status", "controllers"):
             out = "\n".join(self.summary(n, user_name) for n in self.cfg["controllers"])
             return out + ((f"\nYou are connected to *{s.name}*" + (" (hub-log on)." if s.hublog else ".")) if s else "")
@@ -532,8 +555,8 @@ class Bot:
         if not lines:
             return None
         s = self.sessions.get(key)
-        if s is None or lines[0].startswith("."):
-            return self.bot_command(key, lines[0].lstrip(".").strip(), user, user_name, post)
+        if s is None or lines[0].startswith(".") or (len(lines) == 1 and lines[0].lower() in ("help", "?")):
+            return self.bot_command(key, lines[0].lstrip(".").strip(), user, user_name, post)   # help is never a controller command
         s.confirm = None                                               # anything else typed cancels a pending question
         if len(lines) > MAX_LINES:
             return f"That is {len(lines)} lines; at most {MAX_LINES} are sent from one message. Nothing was sent."
@@ -681,18 +704,24 @@ class SlackLink:
         self.bot, self.api, self.connect, self.log = bot, api, connect, log
         self.bot_user = None
         self.seen = collections.deque(maxlen=500)             # event ids already handled (Slack retries)
-        self.names = {}
+        self.names, self.people = {}, {}
         self.stop = threading.Event()
+        bot.person = lambda user: self.lookup(user)[1]
 
-    def user_name(self, user):
-        if user not in self.names:
+    def lookup(self, user):
+        """(short name for the hub client name, the person's name for lists); the member ID when Slack will not say."""
+        if user not in self.people:
             try:
                 r = self.api("users.info", self.bot.cfg["bot_token"], {"user": user})
-                p = r.get("user", {}) if r.get("ok") else {}
-                self.names[user] = p.get("name") or user
             except (OSError, ValueError):
-                self.names[user] = user
-        return self.names[user]
+                return user, user                              # not remembered: asked again next time
+            p = r.get("user", {}) if r.get("ok") else {}
+            self.people[user] = (p.get("name") or user, p.get("real_name") or p.get("name") or user)
+            self.names[user] = self.people[user][0]
+        return self.people[user]
+
+    def user_name(self, user):
+        return self.lookup(user)[0]
 
     def post(self, channel, text, thread=None):
         body = {"channel": channel, "text": text}

@@ -236,6 +236,28 @@ class BotTests(HubBase):
         await self.posted("the hub closed the connection")
         self.assertEqual(self.bot.sessions, {})
 
+    async def test_help_always_answers_and_is_never_sent_to_the_controller(self):
+        self.assertIn("connect <controller>", await self.say("help"))
+        await self.say("connect ech")
+        for word in ("help", "Help", ".help", "?"):
+            self.assertIn("`.users`", await self.say(word), word)
+        await asyncio.sleep(0.3)
+        self.assertFalse([c for c in self.ctl.received if c.lower() in ("help", "?")], "help is the bot's, not a controller command")
+
+    async def test_users_lists_who_is_authorized_by_name_without_mentions(self):
+        self.bot.person = {"U1": "Ann Example", "UDANGER": "Dan Example"}.get
+        out = await self.say("users")
+        self.assertIn("*Authorized to use this bot* (2)", out)
+        self.assertIn("• Ann Example", out)
+        self.assertIn("• Dan Example  (may also send dangerous commands", out)
+        self.assertNotIn("<@", out, "a mention would notify everyone on the list")
+        self.assertIn("1 allowed channel(s): <#CLAB>", out)
+        await self.say("connect ech")
+        self.assertIn("Ann Example", await self.say(".users"))
+        self.bot.cfg["danger_users"] = []
+        self.assertIn("Nobody may send dangerous commands", await self.say(".users"))
+        self.assertIsNone(await self.say("users", user="USTRANGER", channel="D9"), "only authorized people may ask")
+
     async def test_too_many_messages_too_fast(self):
         self.bot.cfg["rate_per_minute"] = 2
         await self.say("help")
@@ -332,14 +354,14 @@ class SlackLinkTests(HubBase):
     """The whole path: an event arrives on the socket, is acknowledged, and the answer is posted."""
 
     async def test_events_are_acknowledged_answered_and_not_repeated(self):
-        await self.start_hub()
+        self.hub = await self.start_hub()
         srv, calls, logs = FakeWsServer(), [], []
 
         def api(method, token, payload=None, timeout=15.0):
             calls.append((method, token, payload))
             return {"auth.test": {"ok": True, "user_id": "UBOT", "user": "wham", "team": "lab"},
                     "apps.connections.open": {"ok": True, "url": f"ws://127.0.0.1:{srv.port}/"},
-                    "users.info": {"ok": True, "user": {"name": "ann"}}}.get(method, {"ok": True})
+                    "users.info": {"ok": True, "user": {"name": "ann", "real_name": "Ann Example"}}}.get(method, {"ok": True})
         link = ws.SlackLink(ws.Bot(cfg(self.listen)), api=api, log=logs.append)
         t = threading.Thread(target=link.run, daemon=True)
         t.start()
@@ -367,6 +389,9 @@ class SlackLinkTests(HubBase):
         self.assertTrue(any("ignored a message from USTRANGER" in l for l in logs))
         event("7", {"type": "app_mention", "user": "U1", "channel": "CLAB", "text": "<@UBOT> ech STATE?", "ts": "7.0"})
         self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any(p["channel"] == "CLAB" and "OK IDLE" in p["text"] for p in posts())), posts())
+        event("7b", {"type": "message", "channel_type": "im", "user": "U1", "channel": "D1", "text": ".users", "ts": "7.5"})
+        self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("• Ann Example" in p["text"] for p in posts())), posts())
+        self.assertTrue(any(r.get("client") == "slack-ann" for r in self.log_records(self.hub)), "the session is named after the Slack user")
         event("8", None, etype="slash_commands", extra={"user_id": "U1", "channel_id": "D1", "text": ".disconnect", "command": "/wham"})
         self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("Disconnected" in p["text"] for p in posts())), posts())
         link.stop.set()

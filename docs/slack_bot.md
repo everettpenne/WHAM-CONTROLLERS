@@ -4,6 +4,10 @@
 from Slack. It connects to Slack by an outgoing connection only (Socket Mode): nothing listens on the server and no port
 is opened in the lab network.
 
+In Slack the app is called **WHAM-PFM-Controller-Link** and the bot that answers is **Host-Link_PFM-Controller**
+(workspace WHAM). Slack shows a new app in the sidebar only after you open it once: press Cmd+K (Ctrl+K), type
+`WHAM-PFM`, pick the app, and open its **Messages** tab.
+
 ## Using it
 
 Open a direct message with the bot (or use `/wham <words>`).
@@ -17,7 +21,8 @@ Open a direct message with the bot (or use `/wham <words>`).
 | `.log 20 since=1h grep=ARM` | the hub's *stored* log (what happened earlier); also `kind=cmd`, `client=<name>` |
 | `.who` | who is connected to that hub |
 | `.disconnect` | closes the session (the controller keeps doing what it does) |
-| `.help` | the list above |
+| `.users` | who is authorized to use the bot, by name, and whether anyone may send dangerous commands |
+| `help` | the list of commands. It works at any time, with or without the dot, also while connected (it is never sent to a controller) |
 
 While connected, a line that starts with a **dot** is for the bot and everything else goes to the controller. Not
 connected, the dot is optional, and `ech state` or `ech SHOT?` asks one thing without opening a session (read only).
@@ -49,18 +54,18 @@ in for 30 minutes is closed (`session_idle_min`), so a forgotten one does not ho
 
    ```yaml
    display_information:
-     name: WHAM
+     name: WHAM-PFM-Controller-Link
    features:
      bot_user:
-       display_name: wham
+       display_name: Host-Link_PFM-Controller
        always_online: true
      app_home:
        messages_tab_enabled: true
        messages_tab_read_only_enabled: false
      slash_commands:
        - command: /wham
-         description: WHAM controllers through the hubs
-         usage_hint: list | connect ech | .disconnect
+         description: WHAM-PFM-Controller-Link, the controllers through their hubs
+         usage_hint: help | list | connect ech | users
    oauth_config:
      scopes:
        bot: [app_mentions:read, chat:write, im:history, commands, users:read]
@@ -69,6 +74,9 @@ in for 30 minutes is closed (`session_idle_min`), so a forgotten one does not ho
        bot_events: [app_mention, message.im]
      socket_mode_enabled: true
    ```
+
+   To change the names or the `/wham` hint of an app that already exists: its settings → *App Manifest*, edit, *Save*
+   (or *Basic Information → Display Information*, *App Home*, and *Slash Commands → edit*). The bot needs no change.
 
    Then: *Basic Information → App-Level Tokens* → create one with scope `connections:write` (the `xapp-...` token);
    *Install App* → install to the workspace (the `xoxb-...` bot token).
