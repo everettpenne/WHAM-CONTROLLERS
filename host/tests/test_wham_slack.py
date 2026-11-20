@@ -121,6 +121,16 @@ class RulesTests(unittest.TestCase):
             self.assertEqual(ws.find_controller(c, "ech-hvps"), "ech")
             self.assertIsNone(ws.find_controller({"controllers": {"ab1": {"aliases": []}, "ab2": {"aliases": []}}}, "ab"), "not when two match")
 
+    def test_a_stop_signal_ends_the_bot_through_its_normal_exit(self):
+        import signal
+        old = ws.stop_on_signals()
+        try:
+            with self.assertRaises(SystemExit):
+                signal.raise_signal(signal.SIGTERM)
+        finally:
+            for sig, h in old.items():
+                signal.signal(sig, h)
+
     def test_tokens_come_from_the_environment_first_and_no_token_is_in_the_defaults(self):
         c = ws.load_config("/nonexistent", env={"SLACK_APP_TOKEN": "xapp-e", "SLACK_BOT_TOKEN": "xoxb-e"})
         self.assertEqual((c["app_token"], c["bot_token"]), ("xapp-e", "xoxb-e"))
@@ -283,8 +293,45 @@ class BotTests(HubBase):
         self.assertIn("Nobody may send dangerous commands", await self.say(".users"))
         self.assertIsNone(await self.say("users", user="USTRANGER", channel="D9"), "only authorized people may ask")
 
-    async def second_hub(self):
-        ctl = FakeController(serial="WB-0002-6")
+    async def test_a_new_session_is_greeted_by_name_with_what_to_watch_out_for(self):
+        self.bot.person = {"U1": "Ann Example"}.get
+        out = await self.say("connect ech")
+        self.assertIn("Hello Ann! Connected to *ech* as `slack-ann`.", out)
+        self.assertIn("`IDLE`", out)
+        self.assertNotIn(":warning:", out)
+        await self.say(".disconnect")
+        await Client.connect(self.listen, "labview", quiet=True)
+        await asyncio.sleep(0.3)
+        out = await self.say("connect ech")
+        self.assertIn(":warning: Someone else is connected to it", out)
+        self.assertIn("labview", out)
+        ctl2, hub2, listen2 = await self.second_hub(ArmedController)
+        self.bot.cfg["controllers"]["limiter"] = {"host": "127.0.0.1", "port": listen2, "aliases": []}
+        out = await self.say("connect limiter", channel="D5")
+        self.assertIn("`ARMED`", out)
+        self.assertIn(":warning: The controller is not IDLE", out)
+
+    async def test_stopping_the_bot_says_goodbye_to_every_open_session_and_watch(self):
+        others = []
+        await self.say("connect ech")
+        await asyncio.to_thread(self.bot.handle, "UDANGER", "D2", "watch all", "dan", others.append)
+        await asyncio.sleep(0.4)
+        self.assertEqual(len(self.hub.clients), 2)
+        told = await asyncio.to_thread(self.bot.goodbye)
+        self.assertEqual(told, 2)
+        bye = [p for p in self.posts if p.startswith("Goodbye")]
+        self.assertEqual(len(bye), 1)
+        self.assertIn("your session with *ech* is closed", bye[0])
+        self.assertIn("`connect ech` again", bye[0])
+        self.assertFalse(any("Session with" in p for p in self.posts), "said once, not twice")
+        self.assertEqual(sum(p.startswith("Goodbye") and "watch is stopped" in p for p in others), 1)
+        await asyncio.sleep(0.4)
+        self.assertEqual(len(self.hub.clients), 0)
+        self.assertEqual((self.bot.sessions, self.bot.watches), ({}, {}))
+        self.assertEqual(await asyncio.to_thread(self.bot.goodbye), 0)
+
+    async def second_hub(self, controller=FakeController):
+        ctl = controller(serial="WB-0002-6")
         port = await ctl.start()
         self.addAsyncCleanup(ctl.stop)
         listen = free_port()
@@ -411,6 +458,14 @@ class BotTests(HubBase):
         await other.send("BIG 400")                                                        # 400 unsolicited lines of 1000 characters
         await self.posted("more lines were not shown", secs=20)
         self.assertLess(sum(len(p) for p in self.posts), 400 * 1000)
+
+
+class ArmedController(FakeController):
+    async def answer(self, cmd, writer):
+        if cmd == "STATE?":
+            self.say(writer, "OK ARMED\r\n")
+        else:
+            await super().answer(cmd, writer)
 
 
 class FakeWsServer:

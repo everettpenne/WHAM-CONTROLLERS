@@ -24,6 +24,9 @@ WHAM-XREX-PFMG474 Firmware Changelog
   of every hub merged by time), and discovery: the bot reads host/config/<name>.yaml about twice a minute and offers every hub
   configured there, so a controller that gets a hub appears in list, connect and watch all by itself; the three installed
   ones keep their short names with the hub name as an alias; a unique beginning of a name is accepted. Tests: 25.
+  And: a new session is greeted by name with the controller's state and a warning when it is not IDLE or someone else is
+  connected; a stop signal now ends the bot through its normal exit, which says goodbye in every conversation with an open
+  session or watch before closing it (a kill used to end sessions silently). Tests: 28.
 
 2026-11-19  -  Tools: the flashing scripts refuse an image built from uncommitted code  [no firmware change; host-tested, checked with real builds in a throwaway clone; nothing flashed]
 -----------------------------------------------------------------------

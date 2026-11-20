@@ -61,6 +61,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import socket
 import ssl
 import struct
@@ -648,7 +649,22 @@ class Bot:
                 f"{self.cfg['session_idle_min']:g} minutes without a message from you."
                 + ("\nNot reachable: " + "; ".join(f"{n} ({e})" for n, e in w.failed.items()) if w.failed else ""))
 
-    def connect(self, key, name, user_name, post):
+    def goodbye(self, why="I am being restarted (an update or maintenance)"):
+        """The bot is stopping: close every session and watch, and tell each conversation so, once."""
+        told = 0
+        for s in list(self.sessions.values()):
+            s.announce = False
+            s.close()
+            s.post(f"Goodbye: {why}, so your session with *{s.name}* is closed. What the controller is doing keeps going. "
+                   f"I should be back within a few minutes: `connect {s.name}` again then.")
+            told += 1
+        for w in list(self.watches.values()):
+            w.close()
+            w.post(f"Goodbye: {why}, so the watch is stopped. `watch all` again in a few minutes.")
+            told += 1
+        return told
+
+    def connect(self, key, name, user_name, post, user=None):
         old = self.sessions.get(key)
         if old is not None:
             old.close()
@@ -661,8 +677,16 @@ class Bot:
         except OSError as e:
             return f"Could not connect to the *{name}* hub ({e})."
         self.sessions[key] = s
-        return (f"Connected to *{name}* as `{s.who}`. {self.summary(name, user_name)}\n"
-                "Every line you type now goes to the controller. `.hublog on` shows all traffic, `.disconnect` closes, `.help`.")
+        first = str(self.person(user) if user else user_name).split()[0]
+        summary = self.summary(name, user_name)
+        care = []
+        if "`IDLE`" not in summary:
+            care.append("The controller is not IDLE: look at its state above before you send anything.")
+        if "; connected: " in summary:
+            care.append("Someone else is connected to it: agree with them before you change anything.")
+        return (f"Hello {first}! Connected to *{name}* as `{s.who}`.\n{summary}\n"
+                + ("".join(f":warning: {c}\n" for c in care))
+                + "Every line you type now goes to the controller. `.hublog on` shows all traffic, `.disconnect` closes, `help` lists the rest.")
 
     def bot_command(self, key, text, user, user_name, post):
         """A line for the bot itself (the dot already removed)."""
@@ -695,7 +719,7 @@ class Bot:
             name = find_controller(self.cfg, words[1]) if len(words) > 1 else None
             if name is None:
                 return f"Connect to which controller? `connect <{'|'.join(self.cfg['controllers'])}>`"
-            return self.connect(key, name, user_name, post)
+            return self.connect(key, name, user_name, post, user)
         if s is None:
             if verb in ("hublog", "hub-log", "watch"):
                 return "You are not connected. `watch all` shows every controller's traffic; `connect <controller>` then `.hublog on` shows one."
@@ -1007,6 +1031,13 @@ class SlackLink:
 
 
 # ---- running it -----------------------------------------------------------------------------------------------------
+def stop_on_signals():
+    """SIGTERM and Ctrl-C end the bot through its normal exit, so open sessions get their goodbye. Returns the old handlers."""
+    def stop(signum, frame):
+        raise SystemExit(0)
+    return {sig: signal.signal(sig, stop) for sig in (signal.SIGTERM, signal.SIGINT)}
+
+
 def checkout_commit():
     r = subprocess.run(["git", "-C", HOST_DIR, "rev-parse", "HEAD"], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else None
@@ -1086,11 +1117,13 @@ def main(argv=None):
         return started is not None and checkout_commit() != started
     if not (cfg["allow_channels"] or cfg["allow_users"]):
         log_line("WARNING: allow_channels and allow_users are both empty: the bot answers nobody")
+    stop_on_signals()
     try:
         SlackLink(bot, log=log_line).run(should_stop=moved)
     finally:
-        bot.close_all("the bot is restarting")
-    log_line("stopped (the checkout moved to another commit, or the bot was stopped): cron starts it again")
+        told = bot.goodbye()
+        log_line(f"stopping (the checkout moved to another commit, or the bot was stopped); said goodbye to {told} "
+                 "open session(s); cron starts it again")
     return 0
 
 

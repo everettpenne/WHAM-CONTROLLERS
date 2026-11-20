@@ -15,7 +15,7 @@ Open a direct message with the bot (or use `/wham <words>`).
 | You type | What happens |
 |---|---|
 | `list` | every controller: state, who else is connected |
-| `connect ech` | opens a session to that controller through its hub (`xrex`, `limiter`, `ech`) |
+| `connect ech` | opens a session to that controller through its hub (`xrex`, `limiter`, `ech`). The bot greets you by name, shows the controller's state and who else is connected, and warns if it is not IDLE or someone else is on it |
 | `STATE?`, `SHOT?`, `CONFig:MODE HVPS`, ... | while connected, **every line you type is sent to the controller** and its reply is posted. Several lines in one message are sent in order (at most 20) |
 | `.hublog on` / `.hublog off` | **hub-log mode**: everything the hub sees is shown, live: other clients' commands as `[name] > command`, their replies as `[name] < reply`, joins and leaves, the controller's events |
 | `.log 20 since=1h grep=ARM` | the hub's *stored* log (what happened earlier); also `kind=cmd`, `client=<name>` |
@@ -58,6 +58,8 @@ A session is an ordinary hub client named `slack-<your Slack name>`: the hub's l
 your commands as anyone's, and the operator console lists you under "People on this controller". A watch is one such
 client on every hub, named `slack-<you>-watch`. A session or a watch that hears nothing from you for 30 minutes is closed
 (`session_idle_min`), so a forgotten one does not hold up a hub update (a hub is updated only when nobody is connected).
+When the bot itself is stopped or restarted, it first says **goodbye** in every conversation with an open session or
+watch, closes them, and says when to connect again. It restarts by itself only when no session is open.
 
 ## Setting it up (once)
 
