@@ -1,0 +1,14 @@
+{
+  "app_token": "xapp-... (or leave empty and set SLACK_APP_TOKEN)",
+  "bot_token": "xoxb-... (or leave empty and set SLACK_BOT_TOKEN)",
+  "allow_users": ["U0123ABCD"],
+  "allow_channels": [],
+  "danger_users": [],
+  "session_idle_min": 30,
+  "rate_per_minute": 30,
+  "controllers": {
+    "xrex": {"host": "127.0.0.1", "port": 5101, "aliases": ["magnets", "transrex"]},
+    "limiter": {"host": "127.0.0.1", "port": 5102, "aliases": ["lmtr", "lim"]},
+    "ech": {"host": "127.0.0.1", "port": 5103, "aliases": ["hvps", "gyrotron"]}
+  }
+}

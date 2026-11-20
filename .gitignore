@@ -25,3 +25,5 @@ docs/sop/*.log
 docs/sop/*.out
 docs/sop/*.tdo
 docs/sop/*.toc
+# the Slack bot's tokens and allow lists: never committed
+host/slack_bot/*.local.json

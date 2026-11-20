@@ -1,6 +1,21 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-20  -  Host side: a Slack bot that is a text terminal to the controllers through the hubs  [no firmware change; host-tested against a fake Slack and a real hub; NOT yet connected to a real Slack workspace]
+-----------------------------------------------------------------------
+  Request: a Slack bot to talk to the controllers through the host: list them, connect to one, send commands and read the
+  replies, and a hub-log mode that shows all traffic.
+  New host/slack_bot/wham_slack.py (standard library only: its own small WebSocket client for Slack's Socket Mode, so the
+  server opens no port). In a direct message: list; connect <controller> opens a session as the hub client slack-<user>;
+  every line typed then goes to the controller and the replies come back batched in code blocks; .hublog on/off switches the
+  hub connection between quiet and full traffic (other clients' commands and replies, events); .log reads the hub's stored
+  log (!hub log); .who; .disconnect. /wham <words> and a mention work too. Dangerous commands (dangerous_commands.py) are
+  refused unless the sender is in danger_users (empty by default) and then need .confirm within 30 s; firmware and identity
+  commands and the long dumps are never sent. Only allow_users / allow_channels are answered; rate limit; a session idle for
+  30 min is closed, so it cannot hold up hub_update.py; floods are cut. Tokens come from the environment or the git-ignored
+  slack_bot.local.json. Runs from cron (install-cron), stops when the checkout moves so cron restarts it on new code.
+  docs/slack_bot.md has the use, the rules and the Slack app manifest. Tests: host/tests/test_wham_slack.py (16).
+
 2026-11-19  -  Tools: the flashing scripts refuse an image built from uncommitted code  [no firmware change; host-tested, checked with real builds in a throwaway clone; nothing flashed]
 -----------------------------------------------------------------------
   Request: modify the firmware flashing scripts to reject uncommitted code.
