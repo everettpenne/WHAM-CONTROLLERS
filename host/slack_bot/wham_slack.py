@@ -12,6 +12,8 @@ In a direct message with the bot (or with /wham <words>, or by mentioning it):
     .users                   who is authorized to use the bot
     diary write <text>       add an entry to the operators' diary (the time and your name are recorded)
     diary read [date|all]    read it: today, a date, yesterday, or all; also diary last [n], diary search <text>, diary dates
+    diary file               send the whole diary as a text file to download (needs the app's files:write permission)
+    diary index              who wrote when and where, without the texts; diary index file sends that list as a file
     watch all                show the traffic of EVERY controller at once, each line marked with its controller (watch off)
     log all 20 since=1h      the stored logs of every hub, merged in time order
     help                     the list of commands (at any time)
@@ -107,6 +109,8 @@ HELP = """*WHAM-PFM-Controller-Link: the WHAM controllers, through their hubs*
 `.users`  who is authorized to use this bot
 `diary write <text>`  add an entry to the operators' diary (time and your name are recorded)
 `diary read [today|yesterday|YYYY-MM-DD|all]`, `diary last [n]`, `diary search <text>`, `diary dates`  read it
+`diary file`  the whole diary as a text file to download, however long it is
+`diary index [date]`  who wrote when and where, without the texts; `diary index file` sends that list as a file
 `watch all` / `watch off`  the traffic of every controller at once, each line marked `[controller]` (watching only: nothing you type goes to them)
 `log all [n] [since=1h] [grep=text]`  the stored logs of every hub, merged in time order
 While connected, a line starting with a dot is for me; anything else (except `help`) is sent to the controller.
@@ -442,8 +446,9 @@ def reply_line(lines):
 
 
 class Bot:
-    def __init__(self, cfg, request=hub_request, now=time.time, config_path=None, person=lambda user: user):
+    def __init__(self, cfg, request=hub_request, now=time.time, config_path=None, person=lambda user: user, upload=None):
         self.cfg, self.request, self.now = cfg, request, now
+        self.upload = upload                                          # (channel, file name, bytes, title, comment) -> None or why not
         self.person = person                                          # Slack member ID -> the person's name, for .users
         self.config_path, self.config_mtime = config_path, self._mtime(config_path)
         self.recent = collections.defaultdict(collections.deque)      # user -> times of recent requests
@@ -630,8 +635,48 @@ class Bot:
             return why
         return f"*{name}* `{command}`\n```\n{self.query(name, user_name, command)}\n```"
 
-    def diary(self, text, user, where):
+    def diary_as_file(self, channel, index=False):
+        """diary file: the whole diary, exactly as it is stored, sent into the conversation as a text file.
+        diary index file: one line per entry with its time, writer and place, without the texts."""
+        path = diary_file(self.cfg)
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except FileNotFoundError:
+            data = b""
+        except OSError as e:
+            return f"The diary file could not be read ({e})."
+        all_ = diary.entries(path)
+        n = len(all_)
+        if not n:
+            return "Diary: the diary is empty, so there is nothing to send."
+        if index:
+            data = ("\n".join(diary.index_line(e) for e in all_) + "\n").encode()
+        if self.upload is None or not channel:
+            return f"Files can only be sent in Slack. The diary is {path} on the server ({n} entries, {len(data)} bytes)."
+        stamp_ = datetime.datetime.now().strftime('%Y-%m-%d_%H%M')
+        if index:
+            name, title = f"wham-diary-index-{stamp_}.txt", "WHAM operators' diary: index"
+            comment = f"The diary's index as of now: {n} entries, without their texts. Each line: date time | who | where."
+        else:
+            name, title = f"wham-diary-{stamp_}.txt", "WHAM operators' diary"
+            comment = f"The whole diary as of now: {n} entries, {len(data):,} bytes. Each line: date time | who | where | text."
+        why = self.upload(channel, name, data, title, comment)
+        if why is None:
+            return None                                               # the file itself is the answer
+        if "missing_scope" in why or "not_allowed_token_type" in why:
+            return ("I am not allowed to send files yet: the Slack app needs the `files:write` permission (app settings, "
+                    "*OAuth & Permissions*, Bot Token Scopes, then reinstall the app). `diary read <date>` and `diary search` work meanwhile.")
+        return f"The file could not be sent ({why}). `diary read <date>` and `diary search` work meanwhile."
+
+    def diary(self, text, user, where, channel=None):
         """diary ...: the operators' diary on the host (diary.py). Every line shown carries its date, time and writer."""
+        words = text.strip().lower().split()
+        if words and words[-1] in ("file", "download", "export", "send") and len(words) <= 2:
+            if words[:-1] in ([], ["all"]):
+                return self.diary_as_file(channel)
+            if words[0] in ("index", "list", "entries", "names", "toc"):
+                return self.diary_as_file(channel, index=True)
         try:
             req = diary.parse_request(text)
             out = diary.answer(diary_file(self.cfg), req, who=f"{self.person(user)} (Slack)", where=where, limit=40)
@@ -643,7 +688,11 @@ class Bot:
             return f"Written to the diary:\n```\n{out['lines'][0]}\n```"
         if not out["lines"]:
             return f"Diary: {out['note']}."
-        return f"Diary: {out['note']}.\n```\n" + "\n".join(out["lines"]).replace("```", "` ` `") + "\n```"
+        more = ""
+        if "are shown" in out["note"]:
+            more = ("\n`diary index file` sends the whole index as a text file." if req["do"] == "index" else
+                    "\n`diary file` sends the whole diary as a text file.")
+        return f"Diary: {out['note']}.\n```\n" + "\n".join(out["lines"]).replace("```", "` ` `") + "\n```" + more
 
     def users(self):
         """Who is authorized: names only (a Slack mention here would notify every one of them)."""
@@ -736,7 +785,7 @@ class Bot:
         if verb in ("users", "authorized", "allowed"):
             return self.users()
         if verb == "diary":
-            return self.diary(text.strip()[5:], user, s.name if s else "general")
+            return self.diary(text.strip()[5:], user, s.name if s else "general", key[0])
         w = self.watches.get(key)
         if w is not None:
             for x in w.sessions.values():
@@ -939,7 +988,7 @@ class WebSocket:
 
 
 # ---- Slack ----------------------------------------------------------------------------------------------------------
-FORM_METHODS = ("users.info",)      # Slack's read methods take their arguments form-encoded, not as a JSON body
+FORM_METHODS = ("users.info", "files.getUploadURLExternal")      # Slack's read methods take their arguments form-encoded, not as a JSON body
 
 
 def slack_api(method, token, payload=None, timeout=15.0):
@@ -953,11 +1002,19 @@ def slack_api(method, token, payload=None, timeout=15.0):
         return json.loads(r.read())
 
 
+def send_bytes(url, data, timeout=60.0):
+    """POST raw bytes to the upload address Slack handed out."""
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/octet-stream"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.status
+
+
 class SlackLink:
     """Socket Mode: receive events, acknowledge each at once, answer it from a worker thread."""
 
-    def __init__(self, bot, api=slack_api, connect=WebSocket, log=print):
-        self.bot, self.api, self.connect, self.log = bot, api, connect, log
+    def __init__(self, bot, api=slack_api, connect=WebSocket, log=print, put=send_bytes):
+        self.bot, self.api, self.connect, self.log, self.put = bot, api, connect, log, put
+        bot.upload = self.upload
         self.bot_user = None
         self.seen = collections.deque(maxlen=500)             # event ids already handled (Slack retries)
         self.names, self.people = {}, {}
@@ -989,6 +1046,22 @@ class SlackLink:
                 self.log(f"chat.postMessage refused: {r.get('error')}")
         except (OSError, ValueError) as e:
             self.log(f"chat.postMessage failed: {e}")
+
+    def upload(self, channel, name, data, title, comment):
+        """Send a file into a conversation (Slack's three steps: ask for an upload address, send the bytes, attach the
+        file to the conversation). None when it worked, else Slack's reason."""
+        token = self.bot.cfg["bot_token"]
+        try:
+            r = self.api("files.getUploadURLExternal", token, {"filename": name, "length": len(data)})
+            if not r.get("ok"):
+                return str(r.get("error"))
+            self.put(r["upload_url"], data)
+            r = self.api("files.completeUploadExternal", token, {"files": [{"id": r["file_id"], "title": title}],
+                                                                 "channel_id": channel, "initial_comment": comment})
+            return None if r.get("ok") else str(r.get("error"))
+        except (OSError, ValueError, KeyError) as e:
+            self.log(f"file upload failed: {e}")
+            return str(e)
 
     def on_event(self, ev):
         if ev.get("bot_id") or ev.get("subtype") or not ev.get("user") or ev.get("user") == self.bot_user:

@@ -74,6 +74,24 @@ class DiaryFileTests(unittest.TestCase):
         self.assertEqual(len(self.ask("search flow by=dan")["lines"]), 1)
         self.assertEqual(self.ask("dates")["lines"], ["2026-11-18  1 entry", "2026-11-19  1 entry", "2026-11-20  2 entries"])
 
+    def test_the_index_lists_who_wrote_when_without_the_texts(self):
+        self.fill()
+        out = self.ask("index")
+        self.assertEqual(out["lines"], ["2026-11-18 09:05:01 | Ann Example | ech", "2026-11-19 14:30:00 | LVarm | lmtr-ctrl",
+                                        "2026-11-20 08:00:00 | Dan Example (Slack) | general", "2026-11-20 08:40:09 | Ann Example | xrex"])
+        self.assertEqual(out["note"], "4 entries in the whole diary (who wrote when; the texts are left out)")
+        for word in ("Bank", "Shot", "Water", "valve"):
+            self.assertNotIn(word, "\n".join(out["lines"]))
+        self.assertEqual(self.ask("index all")["lines"], out["lines"])
+        self.assertEqual(self.ask("list")["lines"], out["lines"])
+        self.assertEqual(len(self.ask("index today")["lines"]), 2)
+        self.assertEqual(self.ask("index 2026-11-19")["lines"], ["2026-11-19 14:30:00 | LVarm | lmtr-ctrl"])
+        self.assertEqual(len(self.ask("index by=ann")["lines"]), 2)
+        self.assertEqual(self.ask("index 2026-11-17"), {"lines": [], "note": "no entries on 2026-11-17"})
+        self.assertIn("the newest 2 are shown", self.ask("index", limit=2)["note"])
+        with self.assertRaises(diary.DiaryError):
+            diary.parse_request("index sometime", self.today)
+
     def test_too_many_entries_show_the_newest_and_say_so(self):
         for i in range(30):
             diary.write(self.path, "x", f"entry {i}", now=T(2026, 11, 20, 8, i, 0))
@@ -153,6 +171,11 @@ class HubDiaryTests(HubBase):
         self.assertEqual(len([l for l in out if l.startswith("# diary 20")]), 1)
         await bob.send("!hub diary read all")
         self.assertEqual(len([l for l in await bob.quiet() if l.startswith("# diary 20")]), 2)
+        await bob.send("!hub diary index")
+        out = await bob.quiet()
+        self.assertRegex(out[0], r"^# diary \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| ann \| t1$")
+        self.assertFalse(any("540" in l or "from the program" in l for l in out), "the index has no texts")
+        self.assertIn("2 entries in the whole diary (who wrote when", out[-1])
         for bad, want in (("!hub diary write", "the entry is empty"), ("!hub diary read never", "diary read ["), ("!hub diary frobnicate", "I do not know")):
             await bob.send(bad)
             out = await bob.quiet()

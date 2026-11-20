@@ -29,7 +29,8 @@ What it does
     where, how long, what they last sent) | !hub identify | !hub quiet [on|off] | !hub timestamps [on|off] | !hub confirm |
     !hub cancel | !hub log [n] [since=2h] [kind=..] [client=..] [grep=..] (the newest matching rows of this controller's
     log, one "# log {json}" line each and a closing "# log-end {json}"; the operator web UI's Host log tab uses it) |
-    !hub diary write <text> | !hub diary read [date|all] | !hub diary last [n] | !hub diary search <text> | !hub diary dates
+    !hub diary write <text> | !hub diary read [date|all] | !hub diary last [n] | !hub diary search <text> | !hub diary dates |
+    !hub diary index [date|all] (who wrote when, without the texts)
     (the operators' diary, diary.py: one text file on the host shared by every hub and the Slack bot; an entry records the
     time, the client's name and this hub; the other clients of this hub are told when one is written);
   * !hub timestamps on makes EVERY line sent to that client start with the time, "[HH:MM:SS.mmm] " in the service's local
@@ -1073,7 +1074,7 @@ class Hub:
         else:
             self.write_to(writer, "# hub: commands are  !hub status  |  !hub clients  |  !hub identify  |  !hub quiet [on|off]  |  "
                                   "!hub timestamps [on|off]  |  !hub log [n] [since=2h] [kind=..] [grep=..]  |  !hub diary write <text> | read [date|all] | "
-                                  "last [n] | search <text> | dates  |  !hub confirm  |  !hub cancel")
+                                  "last [n] | search <text> | dates | index  |  !hub confirm  |  !hub cancel")
 
     def diary_path(self):
         return self.cfg.get("diary_file") or diary.default_path(self.cfg["log_dir"])

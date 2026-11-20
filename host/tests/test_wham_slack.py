@@ -359,7 +359,46 @@ class BotTests(HubBase):
         out = await self.say("diary read all")
         self.assertIn("63 entries in the whole diary; the newest 40 are shown", out)
         self.assertLess(len(out), ws.MAX_TEXT + 60)
+        self.assertIn("`diary file` sends the whole diary", out)
         self.assertIsNone(await self.say("diary read", user="USTRANGER", channel="D9"), "only authorized people")
+        # the whole diary as a file
+        self.assertIn("Files can only be sent in Slack", await self.say("diary file"))
+        sent = []
+        self.bot.upload = lambda channel, name, data, title, comment: sent.append((channel, name, data, comment))
+        self.assertIsNone(await self.say("diary file"), "the file is the answer")
+        channel, name, data, comment = sent[0]
+        self.assertEqual(channel, "D1")
+        self.assertRegex(name, r"^wham-diary-\d{4}-\d{2}-\d{2}_\d{4}\.txt$")
+        with open(path, "rb") as f:
+            self.assertEqual(data, f.read(), "the file as stored, every entry")
+        self.assertEqual(data.count(b"\n"), 63)
+        self.assertIn("63 entries", comment)
+        self.bot.upload = lambda *a: "missing_scope"
+        self.assertIn("`files:write`", await self.say("diary download"))
+        self.bot.upload = lambda *a: "timed out"
+        self.assertIn("could not be sent (timed out)", await self.say("diary file"))
+        self.assertIsNone(await self.say("diary file", user="USTRANGER", channel="D9"))
+        # the index: who wrote when, without the texts; also as a file
+        out = await self.say("diary index")
+        self.assertIn("63 entries in the whole diary; the newest 40 are shown", out)
+        self.assertIn("`diary index file` sends the whole index", out)
+        self.assertNotIn("filler", out)
+        self.assertNotIn("540 V", out)
+        self.assertIn("Diary: 3 entries on", (await self.say("diary index today by=example")).splitlines()[0])
+        self.assertRegex(await self.say("diary index by=dan"), r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| Dan Example \(Slack\) \| general\n")
+        sent.clear()
+        self.bot.upload = lambda channel, name, data, title, comment: sent.append((channel, name, data, comment))
+        self.assertIsNone(await self.say("diary index file"))
+        channel, name, data, comment = sent[0]
+        self.assertRegex(name, r"^wham-diary-index-\d{4}-\d{2}-\d{2}_\d{4}\.txt$")
+        rows = data.decode().splitlines()
+        self.assertEqual(len(rows), 63, "every entry, however long the diary is")
+        self.assertTrue(all(r.count(" | ") == 2 for r in rows), "date time | who | where, and no text")
+        self.assertNotIn(b"filler", data)
+        self.assertIn("without their texts", comment)
+        os.remove(path)
+        self.assertIn("nothing to send", await self.say("diary file"))
+        self.assertIn("nothing to send", await self.say("diary index file"))
         self.assertEqual(ws.diary_file({"diary_file": None, "discover_dir": "/nonexistent", "state_dir": "/var/lib/wham/hub/slack"}),
                          "/var/lib/wham/hub/diary.txt")
 
@@ -589,8 +628,10 @@ class SlackLinkTests(HubBase):
             calls.append((method, token, payload))
             return {"auth.test": {"ok": True, "user_id": "UBOT", "user": "wham", "team": "lab"},
                     "apps.connections.open": {"ok": True, "url": f"ws://127.0.0.1:{srv.port}/"},
-                    "users.info": {"ok": True, "user": {"name": "ann", "real_name": "Ann Example"}}}.get(method, {"ok": True})
-        link = ws.SlackLink(ws.Bot(cfg(self.listen)), api=api, log=logs.append)
+                    "users.info": {"ok": True, "user": {"name": "ann", "real_name": "Ann Example"}},
+                    "files.getUploadURLExternal": {"ok": True, "upload_url": "https://files.example.invalid/up/1", "file_id": "F1"}}.get(method, {"ok": True})
+        uploads = []
+        link = ws.SlackLink(ws.Bot(cfg(self.listen)), api=api, log=logs.append, put=lambda url, data: uploads.append((url, data)))
         t = threading.Thread(target=link.run, daemon=True)
         t.start()
         self.assertTrue(await asyncio.to_thread(srv.wait, lambda: srv.conn is not None))
@@ -620,6 +661,12 @@ class SlackLinkTests(HubBase):
         event("7b", {"type": "message", "channel_type": "im", "user": "U1", "channel": "D1", "text": ".users", "ts": "7.5"})
         self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("• Ann Example" in p["text"] for p in posts())), posts())
         self.assertTrue(any(r.get("client") == "slack-ann" for r in self.log_records(self.hub)), "the session is named after the Slack user")
+        self.assertIsNone(link.upload("D1", "d.txt", b"abc\n", "T", "C"))
+        self.assertEqual(uploads, [("https://files.example.invalid/up/1", b"abc\n")])
+        self.assertIn(("files.getUploadURLExternal", "xoxb-test", {"filename": "d.txt", "length": 4}), calls)
+        done = [c[2] for c in calls if c[0] == "files.completeUploadExternal"][0]
+        self.assertEqual((done["files"], done["channel_id"], done["initial_comment"]), ([{"id": "F1", "title": "T"}], "D1", "C"))
+        self.assertIs(link.bot.upload.__self__, link, "the bot sends files through the link")
         event("8", None, etype="slash_commands", extra={"user_id": "U1", "channel_id": "D1", "text": ".disconnect", "command": "/wham"})
         self.assertTrue(await asyncio.to_thread(srv.wait, lambda: any("Disconnected" in p["text"] for p in posts())), posts())
         link.stop.set()

@@ -27,9 +27,12 @@ Every entry is one line, and every line a reader sees carries **the date, the ti
 | `diary last 5` | `!hub diary last 5` | the newest entries (10 without a number) |
 | `diary search valve` | `!hub diary search valve` | entries containing the text (in the text, the writer or the place) |
 | `diary dates` | `!hub diary dates` | the days that have entries, with how many |
+| `diary index` | `!hub diary index` | **who wrote when and where, without the texts**: one line per entry, all days (`diary index today`, or a date, for one day) |
+| `diary index file` | (Slack only) | sends that index of the whole diary as a text file to download |
+| `diary file` | (Slack only) | sends **the whole diary as a text file** into the conversation, to download: the file exactly as stored, however long it is |
 | `diary correct 11:02 <text>` | `!hub diary correct 11:02 <text>` | adds an entry marked as a correction of the one written at that time (`2026-11-19 14:30` for another day) |
 
-`read`, `last` and `search` also take `by=<who>` and `at=<where>`: `diary read all by=everett`, `diary last 20 at=ech`.
+`read`, `last`, `search` and `index` also take `by=<who>` and `at=<where>`: `diary read all by=everett`, `diary last 20 at=ech`.
 In Slack the words work with or without the leading dot, also while connected to a controller: a line starting with
 `diary` is never sent to a controller. `/diary ...` works too if the Slack app registers `/diary` as a slash command.
 
@@ -41,7 +44,9 @@ In Slack the words work with or without the leading dot, also while connected to
   program reports, as everywhere in the hubs: there are no passwords.
 - When an entry is written through a hub, the other people connected to *that* hub see a line `--- diary: ... ---`
   (programs connected in quiet mode, such as LabVIEW, do not). A Slack `watch all` shows those lines too.
-- Slack shows at most 40 entries per answer and a hub at most 200; ask for a date or search to see older ones.
+- Slack shows at most 40 entries per answer and a hub at most 200; ask for a date or search to see older ones, or use
+  `diary file` in Slack to get everything as one file. (`diary file` needs the Slack app's `files:write` permission; the bot
+  says so if it is missing.)
 - Writing through a hub is also recorded in that hub's own log (`!hub log`), as every hub command is.
 - The file's place can be changed with `diary_file` in the hub configs (and in the bot's settings); all hubs must name
   the same file. Code: `host/diary.py`; tests: `host/tests/test_diary.py`.

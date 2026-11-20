@@ -12,6 +12,11 @@ WHAM-XREX-PFMG474 Firmware Changelog
   session's controller or "general"; never sent to a controller. Filters by=<who> at=<where>. No edit or delete: a correction
   is a new entry naming the old one. File: diary.txt beside the hubs' log folder (diary_file moves it). docs/diary.md.
   hub_update.py's gate now runs tests.test_diary too. Tests: host/tests/test_diary.py (12), and one more in test_wham_slack.
+  Then "diary file" in Slack: the whole diary, exactly as stored, uploaded into the conversation as a text file (Slack's
+  getUploadURLExternal / completeUploadExternal; needs the app's files:write scope, and the bot says so when it is missing).
+  "diary read all" is unchanged and now points to it when it had to cut the answer.
+  And "diary index [date|all]" (hubs and Slack): one line per entry with its time, writer and place, without the texts;
+  "diary index file" in Slack sends the index of the whole diary as a text file. Tests: test_diary 13, test_wham_slack 29.
 
 2026-11-20  -  Host side: a Slack bot that is a text terminal to the controllers through the hubs  [no firmware change; host-tested against a fake Slack and a real hub; NOT yet connected to a real Slack workspace]
 -----------------------------------------------------------------------
