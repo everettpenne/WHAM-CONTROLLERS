@@ -10,6 +10,8 @@ In a direct message with the bot (or with /wham <words>, or by mentioning it):
     .log 20 since=1h         the hub's stored log (also grep=<text>, kind=cmd, client=<name>)
     .disconnect              close the session
     .users                   who is authorized to use the bot
+    diary write <text>       add an entry to the operators' diary (the time and your name are recorded)
+    diary read [date|all]    read it: today, a date, yesterday, or all; also diary last [n], diary search <text>, diary dates
     watch all                show the traffic of EVERY controller at once, each line marked with its controller (watch off)
     log all 20 since=1h      the stored logs of every hub, merged in time order
     help                     the list of commands (at any time)
@@ -77,6 +79,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HOST_DIR = os.path.dirname(HERE)
 sys.path.insert(0, HOST_DIR)
 import dangerous_commands as dc
+import diary
 import wham_hub
 
 LOCAL_CONFIG = os.path.join(HERE, "slack_bot.local.json")
@@ -85,6 +88,7 @@ DEFAULTS = {
     "app_token": "", "bot_token": "", "allow_channels": [], "allow_users": [], "danger_users": [], "rate_per_minute": 30,
     "session_idle_min": 30, "confirm_s": 30,
     "discover": True, "discover_dir": os.path.join(HOST_DIR, "config"),     # offer every hub configured on this server
+    "diary_file": None,              # the operators' diary; default: the file the hubs use (beside their log folder)
     "state_dir": "/var/lib/wham/hub/slack",
     "controllers": {
         "xrex": {"host": "127.0.0.1", "port": 5101, "aliases": ["magnets", "transrex"]},
@@ -101,6 +105,8 @@ HELP = """*WHAM-PFM-Controller-Link: the WHAM controllers, through their hubs*
 `.log [n] [since=1h] [grep=text] [kind=cmd]`  the hub's stored log (n up to 30)
 `.who`  who is connected to that hub      `.disconnect`  close the session
 `.users`  who is authorized to use this bot
+`diary write <text>`  add an entry to the operators' diary (time and your name are recorded)
+`diary read [today|yesterday|YYYY-MM-DD|all]`, `diary last [n]`, `diary search <text>`, `diary dates`  read it
 `watch all` / `watch off`  the traffic of every controller at once, each line marked `[controller]` (watching only: nothing you type goes to them)
 `log all [n] [since=1h] [grep=text]`  the stored logs of every hub, merged in time order
 While connected, a line starting with a dot is for me; anything else (except `help`) is sent to the controller.
@@ -153,6 +159,23 @@ def discover_hubs(folder):
             host = str(hc.get("listen_host") or "0.0.0.0")
             found[f[:-5]] = ("127.0.0.1" if host in ("0.0.0.0", "::", "") else host, port)
     return found
+
+
+def diary_file(cfg):
+    """The diary the hubs on this server use: named in the settings, else taken from the first hub's configuration."""
+    if cfg.get("diary_file"):
+        return cfg["diary_file"]
+    try:
+        for f in sorted(os.listdir(cfg["discover_dir"])):
+            if f.endswith(".yaml") and not f.endswith(".local.yaml") and f != "example.yaml":
+                hc = wham_hub.load_config(os.path.join(cfg["discover_dir"], f))
+                if hc.get("diary_file"):
+                    return hc["diary_file"]
+                if hc.get("log_dir"):
+                    return diary.default_path(hc["log_dir"])
+    except (OSError, ValueError):
+        pass
+    return os.path.join(os.path.dirname(os.path.abspath(cfg["state_dir"])), "diary.txt")
 
 
 def merge_controllers(configured, found):
@@ -607,6 +630,21 @@ class Bot:
             return why
         return f"*{name}* `{command}`\n```\n{self.query(name, user_name, command)}\n```"
 
+    def diary(self, text, user, where):
+        """diary ...: the operators' diary on the host (diary.py). Every line shown carries its date, time and writer."""
+        try:
+            req = diary.parse_request(text)
+            out = diary.answer(diary_file(self.cfg), req, who=f"{self.person(user)} (Slack)", where=where, limit=40)
+        except diary.DiaryError as e:
+            return str(e)
+        except OSError as e:
+            return f"The diary file could not be used ({e})."
+        if req["do"] in ("write", "correct"):
+            return f"Written to the diary:\n```\n{out['lines'][0]}\n```"
+        if not out["lines"]:
+            return f"Diary: {out['note']}."
+        return f"Diary: {out['note']}.\n```\n" + "\n".join(out["lines"]).replace("```", "` ` `") + "\n```"
+
     def users(self):
         """Who is authorized: names only (a Slack mention here would notify every one of them)."""
         allowed, danger = self.cfg["allow_users"], self.cfg["danger_users"]
@@ -697,6 +735,8 @@ class Bot:
             return HELP.format(names=", ".join(self.cfg["controllers"]))
         if verb in ("users", "authorized", "allowed"):
             return self.users()
+        if verb == "diary":
+            return self.diary(text.strip()[5:], user, s.name if s else "general")
         w = self.watches.get(key)
         if w is not None:
             for x in w.sessions.values():
@@ -759,6 +799,8 @@ class Bot:
         """One message in a conversation that may hold a session. Returns what to post now (or None); a session's own
         traffic arrives later through `post`."""
         key = (channel, user)
+        if re.match(r"^\.?diary\b", text.strip(), re.I):              # the diary is the bot's, and an entry may have several lines
+            return self.bot_command(key, text.strip().lstrip(".").strip(), user, user_name, post)
         lines = [l.strip() for l in text.splitlines() if l.strip()]
         if not lines:
             return None

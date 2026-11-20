@@ -28,7 +28,10 @@ What it does
   * a client line starting "!hub" is answered by the service itself:  !hub status | !hub clients (who is connected, from
     where, how long, what they last sent) | !hub identify | !hub quiet [on|off] | !hub timestamps [on|off] | !hub confirm |
     !hub cancel | !hub log [n] [since=2h] [kind=..] [client=..] [grep=..] (the newest matching rows of this controller's
-    log, one "# log {json}" line each and a closing "# log-end {json}"; the operator web UI's Host log tab uses it);
+    log, one "# log {json}" line each and a closing "# log-end {json}"; the operator web UI's Host log tab uses it) |
+    !hub diary write <text> | !hub diary read [date|all] | !hub diary last [n] | !hub diary search <text> | !hub diary dates
+    (the operators' diary, diary.py: one text file on the host shared by every hub and the Slack bot; an entry records the
+    time, the client's name and this hub; the other clients of this hub are told when one is written);
   * !hub timestamps on makes EVERY line sent to that client start with the time, "[HH:MM:SS.mmm] " in the service's local
     time (the same clock as the log), for a person reading a terminal. It is per connection and OFF by default, because
     tools that parse replies (fw_update.py, wham_console.py, LabVIEW) must see them bare; net_client.py turns it on for
@@ -66,6 +69,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import provision_board as pb  # parse_id, load_registry (same directory)
 import dangerous_commands as dc
+import diary
 
 DEFAULTS = {
     "name": None, "host": None, "port": 5000, "listen_host": "0.0.0.0", "listen_port": None,
@@ -75,6 +79,7 @@ DEFAULTS = {
     "heartbeat_s": 15.0, "heartbeat_timeout_s": 5.0,
     "keepalive_idle_s": 10, "keepalive_interval_s": 3, "keepalive_count": 3,
     "client_buffer_max": 1048576, "allow_from": None, "log_keep_days": 0,
+    "diary_file": None,          # the operators' diary (diary.py); default: diary.txt beside the log folder, shared by all hubs
 }
 FLOAT_KEYS = ("reconnect_s", "confirm_timeout_s", "command_timeout_s", "long_command_timeout_s", "heartbeat_s",
               "heartbeat_timeout_s")
@@ -1049,6 +1054,8 @@ class Hub:
                 self.submit(writer, held[0], confirmed=True)
         elif cmd.split()[:1] == ["log"]:
             asyncio.ensure_future(self.log_reply(writer, text[4:].strip()[3:].strip()))
+        elif cmd.split()[:1] == ["diary"]:
+            asyncio.ensure_future(self.diary_reply(writer, name, text[4:].strip()[5:].strip()))
         elif cmd == "identify":
             if self.connected:
                 self.start_handshake()
@@ -1065,7 +1072,32 @@ class Hub:
             self.write_to(writer, f"# hub: timestamps {'on' if info.stamp else 'off'}")
         else:
             self.write_to(writer, "# hub: commands are  !hub status  |  !hub clients  |  !hub identify  |  !hub quiet [on|off]  |  "
-                                  "!hub timestamps [on|off]  |  !hub log [n] [since=2h] [kind=..] [grep=..]  |  !hub confirm  |  !hub cancel")
+                                  "!hub timestamps [on|off]  |  !hub log [n] [since=2h] [kind=..] [grep=..]  |  !hub diary write <text> | read [date|all] | "
+                                  "last [n] | search <text> | dates  |  !hub confirm  |  !hub cancel")
+
+    def diary_path(self):
+        return self.cfg.get("diary_file") or diary.default_path(self.cfg["log_dir"])
+
+    async def diary_reply(self, writer, name, args):
+        """!hub diary ...: the operators' diary (diary.py), read and written off the event loop. Entries: "# diary <line>",
+        then "# diary-end <what was shown>"; anything else about the request: "# diary: <text>"."""
+        try:
+            req = diary.parse_request(args)
+            out = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: diary.answer(self.diary_path(), req, who=name, where=self.cfg["name"]))
+        except diary.DiaryError as exc:
+            self.write_to(writer, f"# diary: {exc}")
+            return
+        except OSError as exc:
+            self.write_to(writer, f"# diary: the diary file could not be used ({exc})")
+            return
+        if req["do"] in ("write", "correct"):
+            self.write_to(writer, f"# diary: {out['note']}")
+            self.broadcast(f"--- diary: {out['lines'][0][:300]} ---", exclude=writer, notice=True)
+            return
+        if writer.is_closing():
+            return
+        self.write_to(writer, "\r\n".join(["# diary " + l for l in out["lines"]] + ["# diary-end " + out["note"]]))
 
     async def log_reply(self, writer, args):
         """!hub log: answered from the day files, off the event loop (a big file must not stall the serial link)."""

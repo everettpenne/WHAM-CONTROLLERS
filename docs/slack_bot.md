@@ -23,6 +23,7 @@ Open a direct message with the bot (or use `/wham <words>`).
 | `.disconnect` | closes the session (the controller keeps doing what it does) |
 | `watch all` / `watch off` | **every controller at once**: the live traffic of all hubs in one stream, each line marked with its controller, for example `[ech] [labview] > STATE?`. It only watches: nothing you type is sent to a controller. It works beside a session (your own lines then show twice) |
 | `log all 20 since=1h` | the *stored* logs of every hub, merged in time order (same filters as `.log`) |
+| `diary write <text>`, `diary read [date\|all]`, `diary last`, `diary search <text>` | the operators' shared diary on the server: every entry carries its date, time and writer. See `docs/diary.md` |
 | `.users` | who is authorized to use the bot, by name, and whether anyone may send dangerous commands |
 | `help` | the list of commands. It works at any time, with or without the dot, also while connected (it is never sent to a controller) |
 

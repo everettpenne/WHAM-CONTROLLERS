@@ -1,6 +1,18 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-20  -  Host side: the operators' diary, one text file on the host, from the hubs and from Slack  [no firmware change; host-tested]
+-----------------------------------------------------------------------
+  Request: a diary stored with the host that operators can read and write (write, read <date>, read all), each entry with a
+  timestamp and its writer, also from the Slack bot; other useful features welcome.
+  New host/diary.py: one line per entry, "date time | who | where | text", appended under a file lock (the hubs and the bot are
+  separate programs on one file). wham_hub.py: !hub diary write|read [today|yesterday|date|all]|last [n]|search <text>|dates|
+  correct <time> <text>, read off the event loop; the writer is the client's name, the place is the hub; the other interactive
+  clients of that hub are told. Slack bot: the same words after "diary", writer = the person's Slack name, place = the
+  session's controller or "general"; never sent to a controller. Filters by=<who> at=<where>. No edit or delete: a correction
+  is a new entry naming the old one. File: diary.txt beside the hubs' log folder (diary_file moves it). docs/diary.md.
+  hub_update.py's gate now runs tests.test_diary too. Tests: host/tests/test_diary.py (12), and one more in test_wham_slack.
+
 2026-11-20  -  Host side: a Slack bot that is a text terminal to the controllers through the hubs  [no firmware change; host-tested against a fake Slack and a real hub; NOT yet connected to a real Slack workspace]
 -----------------------------------------------------------------------
   Request: a Slack bot to talk to the controllers through the host: list them, connect to one, send commands and read the

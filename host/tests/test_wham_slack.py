@@ -330,6 +330,39 @@ class BotTests(HubBase):
         self.assertEqual((self.bot.sessions, self.bot.watches), ({}, {}))
         self.assertEqual(await asyncio.to_thread(self.bot.goodbye), 0)
 
+    async def test_the_diary_is_written_and_read_from_slack_with_date_time_and_name(self):
+        import diary
+        path = os.path.join(self.tmp.name, "diary.txt")
+        self.bot.cfg["diary_file"] = path
+        self.bot.person = {"U1": "Ann Example", "UDANGER": "Dan Example"}.get
+        out = await self.say("diary write Bank raised to 540 V")
+        self.assertIn("Written to the diary", out)
+        self.assertRegex(out, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \| Ann Example \(Slack\) \| general \| Bank raised to 540 V")
+        await self.say("connect ech")
+        self.assertIn("| ech | second entry / on two lines", await self.say("diary write second entry\non two lines"))
+        self.assertIn("| Dan Example (Slack) | general | from Dan", await self.say(".diary write from Dan", user="UDANGER", channel="D2"))
+        await asyncio.sleep(0.3)
+        self.assertFalse([c for c in self.ctl.received if "diary" in c.lower()], "a diary line is never sent to the controller")
+        out = await self.say("diary read")
+        self.assertIn("Diary: 3 entries on ", out)
+        self.assertEqual(len([l for l in out.splitlines() if l[:2] == "20" and " | " in l]), 3, "each line has its date, time and writer")
+        self.assertIn("Dan Example (Slack)", out)
+        self.assertIn("Diary: 1 entry containing", await self.say("diary search 540"))
+        self.assertIn("the newest 1 of 3", await self.say("diary last 1"))
+        self.assertIn("3 entries on 1 day", await self.say("diary dates"))
+        self.assertIn("2 entries in the whole diary", await self.say("diary read all by=ann"))
+        self.assertIn("no entries on 2020-01-01", await self.say("diary read 2020-01-01"))
+        self.assertIn("the entry is empty", await self.say("diary write"))
+        self.assertIn("I do not know 'diary erase'", await self.say("diary erase everything"))
+        for i in range(60):
+            diary.write(path, "x", f"filler {i}")
+        out = await self.say("diary read all")
+        self.assertIn("63 entries in the whole diary; the newest 40 are shown", out)
+        self.assertLess(len(out), ws.MAX_TEXT + 60)
+        self.assertIsNone(await self.say("diary read", user="USTRANGER", channel="D9"), "only authorized people")
+        self.assertEqual(ws.diary_file({"diary_file": None, "discover_dir": "/nonexistent", "state_dir": "/var/lib/wham/hub/slack"}),
+                         "/var/lib/wham/hub/diary.txt")
+
     async def second_hub(self, controller=FakeController):
         ctl = controller(serial="WB-0002-6")
         port = await ctl.start()

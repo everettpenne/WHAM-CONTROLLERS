@@ -54,7 +54,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-TESTS = ["tests.test_wham_hub", "tests.test_dangerous_commands", "tests.test_hub_update"]
+TESTS = ["tests.test_wham_hub", "tests.test_dangerous_commands", "tests.test_hub_update", "tests.test_diary"]
 # what a test of a commit needs from the tree: the host code and the firmware command tables the danger list is checked against
 TEST_PATHS = ["host", "firmware/xrex/src/app/commands", "firmware/hbridge/src/app/commands", "firmware/xrex/python",
               "firmware/hbridge/python"]
