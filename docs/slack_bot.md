@@ -21,11 +21,21 @@ Open a direct message with the bot (or use `/wham <words>`).
 | `.log 20 since=1h grep=ARM` | the hub's *stored* log (what happened earlier); also `kind=cmd`, `client=<name>` |
 | `.who` | who is connected to that hub |
 | `.disconnect` | closes the session (the controller keeps doing what it does) |
+| `watch all` / `watch off` | **every controller at once**: the live traffic of all hubs in one stream, each line marked with its controller, for example `[ech] [labview] > STATE?`. It only watches: nothing you type is sent to a controller. It works beside a session (your own lines then show twice) |
+| `log all 20 since=1h` | the *stored* logs of every hub, merged in time order (same filters as `.log`) |
 | `.users` | who is authorized to use the bot, by name, and whether anyone may send dangerous commands |
 | `help` | the list of commands. It works at any time, with or without the dot, also while connected (it is never sent to a controller) |
 
 While connected, a line that starts with a **dot** is for the bot and everything else goes to the controller. Not
 connected, the dot is optional, and `ech state` or `ech SHOT?` asks one thing without opening a session (read only).
+
+**Which controllers.** Every hub the server runs. The bot reads the hub configuration files next to it
+(`host/config/<name>.yaml`, the same files the hub services start from) about twice a minute, so **a controller that gets a
+hub appears by itself** in `list`, `connect` and `watch all`, under its hub's name (the beginning of a name is enough:
+`connect new`). The three installed ones keep their short names (`xrex`, `limiter`, `ech`), with the hub's name as an alias
+(`ech-hvps`). The bot does not scan the network and never talks to a controller's bridge: a new controller needs a hub
+first (`docs/bench_devices.md`), and a config file whose hub is not running shows in `list` as "the hub does not answer".
+`"discover": false` in the settings turns this off.
 
 **Why not `/list` and `/connect`:** Slack keeps a leading `/` for commands an app has registered, and such names are shared
 by the whole workspace. The app registers one, `/wham` (`/wham list`, `/wham connect ech`). If you want the short names,
@@ -45,8 +55,9 @@ add `/list` and `/connect` as slash commands of the app too: the bot understands
 - A flood of traffic in hub-log mode is cut (long lines shortened, at most three messages per batch, the rest counted).
 
 A session is an ordinary hub client named `slack-<your Slack name>`: the hub's log records who sent what, other clients see
-your commands as anyone's, and the operator console lists you under "People on this controller". A session nobody types
-in for 30 minutes is closed (`session_idle_min`), so a forgotten one does not hold up a hub update.
+your commands as anyone's, and the operator console lists you under "People on this controller". A watch is one such
+client on every hub, named `slack-<you>-watch`. A session or a watch that hears nothing from you for 30 minutes is closed
+(`session_idle_min`), so a forgotten one does not hold up a hub update (a hub is updated only when nobody is connected).
 
 ## Setting it up (once)
 
@@ -65,7 +76,7 @@ in for 30 minutes is closed (`session_idle_min`), so a forgotten one does not ho
      slash_commands:
        - command: /wham
          description: WHAM-PFM-Controller-Link, the controllers through their hubs
-         usage_hint: help | list | connect ech | users
+         usage_hint: help | list | connect <xrex|limiter|ech> | users
    oauth_config:
      scopes:
        bot: [app_mentions:read, chat:write, im:history, commands, users:read]

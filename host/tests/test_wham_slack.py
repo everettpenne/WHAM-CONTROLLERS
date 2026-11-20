@@ -17,13 +17,15 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, os.path.join(HERE, "..", "slack_bot"))
 import wham_slack as ws
-from test_wham_hub import Client, HubBase
+import wham_hub as wh
+from test_wham_hub import Client, FakeController, HubBase, free_port
 
 
 def cfg(port, **kw):
     c = json.loads(json.dumps(ws.DEFAULTS))
     c.update(app_token="xapp-test", bot_token="xoxb-test", allow_users=["U1", "UDANGER"], allow_channels=["CLAB"],
-             danger_users=["UDANGER"], controllers={"ech": {"host": "127.0.0.1", "port": port, "aliases": ["hvps"]}})
+             danger_users=["UDANGER"], controllers={"ech": {"host": "127.0.0.1", "port": port, "aliases": ["hvps"]}},
+             discover=False)
     c.update(kw)
     return c
 
@@ -95,6 +97,29 @@ class RulesTests(unittest.TestCase):
             ws.urllib.request.urlopen = real
         self.assertEqual(seen["users.info"], (b"user=U1", "application/x-www-form-urlencoded"))
         self.assertTrue(seen["chat.postMessage"][1].startswith("application/json"))
+
+    def test_hubs_configured_on_the_server_are_found_and_merged_with_the_named_ones(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            for name, text in (("ech-hvps.yaml", "name: ech-hvps\nhost: 192.0.2.1\nlisten_port: 5103\n"),
+                               ("new-supply.yaml", "name: new-supply\nhost: 192.0.2.9\nlisten_host: 0.0.0.0\nlisten_port: 5107\n"),
+                               ("new-supply.local.yaml", "allow_from: [127.0.0.1]\n"), ("example.yaml", "listen_port: 5001\n"),
+                               ("broken.yaml", "host: 192.0.2.3\n"), ("notes.txt", "listen_port: 9\n")):
+                with open(os.path.join(d, name), "w") as f:
+                    f.write(text)
+            found = ws.discover_hubs(d)
+            self.assertEqual(found, {"ech-hvps": ("127.0.0.1", 5103), "new-supply": ("127.0.0.1", 5107)})
+            named = {"ech": {"host": "127.0.0.1", "port": 5103, "aliases": ["hvps"]}}
+            merged = ws.merge_controllers(named, found)
+            self.assertEqual(list(merged), ["ech", "new-supply"])
+            self.assertEqual(merged["ech"]["aliases"], ["hvps", "ech-hvps"], "a known controller keeps its short name; the hub's name is an alias")
+            self.assertEqual((merged["new-supply"]["port"], merged["new-supply"]["discovered"]), (5107, True))
+            self.assertEqual(named["ech"]["aliases"], ["hvps"], "the settings themselves are not changed")
+            self.assertEqual(ws.discover_hubs(os.path.join(d, "missing")), {})
+            c = {"controllers": merged}
+            self.assertEqual(ws.find_controller(c, "new"), "new-supply")            # a unique beginning is enough
+            self.assertEqual(ws.find_controller(c, "ech-hvps"), "ech")
+            self.assertIsNone(ws.find_controller({"controllers": {"ab1": {"aliases": []}, "ab2": {"aliases": []}}}, "ab"), "not when two match")
 
     def test_tokens_come_from_the_environment_first_and_no_token_is_in_the_defaults(self):
         c = ws.load_config("/nonexistent", env={"SLACK_APP_TOKEN": "xapp-e", "SLACK_BOT_TOKEN": "xoxb-e"})
@@ -257,6 +282,121 @@ class BotTests(HubBase):
         self.bot.cfg["danger_users"] = []
         self.assertIn("Nobody may send dangerous commands", await self.say(".users"))
         self.assertIsNone(await self.say("users", user="USTRANGER", channel="D9"), "only authorized people may ask")
+
+    async def second_hub(self):
+        ctl = FakeController(serial="WB-0002-6")
+        port = await ctl.start()
+        self.addAsyncCleanup(ctl.stop)
+        listen = free_port()
+        hub = wh.Hub(self.cfg(name="t2", port=port, listen_port=listen))
+        task = asyncio.ensure_future(hub.run())
+        self.addAsyncCleanup(self.shutdown, hub, task)
+        for _ in range(50):
+            await asyncio.sleep(0.05)
+            if hub.identity:
+                break
+        return ctl, hub, listen
+
+    async def test_a_new_hub_config_appears_by_itself_in_list_connect_and_watch(self):
+        ctl2, hub2, listen2 = await self.second_hub()
+        folder = os.path.join(self.tmp.name, "config")
+        os.makedirs(folder)
+        self.bot = ws.Bot(cfg(self.listen, discover=True, discover_dir=folder))
+        self.assertEqual(list(self.bot.cfg["controllers"]), ["ech"])
+        with open(os.path.join(folder, "new-supply.yaml"), "w") as f:
+            f.write(f"name: new-supply\nhost: 127.0.0.1\nport: 1\nlisten_host: 0.0.0.0\nlisten_port: {listen2}\n")
+        self.bot.scanned = time.monotonic() - 60                                          # the next message looks again
+        out = await self.say("list")
+        self.assertIn("*new-supply* (WHAM-FAKE WB-0002-6", out)
+        self.assertIn("*ech* (WHAM-FAKE WB-0001-8", out)
+        self.assertIn("Connected to *new-supply*", await self.say("connect new"))
+        await self.say("ECHO via-new")
+        await self.posted("OK via-new")
+        self.assertIn("ECHO via-new", ctl2.received)
+        self.assertNotIn("ECHO via-new", self.ctl.received)
+        await self.say(".disconnect")
+        self.assertIn("Watching *ech, new-supply*", await self.say("watch all"))
+        os.remove(os.path.join(folder, "new-supply.yaml"))
+        self.bot.scanned = time.monotonic() - 60
+        self.assertNotIn("new-supply", (await self.say("list")).split("You are watching")[0], "a removed hub is no longer offered")
+
+    async def test_watch_all_shows_every_hub_marked_and_sends_nothing(self):
+        ctl2, hub2, listen2 = await self.second_hub()
+        self.bot.configured["limiter"] = {"host": "127.0.0.1", "port": listen2, "aliases": []}
+        self.bot.cfg["controllers"]["limiter"] = self.bot.configured["limiter"]
+        out = await self.say("watch all")
+        self.assertIn("Watching *ech, limiter*", out)
+        self.assertIn("nothing you type is sent", out)
+        await asyncio.sleep(0.3)
+        self.assertEqual([c.name for c in self.hub.clients.values()], ["slack-ann-watch"])
+        a = await Client.connect(self.listen, "labview")
+        b = await Client.connect(listen2, "console")
+        await a.send("ECHO on-ech")
+        await b.send("ECHO on-limiter")
+        await self.posted("[ech] [labview] > ECHO on-ech")
+        await self.posted("[ech] [labview] < OK on-ech")
+        await self.posted("[limiter] [console] > ECHO on-limiter")
+        self.assertFalse(any("connected as" in p for p in self.posts), "the hub's greeting is not relayed")
+        before = (list(self.ctl.received), list(ctl2.received))
+        self.assertIn("do not know a controller", await self.say("STATE?"))               # typed while only watching
+        await asyncio.sleep(0.3)
+        self.assertEqual((self.ctl.received, ctl2.received), before, "a watch never sends to a controller")
+        self.assertIn("You are watching ech, limiter", await self.say("list"))
+        # a session beside the watch: its lines go to its controller only
+        await self.say("connect ech")
+        await self.say("ECHO mine")
+        await self.posted("[ech] [slack-ann] > ECHO mine")
+        self.assertNotIn("ECHO mine", ctl2.received)
+        self.assertIn("still connected to *ech*", await self.say("watch off"))
+        await asyncio.sleep(0.4)
+        self.assertEqual(self.bot.watches, {})
+        self.assertEqual([c.name for c in hub2.clients.values()], ["console"])
+        self.assertEqual(sorted(c.name for c in self.hub.clients.values()), ["labview", "slack-ann"])
+
+    async def test_an_idle_watch_ends_once_and_a_lost_hub_is_named(self):
+        ctl2, hub2, listen2 = await self.second_hub()
+        self.bot.cfg["controllers"]["limiter"] = {"host": "127.0.0.1", "port": listen2, "aliases": []}
+        await self.say("watch all")
+        await asyncio.sleep(0.4)                                                          # the hubs have registered the watch
+        self.assertEqual(len(hub2.clients), 1)
+        for w in list(hub2.clients):
+            w.close()
+        await self.posted("*limiter*: the hub closed the connection. Still watching ech.")
+        self.bot.cfg["session_idle_min"] = 0.01
+        for w in self.bot.watches.values():
+            for s in w.sessions.values():
+                s.idle_s = 0.6
+        await self.posted("Watching stopped: nothing was typed", secs=5)
+        await asyncio.sleep(0.3)
+        self.assertEqual(sum("Watching stopped" in p for p in self.posts), 1)
+        self.assertEqual(self.bot.watches, {})
+        self.assertEqual(len(self.hub.clients), 0)
+        self.bot.cfg["controllers"] = {"gone": {"host": "127.0.0.1", "port": free_port(), "aliases": []}}
+        self.assertIn("No hub could be reached", await self.say("watch all"))
+
+    async def test_log_all_merges_the_hubs_logs_in_time_order(self):
+        ctl2, hub2, listen2 = await self.second_hub()
+        self.bot.cfg["controllers"]["limiter"] = {"host": "127.0.0.1", "port": listen2, "aliases": []}
+        a = await Client.connect(self.listen, "labview")
+        b = await Client.connect(listen2, "console")
+        await a.send("ECHO first")
+        await asyncio.sleep(0.3)
+        await b.send("ECHO second")
+        await asyncio.sleep(0.3)
+        await a.send("ECHO third")
+        await asyncio.sleep(0.4)
+        out = await self.say("log all 20 kind=cmd grep=ECHO")
+        self.assertIn("Hub logs of ech, limiter, merged", out)
+        rows = [l for l in out.splitlines() if "ECHO" in l]
+        self.assertEqual([(r.split()[2], r.split()[-1]) for r in rows], [("ech", "first"), ("limiter", "second"), ("ech", "third")])
+        self.bot.cfg["controllers"]["dead"] = {"host": "127.0.0.1", "port": free_port(), "aliases": []}
+        out = await self.say("log all 5 grep=ECHO")
+        self.assertIn("*dead*: no answer from the hub", out)
+        self.assertIn("third", out)
+        await self.say("connect ech")
+        self.assertIn("merged", await self.say("log all 5"))                              # no dot needed, never sent to the controller
+        self.assertIn("*ech* hub log", await self.say(".log 5"))
+        self.assertNotIn("log all 5", self.ctl.received)
 
     async def test_too_many_messages_too_fast(self):
         self.bot.cfg["rate_per_minute"] = 2

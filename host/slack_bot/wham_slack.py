@@ -10,6 +10,8 @@ In a direct message with the bot (or with /wham <words>, or by mentioning it):
     .log 20 since=1h         the hub's stored log (also grep=<text>, kind=cmd, client=<name>)
     .disconnect              close the session
     .users                   who is authorized to use the bot
+    watch all                show the traffic of EVERY controller at once, each line marked with its controller (watch off)
+    log all 20 since=1h      the stored logs of every hub, merged in time order
     help                     the list of commands (at any time)
 
 While connected, a line that starts with a dot is for the bot; everything else goes to the controller. Not connected, the dot
@@ -26,6 +28,11 @@ What may be sent
 
 Who may use it: only people listed in allow_users, or messages in a channel listed in allow_channels (Slack IDs, U... and
 C...). With both lists empty it answers nobody. A user is limited to rate_per_minute messages.
+
+Which controllers: every hub this server runs. The bot reads the hub configs next to it (host/config/<name>.yaml, the files
+the hub services are started from) and offers each one, so a controller that gets a hub appears in list, connect and
+"watch all" by itself within a minute, under its hub's name. The "controllers" entries of the settings give the three
+installed ones their short names. A controller with no hub cannot be reached: the bot never talks to a bridge directly.
 
 A session is a real hub client named "slack-<user>": the hub's log records who sent what, the other clients see the commands
 as they see anyone's, and "People on this controller" in the operator console lists it. A session nobody types in for
@@ -76,6 +83,7 @@ CRON_MARK = "# wham slack bot"
 DEFAULTS = {
     "app_token": "", "bot_token": "", "allow_channels": [], "allow_users": [], "danger_users": [], "rate_per_minute": 30,
     "session_idle_min": 30, "confirm_s": 30,
+    "discover": True, "discover_dir": os.path.join(HOST_DIR, "config"),     # offer every hub configured on this server
     "state_dir": "/var/lib/wham/hub/slack",
     "controllers": {
         "xrex": {"host": "127.0.0.1", "port": 5101, "aliases": ["magnets", "transrex"]},
@@ -92,6 +100,8 @@ HELP = """*WHAM-PFM-Controller-Link: the WHAM controllers, through their hubs*
 `.log [n] [since=1h] [grep=text] [kind=cmd]`  the hub's stored log (n up to 30)
 `.who`  who is connected to that hub      `.disconnect`  close the session
 `.users`  who is authorized to use this bot
+`watch all` / `watch off`  the traffic of every controller at once, each line marked `[controller]` (watching only: nothing you type goes to them)
+`log all [n] [since=1h] [grep=text]`  the stored logs of every hub, merged in time order
 While connected, a line starting with a dot is for me; anything else (except `help`) is sent to the controller.
 Not connected the dot is optional, and `<controller> state` or `<controller> <QUERY?>` asks one thing (read only).
 Controllers: {names}.
@@ -111,11 +121,50 @@ def load_config(path=LOCAL_CONFIG, env=os.environ):
 
 
 def find_controller(cfg, word):
+    """The controller a word names: its name or an alias, else the one name or alias that starts with the word."""
     w = word.lower()
+    starts = set()
     for name, c in cfg["controllers"].items():
-        if w == name.lower() or w in [a.lower() for a in c.get("aliases", [])]:
+        labels = [name.lower()] + [a.lower() for a in c.get("aliases", [])]
+        if w in labels:
             return name
-    return None
+        if w and any(l.startswith(w) for l in labels):
+            starts.add(name)
+    return starts.pop() if len(starts) == 1 else None
+
+
+def discover_hubs(folder):
+    """{hub name: (host, port)} for every hub configured in host/config (the files the hub services are started from)."""
+    found = {}
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return found
+    for f in names:
+        if not f.endswith(".yaml") or f.endswith(".local.yaml") or f == "example.yaml":
+            continue
+        try:
+            hc = wham_hub.load_config(os.path.join(folder, f))
+            port = int(hc.get("listen_port") or 0)
+        except (OSError, ValueError, TypeError):
+            continue
+        if port:
+            host = str(hc.get("listen_host") or "0.0.0.0")
+            found[f[:-5]] = ("127.0.0.1" if host in ("0.0.0.0", "::", "") else host, port)
+    return found
+
+
+def merge_controllers(configured, found):
+    """The controllers the bot offers: the configured ones (a hub found on the same port adds its name as an alias) plus
+    every other hub found, under its hub name."""
+    out = json.loads(json.dumps(configured))
+    for hub, (host, port) in sorted(found.items()):
+        same = next((n for n, c in out.items() if int(c["port"]) == port and c["host"] in (host, "127.0.0.1", "localhost")), None)
+        if same is None and hub not in out:
+            out[hub] = {"host": host, "port": port, "aliases": [], "discovered": True}
+        elif same is not None and hub != same and hub not in out[same].setdefault("aliases", []):
+            out[same]["aliases"].append(hub)
+    return out
 
 
 # ---- what may be sent ---------------------------------------------------------------------------------------------
@@ -168,27 +217,77 @@ def session_check(command, may_danger=False):
     return "confirm", f"`{text}` is dangerous ({danger.category})."
 
 
-def more_waiting(sock):
-    """True when more bytes are already waiting (a batch is still arriving)."""
-    try:
-        sock.setblocking(False)
-        try:
-            return bool(sock.recv(1, socket.MSG_PEEK))
-        finally:
-            sock.settimeout(0.3)
-    except (BlockingIOError, OSError):
-        return False
+class Outbox:
+    """Lines on their way to Slack: batched into code blocks, at most one post a second and three per batch; a flood is
+    counted, not relayed."""
+
+    def __init__(self, post):
+        self.post, self.lines, self.skipped, self.first, self.last_add = post, [], 0, None, 0.0
+        self.lock, self.stop = threading.Lock(), threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def add(self, text):
+        with self.lock:
+            self.lines.append(text if len(text) <= 300 else text[:300] + f" … ({len(text)} characters)")
+            self.last_add = time.monotonic()
+            self.first = self.first or self.last_add
+            if len(self.lines) > 300:
+                self.skipped += len(self.lines) - 100
+                self.lines = self.lines[-100:]
+
+    def flush(self):
+        with self.lock:
+            lines, skipped, self.lines, self.skipped, self.first = self.lines, self.skipped, [], 0, None
+        posts = 0
+        while lines:
+            if posts == 3:                         # at most three messages per batch: the rest is counted, not relayed
+                skipped += len(lines)
+                break
+            posts += 1
+            chunk, size = [], 0
+            while lines and len(chunk) < 60 and size + len(lines[0]) < 2900:
+                size += len(lines[0]) + 1
+                chunk.append(lines.pop(0))
+            self.post("```\n" + "\n".join(chunk).replace("```", "` ` `") + "\n```")
+            if lines and posts < 3:
+                time.sleep(1.0)
+        if skipped:
+            self.post(f"… {skipped} more lines were not shown (too much traffic for Slack; `.log` has them).")
+
+    def run(self):
+        last_post = 0.0
+        while not self.stop.wait(0.2):
+            now = time.monotonic()
+            if self.lines and now - last_post >= 1.0 and (now - self.last_add > 0.35 or now - self.first > 1.5):
+                self.flush()
+                last_post = time.monotonic()
+        self.flush()
+
+    def close(self):
+        self.stop.set()
+        if threading.current_thread() is not self.thread:
+            self.thread.join(5)
 
 
 class Session:
-    """One Slack conversation's connection to one hub: lines typed go out, every line the hub sends comes back batched
-    into code blocks (at most one post a second)."""
+    """One connection to one hub for a Slack conversation: lines typed go out, every line the hub sends goes to the
+    outbox (its own, or the one a watch shares, with a prefix naming the controller)."""
 
-    def __init__(self, name, host, port, who, post, idle_s=1800.0, on_close=lambda s: None):
+    def __init__(self, name, host, port, who, post, idle_s=1800.0, on_close=lambda s, why: None, outbox=None, prefix="",
+                 quiet=True, announce=True):
         self.name, self.who, self.post, self.idle_s, self.on_close = name, who, post, idle_s, on_close
-        self.sock = socket.create_connection((host, port), timeout=5.0)
-        self.sock.sendall(f"@quiet {who}\n".encode())
-        self.hublog = False
+        self.prefix, self.announce = prefix, announce
+        self.own_outbox = outbox is None
+        self.outbox = outbox or Outbox(post)
+        try:
+            self.sock = socket.create_connection((host, port), timeout=5.0)
+            self.sock.sendall(f"@{'quiet' if quiet else 'name'} {who}\n".encode())
+        except OSError:
+            if self.own_outbox:
+                self.outbox.close()
+            raise
+        self.hublog = not quiet
         self.confirm = None          # (command, time) waiting for .confirm
         self.last_input = time.monotonic()
         self.closed = False
@@ -205,27 +304,8 @@ class Session:
         self.hublog = bool(on)
         self.send("!hub quiet " + ("off" if on else "on"))
 
-    def flush(self, lines, skipped):
-        posts = 0
-        while lines:
-            if posts == 3:                         # at most three messages per batch: the rest is counted, not relayed
-                skipped += len(lines)
-                break
-            posts += 1
-            chunk, size = [], 0
-            while lines and len(chunk) < 60 and size + len(lines[0]) < 2900:
-                size += len(lines[0]) + 1
-                chunk.append(lines.pop(0))
-            if not chunk:
-                chunk.append(lines.pop(0)[:2900])
-            self.post("```\n" + "\n".join(chunk).replace("```", "'''") + "\n```")
-            if lines and posts < 3:
-                time.sleep(1.0)
-        if skipped:
-            self.post(f"… {skipped} more lines were not shown (too much traffic for Slack; `.log` has them).")
-
     def reader(self):
-        buf, lines, skipped, first, last_post, why = b"", [], 0, None, 0.0, None
+        buf, why = b"", None
         self.sock.settimeout(0.3)
         while not self.closed:
             try:
@@ -237,27 +317,16 @@ class Session:
                 while b"\n" in buf:
                     raw, buf = buf.split(b"\n", 1)
                     text = raw.decode(errors="replace").rstrip()
-                    if text and text not in ("# hub: quiet on", "# hub: quiet off"):
-                        lines.append(text if len(text) <= 300 else text[:300] + f" … ({len(text)} characters)")
-                        first = first or time.monotonic()
-                if len(lines) > 300:
-                    skipped += len(lines) - 100
-                    lines = lines[-100:]
+                    if text and text not in ("# hub: quiet on", "# hub: quiet off") and not text.startswith("--- connected as "):
+                        self.outbox.add(self.prefix + text)
             except socket.timeout:
                 pass
             except OSError as e:
                 why = None if self.closed else f"the connection to the hub failed ({e})"
                 break
-            now = time.monotonic()
-            if lines and now - last_post >= 1.0 and (not more_waiting(self.sock) or now - first > 1.5):
-                out, sk, lines, skipped, first = lines, skipped, [], 0, None
-                self.flush(out, sk)
-                last_post = time.monotonic()
-            if now - self.last_input > self.idle_s:
+            if time.monotonic() - self.last_input > self.idle_s:
                 why = f"nothing was typed for {self.idle_s / 60:.0f} minutes"
                 break
-        if lines:
-            self.flush(lines, skipped)
         self.close(why)
 
     def close(self, why=None):
@@ -268,9 +337,49 @@ class Session:
         except OSError:
             pass
         if first:
-            self.on_close(self)
-            if why:
+            if self.own_outbox:
+                self.outbox.close()
+            self.on_close(self, why)
+            if why and self.announce:
                 self.post(f"Session with *{self.name}* closed: {why}. What the controller is doing keeps going.")
+
+
+class Watch:
+    """The traffic of several hubs in one stream: one hub-log connection each, one shared outbox, every line marked
+    with its controller. Nothing is ever sent to a controller from a watch."""
+
+    def __init__(self, controllers, who, post, idle_s, on_close=lambda w: None):
+        self.post, self.on_close, self.closed = post, on_close, False
+        self.outbox = Outbox(post)
+        self.sessions, self.failed = {}, {}
+        for name, (host, port) in controllers.items():
+            try:
+                self.sessions[name] = Session(name, host, port, who, post, idle_s, on_close=self.lost, outbox=self.outbox,
+                                              prefix=f"[{name}] ", quiet=False, announce=False)
+            except OSError as e:
+                self.failed[name] = str(e)
+
+    def lost(self, session, why):
+        if self.closed:
+            return
+        self.sessions.pop(session.name, None)
+        if why and why.startswith("nothing was typed"):
+            self.close(why)                                    # idle: the whole watch ends, said once
+        elif why:
+            self.post(f"*{session.name}*: {why}. " + ("Still watching " + ", ".join(self.sessions) + "." if self.sessions else ""))
+            if not self.sessions:
+                self.close("no hub is left to watch")
+
+    def close(self, why=None):
+        if self.closed:
+            return
+        self.closed = True
+        for s in list(self.sessions.values()):
+            s.close()
+        self.outbox.close()
+        self.on_close(self)
+        if why:
+            self.post(f"Watching stopped: {why}.")
 
 
 # ---- one request to a hub -----------------------------------------------------------------------------------------
@@ -315,6 +424,10 @@ class Bot:
         self.config_path, self.config_mtime = config_path, self._mtime(config_path)
         self.recent = collections.defaultdict(collections.deque)      # user -> times of recent requests
         self.sessions = {}                                            # (channel, user) -> Session
+        self.watches = {}                                             # (channel, user) -> Watch
+        self.configured = json.loads(json.dumps(cfg["controllers"]))  # as given in the settings, before discovery
+        self.scanned = None
+        self.rescan()
 
     # -- access
     @staticmethod
@@ -342,8 +455,19 @@ class Bot:
                  f"{len(self.cfg['danger_users'])} on the danger list")
         return True
 
+    def rescan(self, max_age=30.0):
+        """Offer every hub this server is configured to run, beside the controllers named in the settings."""
+        if not self.cfg.get("discover") or (self.scanned is not None and time.monotonic() - self.scanned < max_age):
+            return
+        self.scanned = time.monotonic()
+        merged = merge_controllers(self.configured, discover_hubs(self.cfg["discover_dir"]))
+        if set(merged) != set(self.cfg["controllers"]):
+            log_line("controllers offered now: " + ", ".join(merged))
+        self.cfg["controllers"] = merged
+
     def allowed(self, user, channel):
         self.refresh()
+        self.rescan()
         return channel in self.cfg["allow_channels"] or user in self.cfg["allow_users"]
 
     def too_fast(self, user):
@@ -395,7 +519,27 @@ class Bot:
         text = f"*{name}* ({board}, fw {f.get('fw', '?')}): `{state.replace('OK ', '', 1)}`"
         return text + (f"; connected: {', '.join(others)}" if others else "; nobody else connected")
 
+    def log_rows(self, name, user_name, n, words):
+        """(rows, None) or (None, why): the newest n matching rows of one hub's stored log."""
+        try:
+            lines = self.request(*self.ctl(name), self.who(user_name), " ".join(["!hub log", str(n)] + words),
+                                 lambda ls: any(l.startswith(("# log-end", "# hub:")) for l in ls), 10.0)
+        except (OSError, TimeoutError) as e:
+            return None, f"no answer from the hub ({e})"
+        bad = next((l for l in lines if l.startswith("# hub:")), None)
+        if bad:
+            return None, bad[2:].strip()
+        rows = []
+        for l in lines:
+            if l.startswith("# log {"):
+                try:
+                    rows.append(json.loads(l[6:]))
+                except ValueError:
+                    continue
+        return rows, None
+
     def log(self, name, user_name, args):
+        """One hub's stored log, or with name None every hub's, merged in time order."""
         n = 10
         words = []
         for w in args:
@@ -406,24 +550,26 @@ class Bot:
             else:
                 return f"I do not understand `{w}`. Use a number, `since=1h`, `kind=cmd`, `client=<name>` or `grep=<text>`."
         words.sort(key=lambda w: w.startswith("grep="))               # grep= takes the rest of the line: it goes last
-        try:
-            lines = self.request(*self.ctl(name), self.who(user_name), " ".join(["!hub log", str(n)] + words),
-                                 lambda ls: any(l.startswith(("# log-end", "# hub:")) for l in ls), 10.0)
-        except (OSError, TimeoutError) as e:
-            return f"*{name}*: no answer from the hub ({e})"
-        bad = next((l for l in lines if l.startswith("# hub:")), None)
-        if bad:
-            return f"*{name}*: {bad[2:].strip()}"
-        rows = []
-        for l in lines:
-            if l.startswith("# log {"):
-                try:
-                    r = json.loads(l[6:])
-                except ValueError:
-                    continue
-                t = datetime.datetime.fromtimestamp(r.get("t", 0)).strftime("%m-%d %H:%M:%S")
-                rows.append(f"{t} {r.get('kind', '?'):<6} {(r.get('client') or '-'):<14} {r.get('line', '')}"[:160])
-        return f"*{name}* hub log, newest {len(rows)} matching rows:\n```\n" + ("\n".join(rows) or "(nothing)") + "\n```"
+        names = [name] if name else list(self.cfg["controllers"])
+        rows, notes = [], []
+        for c in names:
+            got, why = self.log_rows(c, user_name, n, words)
+            if got is None:
+                notes.append(f"*{c}*: {why}")
+            else:
+                rows += [(r.get("t", 0), c, r) for r in got]
+        if name and notes:
+            return notes[0]
+        rows = sorted(rows, key=lambda x: x[0])[-n:]
+        width = max([len(c) for c in names] + [1])
+        text = []
+        for t, c, r in rows:
+            stamp_ = datetime.datetime.fromtimestamp(t).strftime("%m-%d %H:%M:%S")
+            where = f"{c:<{width}} " if not name else ""
+            text.append(f"{stamp_} {where}{r.get('kind', '?'):<6} {(r.get('client') or '-'):<14} {r.get('line', '')}"[:170])
+        head = f"*{name}* hub log" if name else f"Hub logs of {', '.join(names)}, merged"
+        return (f"{head}, newest {len(rows)} matching rows:\n```\n" + ("\n".join(text) or "(nothing)") + "\n```"
+                + ("\n" + "\n".join(notes) if notes else ""))
 
     def answer(self, text, user="U0", user_name="user"):
         """The reply to one message (the bot's mention already removed)."""
@@ -480,13 +626,34 @@ class Bot:
     def close_all(self, why):
         for s in list(self.sessions.values()):
             s.close(why)
+        for w in list(self.watches.values()):
+            w.close(why)
+
+    def watch_all(self, key, user_name, post):
+        old = self.watches.pop(key, None)
+        if old is not None:
+            old.close()
+
+        def gone(w):
+            if self.watches.get(key) is w:
+                self.watches.pop(key, None)
+        targets = {n: self.ctl(n) for n in self.cfg["controllers"]}
+        w = Watch(targets, self.who(user_name) + "-watch", post, float(self.cfg["session_idle_min"]) * 60.0, on_close=gone)
+        if not w.sessions:
+            w.close()
+            return "No hub could be reached: " + "; ".join(f"{n} ({e})" for n, e in w.failed.items())
+        self.watches[key] = w
+        return (f"Watching *{', '.join(w.sessions)}*: all their traffic is shown here, each line marked with its controller. "
+                "This only watches: nothing you type is sent to them. `watch off` stops it; it stops by itself after "
+                f"{self.cfg['session_idle_min']:g} minutes without a message from you."
+                + ("\nNot reachable: " + "; ".join(f"{n} ({e})" for n, e in w.failed.items()) if w.failed else ""))
 
     def connect(self, key, name, user_name, post):
         old = self.sessions.get(key)
         if old is not None:
             old.close()
 
-        def gone(s):
+        def gone(s, why=None):
             if self.sessions.get(key) is s:
                 self.sessions.pop(key, None)
         try:
@@ -506,17 +673,34 @@ class Bot:
             return HELP.format(names=", ".join(self.cfg["controllers"]))
         if verb in ("users", "authorized", "allowed"):
             return self.users()
+        w = self.watches.get(key)
+        if w is not None:
+            for x in w.sessions.values():
+                x.last_input = time.monotonic()                       # any message from the person keeps the watch alive
         if verb in ("list", "status", "controllers"):
             out = "\n".join(self.summary(n, user_name) for n in self.cfg["controllers"])
-            return out + ((f"\nYou are connected to *{s.name}*" + (" (hub-log on)." if s.hublog else ".")) if s else "")
+            out += (f"\nYou are connected to *{s.name}*" + (" (hub-log on)." if s.hublog else ".")) if s else ""
+            return out + (f"\nYou are watching {', '.join(w.sessions)}." if w else "")
+        if verb in ("watch", "hublog", "hub-log") and len(words) > 1 and words[1].lower() == "all":
+            if len(words) > 2 and words[2].lower() in ("off", "0", "no"):
+                verb, words = "watch", ["watch", "off"]
+            else:
+                return self.watch_all(key, user_name, post)
+        if verb in ("watch", "hublog", "hub-log") and w is not None and len(words) > 1 and words[1].lower() in ("off", "0", "no"):
+            w.close()
+            return "Stopped watching." + (f" You are still connected to *{s.name}*." if s else "")
+        if verb == "log" and len(words) > 1 and words[1].lower() == "all":
+            return self.log(None, user_name, words[2:])
         if verb == "connect":
             name = find_controller(self.cfg, words[1]) if len(words) > 1 else None
             if name is None:
                 return f"Connect to which controller? `connect <{'|'.join(self.cfg['controllers'])}>`"
             return self.connect(key, name, user_name, post)
         if s is None:
-            if verb in ("disconnect", "hublog", "hub-log", "watch", "confirm", "cancel", "log", "who"):
-                return "You are not connected. `connect <controller>` first (`list` shows them)."
+            if verb in ("hublog", "hub-log", "watch"):
+                return "You are not connected. `watch all` shows every controller's traffic; `connect <controller>` then `.hublog on` shows one."
+            if verb in ("disconnect", "confirm", "cancel", "log", "who"):
+                return "You are not connected. `connect <controller>` first (`list` shows them); `log all` reads every hub's log."
             return self.answer(text, user, user_name)                  # a one-off, read-only question
         if verb in ("disconnect", "bye", "quit", "exit"):
             s.close()
@@ -555,7 +739,13 @@ class Bot:
         if not lines:
             return None
         s = self.sessions.get(key)
-        if s is None or lines[0].startswith(".") or (len(lines) == 1 and lines[0].lower() in ("help", "?")):
+        w = self.watches.get(key)
+        if w is not None:
+            for x in w.sessions.values():
+                x.last_input = time.monotonic()
+        first = lines[0].lower().split()
+        own = len(lines) == 1 and (first[0] in ("help", "?") or first[:2] in (["watch", "all"], ["watch", "off"], ["log", "all"]))
+        if s is None or lines[0].startswith(".") or own:               # the bot's own words are never controller commands
             return self.bot_command(key, lines[0].lstrip(".").strip(), user, user_name, post)   # help is never a controller command
         s.confirm = None                                               # anything else typed cancels a pending question
         if len(lines) > MAX_LINES:
@@ -843,7 +1033,9 @@ def cmd_check(cfg):
             ok = False
             print(f"Slack: not reachable ({e})")
     bot = Bot(cfg)
-    for name in cfg["controllers"]:
+    print("controllers offered (settings + the hubs configured in " + str(cfg["discover_dir"]) + "): " + ", ".join(
+        n + (" [found]" if c.get("discovered") else "") for n, c in bot.cfg["controllers"].items()))
+    for name in bot.cfg["controllers"]:
         print(re.sub(r"[*`]", "", bot.summary(name, "check")))
     return 0 if ok else 1
 
@@ -856,7 +1048,13 @@ def main(argv=None):
     args = ap.parse_args(argv)
     cfg = load_config(args.config)
     if args.action == "ask":
-        print(Bot(cfg).answer(args.text, user_name=os.environ.get("USER", "terminal")))
+        bot = Bot(cfg)                                          # the same path a Slack message takes, minus the allow lists
+        out = bot.converse("terminal", "terminal", args.text, os.environ.get("USER", "terminal"), print)
+        if out:
+            print(out)
+        if bot.sessions or bot.watches:
+            time.sleep(3.0)                                    # show what arrives, then leave
+            bot.close_all(None)
         return 0
     if args.action == "check":
         return cmd_check(cfg)
@@ -882,7 +1080,7 @@ def main(argv=None):
     bot = Bot(cfg, config_path=args.config)
 
     def moved():                                               # the checkout was updated: stop, cron starts the new code
-        if time.monotonic() - checked[0] < 120 or bot.sessions:
+        if time.monotonic() - checked[0] < 120 or bot.sessions or bot.watches:
             return False                                       # never under someone's open session
         checked[0] = time.monotonic()
         return started is not None and checkout_commit() != started

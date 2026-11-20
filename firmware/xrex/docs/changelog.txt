@@ -19,6 +19,11 @@ WHAM-XREX-PFMG474 Firmware Changelog
   the allow lists take effect without a restart; users.info is sent form-encoded (sessions were named after the member ID);
   "help" answers at any time and is never sent to a controller; ".users" lists who is authorized, by name, without mentions.
   The guide and the manifest carry the app's names and the /wham hint "help | list | connect ech | users". Tests: 20.
+  Later the same day: "watch all" / "watch off" (one hub-log connection per hub, one stream, every line marked [controller];
+  watching only, nothing typed is sent; idle close; a hub that drops is named and the rest go on), "log all" (the stored logs
+  of every hub merged by time), and discovery: the bot reads host/config/<name>.yaml about twice a minute and offers every hub
+  configured there, so a controller that gets a hub appears in list, connect and watch all by itself; the three installed
+  ones keep their short names with the hub name as an alias; a unique beginning of a name is accepted. Tests: 25.
 
 2026-11-19  -  Tools: the flashing scripts refuse an image built from uncommitted code  [no firmware change; host-tested, checked with real builds in a throwaway clone; nothing flashed]
 -----------------------------------------------------------------------
