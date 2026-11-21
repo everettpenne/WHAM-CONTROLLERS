@@ -60,9 +60,9 @@
   \hline
   \textbf{Rev} & \textbf{Date} & \textbf{Author} & \textbf{Description} \\
   \hline
-  -- & 2026-11-18 & -- & Skeleton: structure and known facts as bullets; prose to be written. Supersedes (once complete)
-    the per-product SOPs \file{firmware/xrex/docs/sop/} (last Rev~G, 2026-09-29) and
-    \file{firmware/hbridge/docs/sop/} (last Rev~D, 2026-09-29). \\
+  -- & 2026-11-18 & -- & Skeleton: structure and known facts as bullets; prose to be written. Supersedes the per-product SOPs
+    (XREX last Rev~G, HBRIDGE last Rev~D, both 2026-09-29), retired 2026-11-20; their last versions are in git commit
+    \code{0680335} (\file{firmware/*/docs/sop/README.md}). \\
   A & & & First issue of the unified SOP. \todo{Date, author and approver for Rev A} \\
   \hline
 \end{tabular}
@@ -881,8 +881,8 @@ command table on 2026-11-18; the full syntax and replies are in \file{command_re
   \item Do not copy volatile facts (see ``How to read this document''); reference them.
   \item Build: \code{pdflatex wham\_controllers\_sop.tex} twice; render the pages and look at every table.
   \item \todo{Who approves a revision}
-  \item Retiring the former SOPs once Part~III is written: delete \file{firmware/*/docs/sop/*.tex|pdf}; add pointer READMEs;
-    update the ``SOP Section 3.3'' references in \file{firmware/*/AGENTS.md} and \file{handoff/06_known_hardware_issues.md}.
+  \item The former per-product SOPs were retired on 2026-11-20. Source notes in this document that say ``former XREX SOP
+    (lines \ldots)'' refer to their last versions, in git commit \code{0680335}: \file{firmware/*/docs/sop/README.md} gives the command.
 \end{itemize}
 
 % ======================================================================

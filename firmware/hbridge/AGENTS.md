@@ -812,7 +812,8 @@ for the current standard to match.
    there; don't re-chase them. Do not hard-tie NRST to 3.3 V (it defeats the
    chip's internal-reset holder); use a resistor. The source of the
    pull-down path is still unidentified. Full record: WHAM-XREX-PFMG474's
-   `docs/changelog.txt` (2026-09-28/29 entries) and SOP Section 3.3.
+   `docs/changelog.txt` (2026-09-28/29 entries) and the unified SOP's
+   "Required hardware modifications" section (`docs/sop/wham_controllers_sop.tex` at the repository top).
    **ST-Link:** with the pull-up fitted, attach with SWDIO, SWCLK, GND and
    3V3 only and leave the ST-Link's NRST wire OFF; use `openocd` with
    `reset_config none` and halt through the debug port. (2026-09-29, on
@@ -984,4 +985,4 @@ for the current standard to match.
 | `docs/changelog.txt` | Running change log, dated entries, root causes for fixes |
 | `docs/memory_history.csv` + `docs/memory_report.html` | Flash/RAM footprint, tracked per commit since project start -- see `python/memory_report.py`'s entry above for how/when to regenerate |
 | `docs/test_protocol.md` | Numbered bench test protocol (T0-T3) -- markedly shorter than the sibling project's, since it only covers what actually exists here (serial identity, BOOT/reflash incl. the Go-jump regression check, and a developer-only HRTIM smoke test). Update it as functionality is added rather than assuming it tracks the sibling's group numbering. |
-| `docs/sop/wham_pfmg474_v4_sop.tex` | Formal Standard Operating Procedure: build, bootstrap flash, serial reflash, verification, troubleshooting. Same LaTeX house style as the sibling project (`mathpazo`, 5in×8.25in `geometry`, plain `\hline` tables) -- compile with `pdflatex` (twice, for cross-references), then render to PNG and visually inspect before calling any edit done; this document's own `\tabcolsep` note explains a real overfull-table pitfall worth reading before adding another table. |
+| `docs/sop/wham_controllers_sop.tex` (repository top) | The unified Standard Operating Procedure for both products. The per-product SOP that was here is retired: `docs/sop/README.md` says how to get it from the git history. Compile with `pdflatex` twice, then look at the rendered pages. |

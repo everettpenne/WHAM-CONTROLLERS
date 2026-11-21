@@ -58,7 +58,7 @@ These come from the project owner and from real incidents. They are not suggesti
 | Why is the code like this? What was tried before? | `firmware/<product>/docs/changelog.txt` (newest first, dated, with root causes) |
 | What must never be changed casually? | `firmware/<product>/AGENTS.md` ("Hard-won invariants", "Source layout") and `07_fragile_software.md` |
 | Which pin is which? | `firmware/<product>/docs/pin_mapping_v4.csv` (the "XREX Pin Name" column is the XREX meaning) |
-| How do I operate the board safely, step by step? | `firmware/<product>/docs/operators_guide.md` and the SOP: `docs/sop/wham_controllers_sop.tex` (unified, a skeleton being written since 2026-11-18; the older per-product SOPs in `firmware/<product>/docs/sop/` stay until it is complete) |
+| How do I operate the board safely, step by step? | `firmware/<product>/docs/operators_guide.md` and the SOP: `docs/sop/wham_controllers_sop.tex` (unified; the per-product SOPs were retired on 2026-11-20 and are in the git history) |
 | How does a front end (LabVIEW, scripts) talk to it? | `docs/labview_*.md` at the repository top, and `firmware/<product>/docs/labview_interface.md` |
 | What is saved in a profile? | `firmware/hbridge/docs/saved_profiles.md`, `firmware/*/docs/saved_profiles_shared.md` |
 | Which board is where on the network? | `docs/bench_devices.md`, `host/devices.csv`, `host/config/*.yaml` |

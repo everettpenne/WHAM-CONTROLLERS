@@ -18,7 +18,7 @@ what to do now, and what the next board revision should change. Full evidence is
 * **Before chasing any "silent after swap or power-on" report, measure NRST** (healthy is near 3.3 V). It is not the firmware layout, not
   the option bytes `nSWBOOT0`/`IRHEN`, and not the update code: all three were ruled out.
 * **Next revision:** a proper NRST pull-up (about 5-10 kOhm) on the PCB, and find what loads the net.
-* Record: `firmware/xrex/docs/changelog.txt` 2026-09-28 and 2026-09-29; XREX SOP section 3.3 (with a next-revision list).
+* Record: `firmware/xrex/docs/changelog.txt` 2026-09-28 and 2026-09-29; the unified SOP's "Required hardware modifications" section (`docs/sop/wham_controllers_sop.tex`); the retired XREX SOP's section 3.3, with a next-revision list, is in the git history (`firmware/xrex/docs/sop/README.md`).
 
 ## 6.2 BOOT0 is floating
 

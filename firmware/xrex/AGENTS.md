@@ -997,8 +997,9 @@ what each layer may depend on: "Source layout" above.
    chip's internal-reset holder); use a resistor. The current bench
    bodge blocks ST-Link use -- lift it before connecting one. The source
    of the pull-down path is still unidentified. Full record:
-   `docs/sop/wham_xrex_pfmg474_sop.tex` Section 3.3 (with a next-board-
-   revision list) and `docs/changelog.txt`'s 2026-09-29 entry (the
+   the unified SOP's "Required hardware modifications" section
+   (`docs/sop/wham_controllers_sop.tex` at the repository top; the retired XREX SOP's
+   Section 3.3, with a next-board-revision list, is in the git history: `docs/sop/README.md`) and `docs/changelog.txt`'s 2026-09-29 entry (the
    2026-09-28 entry has the dead ends and corrections).
 5. **The two boards' option bytes differ on purpose; know which you have.**
    The CONTROLLER keeps the originals (`FLASH_OPTR = 0xFFFFF8AA` when
@@ -1173,4 +1174,4 @@ what each layer may depend on: "Source layout" above.
 | `docs/test_protocol.md` | Numbered bench test protocol (T0-T3) -- markedly shorter than the sibling project's, since it only covers what actually exists here (serial identity, BOOT/reflash incl. the Go-jump regression check, and a developer-only HRTIM smoke test). Update it as functionality is added rather than assuming it tracks the sibling's group numbering. |
 | `docs/reports/` | Generated reports: `simulator_validation_report.{tex,pdf}` and `simulator_channel_matrix_report.{tex,pdf}` (from `python/run_simulator_validation.py`), plus the memory footprint pair above |
 | `docs/campaigns/` | Campaign planning + results: `test_campaign_plan.md`, `test_campaign_report.md`, `test_campaign_results.md` |
-| `docs/sop/wham_xrex_pfmg474_sop.tex` | Formal Standard Operating Procedure: build, bootstrap flash, serial reflash, verification, troubleshooting. Same LaTeX house style as the sibling project (`mathpazo`, 5in×8.25in `geometry`, plain `\hline` tables) -- compile with `pdflatex` (twice, for cross-references), then render to PNG and visually inspect before calling any edit done; this document's own `\tabcolsep` note explains a real overfull-table pitfall worth reading before adding another table. |
+| `docs/sop/wham_controllers_sop.tex` (repository top) | The unified Standard Operating Procedure for both products. The per-product SOP that was here is retired: `docs/sop/README.md` says how to get it from the git history. Compile with `pdflatex` twice, then look at the rendered pages. |

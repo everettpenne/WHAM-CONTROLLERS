@@ -39,7 +39,7 @@ or fault protection behind it yet.
 | T0.1 | Build in CubeIDE (Debug config), or `cd Debug && make all -j4` | No errors, no warnings. |
 | T0.2 | `arm-none-eabi-objcopy -O binary Debug/WHAM-HBRIDGE-PFMG474.elf Debug/WHAM-HBRIDGE-PFMG474.bin` | Produces a `.bin` — this project's build config does not do this automatically (see `docs/serial_reflash_guide.md`). |
 | T0.3 | Check `.map` (or `arm-none-eabi-nm`) for `g_pfmTable` | **Present**, at 40000 B (5000 × 8-byte `PFM_Step_t`), in `.bss` — as of 2026-09-04, `main.c` calls `PFM_Init()` unconditionally at boot, so `pfm.c` is always linked in on a normal build. (Before that date this row read "absent" — if you're comparing against an old build, that's why.) |
-| T0.4 | Flash (ST-Link via CubeIDE, or `python/wham_serial_flash.py` once a `BOOT`-capable build is already on the chip — see `docs/sop/wham_pfmg474_v4_sop.tex`) | Board boots; no spontaneous serial output. |
+| T0.4 | Flash (ST-Link via CubeIDE, or `python/wham_serial_flash.py` once a `BOOT`-capable build is already on the chip — see the unified SOP, `docs/sop/wham_controllers_sop.tex` at the repository top) | Board boots; no spontaneous serial output. |
 
 ## T1 — Serial link & identity
 

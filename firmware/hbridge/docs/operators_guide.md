@@ -7,7 +7,7 @@ A real, worked example of the whole sequence (the commands, every reply, the mea
 
 This guide is about operating. If you are writing control software, read `labview_interface.md` (this folder) and the three LabVIEW guides at the top of the
 repository (`docs/labview_hub_guide.md`, `docs/labview_state_and_faults.md`, `docs/labview_commands.md`). For every command in detail, see `command_reference.md`.
-For building and flashing the firmware, see `sop/wham_hbridge_pfmg474_sop.pdf`.
+For building and flashing the firmware, see the unified SOP, `docs/sop/wham_controllers_sop.pdf` at the repository top.
 
 **Status of this guide.** Parts of the system are proven only on a bench simulator and are marked **[bench-verified only]** or **[not yet verified]** where it matters.
 Section 13 lists them. Fill in the site-specific tables in section 12 before using this guide on a live supply.

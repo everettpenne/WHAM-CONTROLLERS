@@ -1280,8 +1280,8 @@ Available on both build targets unless noted otherwise.
   fact these really are four independent settings on real hardware.
 - **`CONFig:MaxCarrierHz <hz>` / `?`** — `PFM_MAX_CARRIER_FREQ_HZ`, the
   legacy `TABle:STEP` carrier ceiling (`ERR 10`'s own trigger). Only
-  affects the legacy `TABle:*`/`FIRE` path (Section reference:
-  `docs/sop/wham_xrex_pfmg474_sop.tex`'s Section 8) — has no effect on
+  affects the legacy `TABle:*`/`FIRE` path (procedure: the unified SOP's
+  "Bench-only procedures" section, `docs/sop/wham_controllers_sop.tex` at the repository top) — has no effect on
   the modern `SHOT:*` path, which has its own separate,
   already-configurable output bounds above. Rejected (`ERR 12`) if
   `hz` would over/underflow the 16-bit HRTIM `PER` register at this
