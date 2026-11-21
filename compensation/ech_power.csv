@@ -1,0 +1,8 @@
+# tool=power_waveform_picker
+# mode=power
+# target=dummy-load
+# bank_volts=500
+# label=ech_power
+time_us,demand_kw
+0,100.0
+10000,100.0
