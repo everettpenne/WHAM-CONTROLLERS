@@ -112,7 +112,7 @@ argument (including "not a number"); `ERR 13` not allowed in this state; `ERR 14
 |---|---|
 | `python3 python/wham_build.py` (in a product folder) | Build, test, publish the image to `build/`. |
 | `python3 python/fw_update.py --url socket://localhost:<port> [--status\|--rollback] --yes` | Firmware update through the hub. |
-| `python3 python/net_client.py --port <port> --name <you>` | Interactive terminal through the hub. |
+| `python3 host/net_client.py --port <port> --name <you>` (from the repository top) | Interactive terminal through the hub. |
 | `python3 python/pfm_shot_test.py`, `pfm_gap_test.py` | Fire a shot and compare captured outputs with the table (they FIRE). |
 | `python3 python/memory_report.py history\|report` | Flash/RAM tracking. |
 | `python3 python/check_shared.py` | Shared files identical in both products. |

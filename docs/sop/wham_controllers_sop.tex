@@ -525,7 +525,7 @@ command table on 2026-11-18; the full syntax and replies are in \file{command_re
   \pitem{Steps}
     \begin{enumerate}
       \item Open the tunnel: \code{ssh -f -N -L <local>:127.0.0.1:<hub port> andrew} (hub ports in \file{docs/bench_devices.md}; choose a free local port).
-      \item Connect: \code{python3 firmware/<product>/python/net\_client.py --port <local> --name <you>}.
+      \item Connect: \code{python3 host/net\_client.py --port <local> --name <you>}.
       \item \cl{*IDN?}{OK <product> <rev> <version> <commit> SN=WB-... UID=...}
       \item \cl{STATE?}{OK IDLE} (or \code{OK FAULT ...} on an unwired bench board).
       \item \cl{!hub status}{\# hub ... connected=1 ...}
@@ -954,7 +954,7 @@ Remember that the ECH-HVPS controller is installed in its supply (Section~\ref{s
   \item From outside the lab network, open an ssh tunnel to \code{andrew}, which makes the hub's port appear on your own computer:\\
     \code{ssh -N -o ServerAliveInterval=30 -L <local>:127.0.0.1:<hub port> andrew}\\
     Hub ports are listed in \file{docs/bench_devices.md}. Leave the tunnel window open.
-  \item Connect: \code{python3 firmware/hbridge/python/net\_client.py --port <local> --name <your name>} (the same client is in \file{firmware/xrex/python/}).
+  \item Connect: \code{python3 host/net\_client.py --port <local> --name <your name>}.
   \item Run the checks above. Every line is time-stamped; other people's commands show as \code{[name] > ...}.
   \item Leave with Ctrl-D (the controller keeps doing whatever it was doing), then close the tunnel with Ctrl-C.
 \end{enumerate}

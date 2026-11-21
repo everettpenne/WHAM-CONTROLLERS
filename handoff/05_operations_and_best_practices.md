@@ -25,7 +25,7 @@ ECH-HVPS. From your computer, open an ssh tunnel (use local ports that nothing e
 ssh -f -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -L 15101:127.0.0.1:5101 -L 15102:127.0.0.1:5102 -L 15103:127.0.0.1:5103 andrew
 ```
 
-Then talk to a board, for example the Limiter: `python3 firmware/hbridge/python/net_client.py --port 15102 --name <you>`, or any tool with
+Then talk to a board, for example the Limiter: `python3 host/net_client.py --port 15102 --name <you>`, or any tool with
 `--url socket://localhost:15102`. `!hub status` asks the hub itself (look for `connected=1`). If the hub says "the controller is not
 connected", the hub has lost the board's network bridge: check from `andrew` whether the bridge answers ping (see `docs/bench_devices.md` for
 its address). The tunnel dies if your network drops; reopen it.
@@ -101,7 +101,7 @@ need a logic analyzer.
 
 **With the DSLogic.** Close DSView before using the headless capture tool (DSView holds the USB device). On the bench the wiring used was
 U, UN, V, VN, W, WN on DSLogic channels 0-5 (each phase and its complement on adjacent channels). DSView `.dsl` files are zip archives;
-`firmware/xrex/python/dsl_viewer.py` reads them.
+`host/dsl_viewer.py` reads them.
 
 ## 5.6 Saved profiles in practice
 

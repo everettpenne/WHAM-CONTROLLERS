@@ -21,7 +21,7 @@ formats.
 `127.0.0.1:5102`. Type commands in the operator console's **Console** tab (connect through the host), or in a terminal:
 
 ```bash
-python3 firmware/hbridge/python/net_client.py --port 5102 --name <your-name>
+python3 host/net_client.py --port 5102 --name <your-name>
 ```
 
 In the examples `>` is a line you send and `<` the reply. Send **one command at a time and read the reply** before the next; a reply that is not `OK ...` means stop and read it

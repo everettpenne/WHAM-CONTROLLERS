@@ -175,7 +175,7 @@ The full connection guide, with switching controllers and troubleshooting, is `d
 ### 5.1 What you need
 - A computer on the lab network, **or** a remote computer with ssh access to the hub's server (section 5.2).
 - The **hub's host name and the port for this controller** (one port per controller). Get these from the hub administrator; write them in section 12.
-- A terminal. `python3 firmware/hbridge/python/net_client.py` (or the identical copy in `firmware/xrex/python/`) is the simple client used below.
+- A terminal. `python3 host/net_client.py` is the simple client used below.
 
 ### 5.2 From a remote computer: the tunnel
 If the hub is not directly reachable, open a tunnel through the server that runs it (it asks for your password and then shows nothing; leave the window open):
@@ -189,7 +189,7 @@ Then connect to `127.0.0.1:<local-port>` as below. If the tunnel window shows a 
 ### 5.3 Connect and check you have the right controller
 
 ```bash
-python3 firmware/xrex/python/net_client.py --port <port> --name <your-name>
+python3 host/net_client.py --port <port> --name <your-name>
 ```
 
 Type, pressing Enter after each:

@@ -3,8 +3,8 @@
 Python 3.8+, standard library only (PyYAML is used for configs if installed, but is not needed).
 
 - **`wham_hub.py`** -- the per-controller service. One instance talks to one controller: it is the only client of that
-  controller's serial-over-TCP bridge, shares it with any number of local clients (the same raw protocol as the firmware
-  projects' `python/net_broker.py`, so `net_client.py`, `wham_console.py` and `fw_update.py` work through it unchanged),
+  controller's serial-over-TCP bridge, shares it with any number of local clients (the same raw protocol as
+  `net_broker.py`, so `net_client.py`, `wham_console.py` and `fw_update.py` work through it unchanged),
   asks the board who it is (`SYS:ID?`) on connect and after every reboot, and logs every line with that identity to
   `<log_dir>/<serial>/YYYY-MM-DD.jsonl` (`host/logs/` by default). It sends one command at a time to the controller and gives
   each reply to the client that sent the command; a command that gets no reply is answered `ERR hub ...` after a timeout.
@@ -21,6 +21,7 @@ Python 3.8+, standard library only (PyYAML is used for configs if installed, but
   when it listens beyond loopback without `allow_from`. Unit tests: `python3 -m unittest discover -s host/tests`.
 - **`wham_connect.py`** -- one command from a terminal to one controller: `python3 host/wham_connect.py limiter` (or `xrex`, `ech`, a serial number) opens the ssh tunnel for that device's hub port (reusing one that is already up, and closing only one it started), checks with `*IDN?` that the hub answers as the board you named (`--force` to go on), then gives the interactive hub session with times and highlighting (joins/leaves yellow, DANGEROUS red). `--watch` supervises read-only (sends nothing), `--hide-polls` hides other clients' `STATE?` polls, `--transcript FILE` keeps a copy, `--send` is one-shot, `--list` shows the devices. Tests: `host/tests/test_wham_connect.py`.
 - **`operator_ui/`** -- the operator console: a local web page (`wham_ui.py`; double-click `start_wham_ui.command` / `.bat` / `.sh`) for connecting to any controller -- through a hub, directly over the network, or by USB-serial cable -- and operating it without a terminal: identity check, state and ARM/FIRE with confirmation questions, shot builder that loads a profile file (`shot_file.py`), supports output-off gaps and verifies by read-back (HBRIDGE/ECH), fault inputs, saved profiles, dead time, CHARGE, XREX channels, raw console, the command flowcharts (menu), tunnel open/close and disconnect-all, and shot recording (the controller's waveform log is armed, read back after the shot, saved under `operator_ui/shots/` as CSV/HTML/JSON and plotted: `recorder.py`, `shot_data.py`). Guide: `docs/operator_ui_guide.md`. `--demo` offers simulated controllers (`wham_sim.py`); tests: `host/tests/test_operator_ui.py`, `test_shot_file.py`. It runs from a copy of this `host` folder alone, on Python 3.9+, standard library only.
+- **`net_client.py`, `net_broker.py`, `net_terminal.py`, `dsl_viewer.py`** -- the terminal client for a hub, the older stand-alone broker and bare terminal for a bridge, and the viewer for DSLogic `.dsl` captures. They lived in both `firmware/*/python/` folders until 2026-11-20; small stubs there still run them, so old commands keep working.
 - **`provision_board.py`** -- gives a controller its serial number (`SYS:SERial`), reads it back, and keeps the fleet registry
   `devices.csv`. `--check` compares a board with the registry without changing anything; `--list` prints the registry.
 - **`dangerous_commands.py`** -- the list of dangerous commands (what starts output, weakens a protection, reflashes, ...), matched the way the firmware matches.
@@ -34,7 +35,7 @@ Python 3.8+, standard library only (PyYAML is used for configs if installed, but
 ```
 python3 host/wham_hub.py --config host/config/magnet2.yaml                   # one controller
 python3 host/wham_hub.py --host 192.168.130.138 --listen-port 5101 --name magnet2
-python3 firmware/hbridge/python/net_client.py --port 5101 --name me          # a client: type SCPI lines
+python3 host/net_client.py --port 5101 --name me          # a client: type SCPI lines
 python3 host/provision_board.py --url socket://localhost:5101 --check         # through the service
 ```
 

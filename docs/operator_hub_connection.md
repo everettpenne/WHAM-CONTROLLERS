@@ -28,7 +28,7 @@ Consequences you should know:
 ## 2. What you need
 
 1. **The hub server's name and the port for each controller.** Ask the hub administrator; write them in section 9 of this guide so you have them next time. Ports are assigned per controller and may change; never rely on memory.
-2. **This repository on your computer**, and Python 3. The client is `firmware/hbridge/python/net_client.py` (an identical copy is in `firmware/xrex/python/`); it needs nothing installed.
+2. **This repository on your computer**, and Python 3. The client is `host/net_client.py`; it needs nothing installed.
 3. **If you are not on the lab network: ssh access** to the hub server.
 
 ## 3. Step 1 (remote computers only): open the tunnel
@@ -54,7 +54,7 @@ On the lab network you still need a way to reach the hub's port: `net_client.py`
 In a second terminal window, from the repository folder:
 
 ```bash
-python3 firmware/hbridge/python/net_client.py --port <local-port> --name <your-name>
+python3 host/net_client.py --port <local-port> --name <your-name>
 ```
 
 `<your-name>` is how you appear to others (`!hub clients` shows it): use your own name. The client connects to the port on **your** computer, which is the tunnel.
@@ -111,7 +111,7 @@ The hub lets several people and programs connect on purpose (for example you at 
 2. Run the client again with the other controller's port:
 
 ```bash
-python3 firmware/hbridge/python/net_client.py --port <other-port> --name <your-name>
+python3 host/net_client.py --port <other-port> --name <your-name>
 ```
 
 3. Run the checks in section 5 again: **never assume which controller a port reaches.**
@@ -149,7 +149,7 @@ A shot already running keeps running to its end on its own if you lose your conn
 | I want to | Do this |
 |---|---|
 | open the tunnel | `ssh -N -o ServerAliveInterval=30 -L <p>:127.0.0.1:<p> <server>` |
-| connect | `python3 firmware/hbridge/python/net_client.py --port <p> --name <me>` |
+| connect | `python3 host/net_client.py --port <p> --name <me>` |
 | check where I am | `*IDN?`, `STATE?`, `!hub status`, `!hub clients` |
 | see who else is connected | `!hub clients` |
 | switch controllers | Ctrl-D, then connect to the other port |
