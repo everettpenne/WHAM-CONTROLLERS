@@ -8,7 +8,7 @@ firmware/
   xrex/      WHAM-XREX-PFMG474    Transrex magnet-supply PFM PID controller
   hbridge/   WHAM-HBRIDGE-PFMG474 H-bridge supplies (Limiter: PWM, one phase per electrode / HVPS: 3-phase PFM)
 hardware/    board files, pin map, hardware notes (see hardware/README.md)
-host/        host-side software that talks to the boards: the per-controller service (see docs/)
+host/        host-side software that talks to the boards: the per-controller hub, its clients (net_client.py), operator UI, Slack bot
 analysis/    offline work on shot data (talks to no controller):
   compensation/  shot-to-shot demand compensation for open-loop shots: Limiter and ECH-HVPS (see its README.md)
   figures/       publication figures of individual shots, each with its data and the script that draws it

@@ -113,7 +113,7 @@ its product name differs (HBRIDGE will not accept an XREX image and vice versa);
 * `host/wham_hub.py`: one instance per board, on the lab server, the only client of that board's bridge. Clients connect to its TCP
   port (5101 XREX-CTRL, 5102 LMTR-CTRL, 5103 ECH-HVPS through an ssh tunnel). It logs JSONL per board per day, checks identity
   (`expect_serial`), announces dangerous commands (`host/dangerous_commands.py`) to other clients. **No authentication.**
-* `firmware/<product>/python/`: build (`wham_build.py`), update (`fw_update.py`), network client (`net_client.py`), shot tests
+* `firmware/<product>/python/`: build (`wham_build.py`), update (`fw_update.py`), network client (`net_client.py`, in `host/` since 2026-11-20; a stub remains here), shot tests
   (`pfm_shot_test.py`, `pfm_gap_test.py`), consoles, report generators.
 * `host/operator_ui/`: a local web console for operators (connect through a hub, ARM/FIRE with confirmation, shot builder, recording).
 * LabVIEW front ends use the hub in quiet mode (`docs/labview_hub_guide.md`).

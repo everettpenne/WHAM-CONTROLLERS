@@ -1,6 +1,6 @@
 # 1. Project overview
 
-Snapshot: 2026-11-16, `main` after `666fd35`.
+Snapshot: 2026-11-20 (repository map updated for the reorganization on branch `reorg`); the rest as of 2026-11-16, `main` after `666fd35`.
 
 ## 1.1 What this project is
 
@@ -86,7 +86,9 @@ These are the requirements that the code currently meets or is built around. Num
 firmware/xrex/      the XREX product: Core/ (CubeMX), src/ (our code), tests/, python/ (tools), docs/, build/ (images)
 firmware/hbridge/   the HBRIDGE product, same structure
 hardware/           KiCad projects: PFM-Controller_V4 (current board), PFM-Controller_V4_Rev2, HVPS_Controller_V3 (old)
-host/               wham_hub.py (per-board network service), operator_ui/ (web console), provisioning, dangerous-command list
+host/               wham_hub.py (per-board network service), net_client.py and the other network tools, operator_ui/ (web console),
+                    slack_bot/, provisioning, dangerous-command list
+analysis/           offline work on shot data, talks to no controller: compensation/ (shot-to-shot demand correction), figures/
 docs/               cross-product documents: bench devices, LabVIEW guides, identity and host-service design, operator UI guide
 handoff/            this folder
 ```

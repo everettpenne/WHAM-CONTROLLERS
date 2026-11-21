@@ -1,6 +1,20 @@
 WHAM-XREX-PFMG474 Firmware Changelog
 =====================================
 
+2026-11-20  -  Repository reorganization: analysis/, network tools in host/, per-product SOPs retired  [no firmware change; all tests as before; old and new net_client paths checked against the Limiter hub]
+-----------------------------------------------------------------------
+  Request: reorganize the repository carefully. Done on branch reorg, one move per commit, nothing under firmware/*/src or Core touched (no image rebuilt).
+  1. Clutter: .gitignore covers the shot-figure zips, the compensation iteration outputs and build/revert/; ech_power.csv tracked as an example.
+  2. The per-product SOPs (docs/sop/*.tex|pdf in each firmware folder) are retired in favour of docs/sop/wham_controllers_sop.tex at the repository top;
+     docs/sop/README.md here says how to get the old one from the git history (commit 0680335).
+  3. compensation/ and figures/ moved to analysis/compensation/ and analysis/figures/ (offline work on shot data); references updated, command-flow pages regenerated.
+  4. net_client.py, net_broker.py, net_terminal.py and dsl_viewer.py (byte-identical in both products) moved to host/. A stub at each old python/ path runs the
+     host/ tool with the same arguments, so existing commands keep working (host/tests/test_tool_stubs.py).
+  Not moved, on purpose: every path the lab server uses (host/wham_hub.py, host/config, host/deploy, host/slack_bot), the per-product tools that differ
+  (fw_update.py, memory_report.py, wham_build.py ...), the files in check_shared.py's list, pin_mapping_v4.csv, and docs/ (left flat).
+  Checks: host tests 333 run, the same 2 macOS SlowClientTests failures as before the change; both products' make -C tests, check_layout and check_shared unchanged;
+  compensation tests 52 pass; wham_hub.py --check passes for the three hub configs; *IDN? read from the Limiter (WB-0002-6) through host/net_client.py and both stubs.
+
 2026-11-20  -  Host side: shot records in the hub log (!hub shotnumber <n>, !hub read shotnumber <n>)  [no firmware change; host-tested against fake HBRIDGE and XREX boards; NOT yet run against a real controller]
 -----------------------------------------------------------------------
   Request: a hub command that quietly records a block about the controller's configuration in the hub log under a shot
