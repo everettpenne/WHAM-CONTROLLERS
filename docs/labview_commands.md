@@ -236,15 +236,15 @@ Upload one `SHOT:STEP` per line and check each reply. Do not stream hundreds of 
 otherwise be found only at `SHOT:END` or, worse, never.
 
 **Limiter droop compensation.** The capacitor bank droops during a shot, so an open-loop duty profile falls short of what it asks for.
-`compensation/limiter_compensate.py` corrects the profile from shot to shot. Keep the shot as a CSV (one row per `SHOT:STEP`), run the
-script on it after the shot, and upload the `commanded_*` columns of the file it writes for the next shot. See `compensation/README.md`.
+`analysis/compensation/limiter_compensate.py` corrects the profile from shot to shot. Keep the shot as a CSV (one row per `SHOT:STEP`), run the
+script on it after the shot, and upload the `commanded_*` columns of the file it writes for the next shot. See `analysis/compensation/README.md`.
 
-**ECH-HVPS profile correction.** `compensation/ech_compensate.py` does the same for the ECH. Draw the forward power you want in
-`compensation/power_waveform_picker.html` (or write a frequency profile). Run the script after each shot with
+**ECH-HVPS profile correction.** `analysis/compensation/ech_compensate.py` does the same for the ECH. Draw the forward power you want in
+`analysis/compensation/power_waveform_picker.html` (or write a frequency profile). Run the script after each shot with
 `--target vessel|dummy-load` and `--bank-volts`, and upload the `carrier_hz,duty_pct` columns of the file it writes. It holds
 18.7-21.0 kHz, at most 100 Hz per shot towards resonance, and a 70 kV ceiling. `--power-scale` (measured with
-`compensation/ech_meter_calibration.py`) states the demand in experimental-meter kW when tuning on the dummy load. See
-`compensation/README.md` for the procedures.
+`analysis/compensation/ech_meter_calibration.py`) states the demand in experimental-meter kW when tuning on the dummy load. See
+`analysis/compensation/README.md` for the procedures.
 
 ### 4.3 Start, state and stop
 

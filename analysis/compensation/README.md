@@ -172,7 +172,7 @@ same correction between shots, within hard limits.
 | `power_waveform_picker.html` | draw a forward-power demand and save it as a CSV | a browser (no network) |
 | `ech_compensate.py` | turn a demand CSV into a frequency profile, then correct it after every shot; train its supply model | Python 3, numpy; matplotlib for plots; MDSplus to read shots |
 | `ech_meter_calibration.py` | measure the ratio between the dummy-load and experimental forward-power meters (`--power-scale`) | the same |
-| `figures/shot_<N>/plot_shot.py` (repository root) | a publication figure of one shot: forward power, gyrotron voltage and current | numpy, matplotlib; MDSplus once, to fetch |
+| `analysis/figures/shot_<N>/plot_shot.py` (repository root) | a publication figure of one shot: forward power, gyrotron voltage and current | numpy, matplotlib; MDSplus once, to fetch |
 
 Every tool reads MDSplus (read only) and local files, writes local files, and talks to nothing else: **no controller,
 no hub, no other network service**. Uploading a profile, arming and firing stay with the operator, and so does
@@ -183,7 +183,7 @@ error, so LabVIEW's System Exec can call it and parse the result.
 
 ## ECH-HVPS: running each tool from a terminal
 
-All commands below run from the `compensation/` folder (`cd compensation`); on Windows use `python` for `python3`.
+All commands below run from the `analysis/compensation/` folder (`cd analysis/compensation`); on Windows use `python` for `python3`.
 
 ### `power_waveform_picker.html`: draw a demand
 
@@ -289,9 +289,9 @@ use: python ech_compensate.py <csv> --power-scale 1.0340   (ech_meter_calibratio
 as a CSV, so the calibration can be rerun offline. See the calibration procedure below for how to take the shots and
 read the result.
 
-### `figures/shot_<N>/plot_shot.py`: a figure of one shot
+### `analysis/figures/shot_<N>/plot_shot.py`: a figure of one shot
 
-Copy an existing `figures/shot_<N>/` folder, edit `SHOT`, `SUBTITLE` (and `XLIM_MS` for a short shot) at the top of
+Copy an existing `analysis/figures/shot_<N>/` folder, edit `SHOT`, `SUBTITLE` (and `XLIM_MS` for a short shot) at the top of
 `plot_shot.py`, then:
 
 ```
@@ -688,10 +688,10 @@ voltage ceiling.
 ## Tests
 
 ```
-python3 -m unittest discover -s compensation/tests
-python3 compensation/limiter_compensate.py --selftest
-python3 compensation/ech_compensate.py --selftest
-python3 compensation/ech_meter_calibration.py --selftest
+python3 -m unittest discover -s analysis/compensation/tests
+python3 analysis/compensation/limiter_compensate.py --selftest
+python3 analysis/compensation/ech_compensate.py --selftest
+python3 analysis/compensation/ech_meter_calibration.py --selftest
 ```
 
 The tests use a simulated bank: a capacitor driving a resistive load, so the droop depends on the profile, as on the real supply.

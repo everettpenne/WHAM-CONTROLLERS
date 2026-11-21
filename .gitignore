@@ -28,9 +28,9 @@ docs/sop/*.toc
 # the Slack bot's tokens and allow lists: never committed
 host/slack_bot/*.local.json
 # zip copies of the tracked shot-figure folders
-figures/*.zip
+analysis/figures/*.zip
 # compensation working outputs (each iteration's profile and plot); inputs and examples are tracked
-compensation/*_iter*.csv
-compensation/*_iter*.png
+analysis/compensation/*_iter*.csv
+analysis/compensation/*_iter*.png
 # hand-kept old firmware images
 firmware/*/build/revert/

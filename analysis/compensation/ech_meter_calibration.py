@@ -21,7 +21,7 @@ HOW TO RUN
 
     Each shot's target comes from MDS (ECH_PARAMS:ECH_TARGET). Offline, give CSV files instead of shot numbers: each with
     columns time_ms, forward power (kW), gyrotron voltage (kV), gyrotron current (A), and a '# target=dummy-load' or
-    '# target=vessel' line (the files figures/*/plot_shot.py --fetch writes, or --save-data DIR below, work as they are).
+    '# target=vessel' line (the files analysis/figures/*/plot_shot.py --fetch writes, or --save-data DIR below, work as they are).
 
     It prints one RESULT line, writes ech_meter_calibration.json and .png (--out PREFIX to change), and says which
     --power-scale to give ech_compensate.py.

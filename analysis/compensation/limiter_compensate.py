@@ -16,7 +16,7 @@ HOW TO RUN (the operator runs only this file, pointed at one CSV)
   It writes my_shot_iter1.csv (then _iter2, _iter3, ... when run on the previous output) and a .png beside it, and
   prints one RESULT line. Upload the new file's COMMANDED columns for the next shot, then run the script on that file.
 
-THE CSV (the whole state of the iteration; see compensation/README.md)
+THE CSV (the whole state of the iteration; see analysis/compensation/README.md)
     time_us,carrier_hz,demand_duty_pct,commanded_duty_pct
     time_us,carrier_hz,demand_duty_U_pct,demand_duty_V_pct,demand_duty_W_pct,commanded_duty_U_pct,...  (per phase)
   demand    = the operator's idealized profile; never changed by this script.
@@ -26,7 +26,7 @@ THE CSV (the whole state of the iteration; see compensation/README.md)
   metadata (shot, iteration, ...) and are carried forward.  Each row maps to one
       SHOT:STEP <time_us> <carrier_hz> <commanded duty or the three per-phase duties>
 
-METHOD (details in compensation/README.md)
+METHOD (details in analysis/compensation/README.md)
   1. validate the profile against the firmware's LIMITER rules; evaluate duty as the firmware does (linear between
      setpoints; an on setpoint followed by an off one holds its value until the gap)
   2. read V_LIM (or --data), resample to a 10 us grid

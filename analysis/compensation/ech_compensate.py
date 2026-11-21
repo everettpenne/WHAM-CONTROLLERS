@@ -41,7 +41,7 @@ WHAT IT TALKS TO
     offline with --data. Uploading and firing stay with the operator. tests/test_isolation.py enforces this.
     Needs numpy; matplotlib for the plot (skipped if missing); MDSplus only to read shots.
 
-METHOD, IN SHORT (compensation/README.md has the details and the data behind the numbers)
+METHOD, IN SHORT (analysis/compensation/README.md has the details and the data behind the numbers)
     measured y = gyrotron voltage (frequency profile) or forward power (power target), target y*. On the flat top of
     every pulse:  new f = last f - gain * (y* - y)(t + lead) / sensitivity,  sensitivity = how much y rises per Hz lower:
     kappa = 4 %/100 Hz of the gyrotron voltage (measured 2026-11-17, +/-0.2 % over 8 bank charges), times dP/dV from the

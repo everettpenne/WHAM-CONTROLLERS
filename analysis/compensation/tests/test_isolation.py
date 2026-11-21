@@ -1,7 +1,7 @@
 """The compensation tools talk to MDSplus (read only) and the terminal that runs them, and to nothing else: no
 controller, no hub, no other network service, no other program. This test keeps it that way.
 
-    python3 -m unittest discover -s compensation/tests
+    python3 -m unittest discover -s analysis/compensation/tests
 """
 import ast
 import os

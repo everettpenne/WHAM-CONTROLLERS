@@ -10,7 +10,7 @@ Key: a filled orange dot marks a command the hub logs and announces as dangerous
 
 **The shot is a list of setpoints.** Time in whole microseconds, frequency in Hz, duty in percent; the controller moves in straight lines between setpoints, one switching period at a time. One duty applies to all three phases, three duties give each phase its own. A setpoint at 0 Hz switches the outputs off until the next setpoint, which restarts them with no ramp; the setpoint before a gap holds its value up to the gap.
 
-**Load the shot from a file.** Typing a profile by hand is where shots go wrong. The compensation tools write the profile as a CSV (`compensation/README.md`); the operator console loads that file into its shot table, sends it and compares the read-back. A program should do the same: send from the file, then read every `SHOT:POINt?` back.
+**Load the shot from a file.** Typing a profile by hand is where shots go wrong. The compensation tools write the profile as a CSV (`analysis/compensation/README.md`); the operator console loads that file into its shot table, sends it and compares the read-back. A program should do the same: send from the file, then read every `SHOT:POINt?` back.
 
 **What a recall can change.** `*RCL` puts back the supply, the shot and its tables, the phases that drive, the dead time, and the fault-input settings (which `GDS:ENAble` inputs are on, the polarity, the spark-gap enable). Show `CONFig:PROFile:DIFF? <slot>` to the operator first, and read `PHASe:ENAble?` and `GDS:ENAble?` afterwards. Nothing is recalled at boot.
 

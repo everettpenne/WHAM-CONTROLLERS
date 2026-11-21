@@ -1,6 +1,6 @@
-"""Tests for compensation/ech_compensate.py against a simulated ECH supply (no MDS, no hardware).
+"""Tests for analysis/compensation/ech_compensate.py against a simulated ECH supply (no MDS, no hardware).
 
-    python3 -m unittest discover -s compensation/tests
+    python3 -m unittest discover -s analysis/compensation/tests
 """
 import os
 import subprocess

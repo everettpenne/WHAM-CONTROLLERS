@@ -106,7 +106,7 @@ stub_ys.append((top + bot) // 2); line(f'M{BR},{stub_ys[-1]} H{BUS}', 'fl')
 
 # ---- AFTER
 top = bot + 22; y = top + 34
-lg = box(X0, y, SW, [('t', 'After the shot'), ('m', 'STATE?   FAULT?'), ('m', 'EXTernal:TRIGger:LATency?'), ('n', 'Expect OK IDLE and no fault. The shot stays loaded: ARM and'), ('n', 'FIRE repeat it. Compare the measured waveform with the demand'), ('n', 'and correct the next profile (compensation/README.md).')])
+lg = box(X0, y, SW, [('t', 'After the shot'), ('m', 'STATE?   FAULT?'), ('m', 'EXTernal:TRIGger:LATency?'), ('n', 'Expect OK IDLE and no fault. The shot stays loaded: ARM and'), ('n', 'FIRE repeat it. Compare the measured waveform with the demand'), ('n', 'and correct the next profile (analysis/compensation/README.md).')])
 arrow(f'M{CX},{po.b} V{y}'); T(CX + 8, bot + 15, 'OK IDLE, the shot ended by itself', 'el')
 arrow(f'M{ab.cx},{ab.b} V{lg.cy} H{lg.r}')
 line(f'M{lg.x},{lg.cy} H{RAIL}'); dot(RAIL, lg.cy)
@@ -157,7 +157,7 @@ finish(
     caption='Each band is an operating state. Work moves down the bands, a fault from any band moves right, and every finish returns through the rail on the left to IDLE.',
     notes=[
         ('The shot is a list of setpoints', 'Time in whole microseconds, frequency in Hz, duty in percent; the controller moves in straight lines between setpoints, one switching period at a time. One duty applies to all three phases, three duties give each phase its own. A setpoint at 0 Hz switches the outputs off until the next setpoint, which restarts them with no ramp; the setpoint before a gap holds its value up to the gap.'),
-        ('Load the shot from a file', 'Typing a profile by hand is where shots go wrong. The compensation tools write the profile as a CSV (<code>compensation/README.md</code>); the operator console loads that file into its shot table, sends it and compares the read-back. A program should do the same: send from the file, then read every <code>SHOT:POINt?</code> back.'),
+        ('Load the shot from a file', 'Typing a profile by hand is where shots go wrong. The compensation tools write the profile as a CSV (<code>analysis/compensation/README.md</code>); the operator console loads that file into its shot table, sends it and compares the read-back. A program should do the same: send from the file, then read every <code>SHOT:POINt?</code> back.'),
         ('What a recall can change', '<code>*RCL</code> puts back the supply, the shot and its tables, the phases that drive, the dead time, and the fault-input settings (which <code>GDS:ENAble</code> inputs are on, the polarity, the spark-gap enable). Show <code>CONFig:PROFile:DIFF? &lt;slot&gt;</code> to the operator first, and read <code>PHASe:ENAble?</code> and <code>GDS:ENAble?</code> afterwards. Nothing is recalled at boot.'),
         ('Which input is in fault', '<code>GDS:LAST?</code> replies <code>OK &lt;hex&gt; &lt;checks&gt;</code>: the levels of the twelve gate-driver inputs when the fault latched, bit 0 = input 01. Under <code>NORMALLY_HIGH</code> (the built-in polarity) the faulted inputs are the cleared bits: <code>FFB</code> is input 03. Read the polarity with <code>GDS:POLarity?</code>; do not assume it.'),
         ('A reset forgets the setup', 'A <code>!BOOT</code> line can arrive at any time. The supply mode is <code>NONE</code>, the shot is gone, every fault input is on again, the dead time is 100 ns and the charger is off. Re-identify, tell the operator, and set up again or recall a saved profile.'),

@@ -87,7 +87,7 @@ and the page remembers which ones you left open.
 3. **Build and send the shot**: a table of setpoints (time in ms, frequency in kHz, duty in %; tick *a different duty for each phase* for separate U, V, W columns). The controller moves frequency and duty in straight lines between setpoints.
    - **What the controller already holds** is stated under the table ("The controller holds a shot of 54 setpoints, 15 ms"). **Show it in the table** reads it (one query per setpoint, so the page does it only
      when you ask), and a green tick appears once the table and the controller are known to hold the same shot. The tick goes away as soon as either changes.
-   - **Load file…** reads a profile instead of typing it: the `_iterN.csv` written by `compensation/ech_compensate.py`, the file written by `compensation/limiter_compensate.py` (its *commanded* duty is loaded),
+   - **Load file…** reads a profile instead of typing it: the `_iterN.csv` written by `analysis/compensation/ech_compensate.py`, the file written by `analysis/compensation/limiter_compensate.py` (its *commanded* duty is loaded),
      any CSV with a time, a frequency and a duty column, or a text file of `SHOT:STEP` lines. **Paste…** takes the same from the clipboard (for example the commands in a logbook entry). The page says what it loaded
      ("Loaded, not sent yet: …, iteration 3, corrected from shot …, for a bank charge of 520 V") and nothing is sent until you press Send. *Typing a profile by hand is where shots go wrong; load the file.*
    - **Off** (the tick box on a row) makes an **output-off setpoint**: the output is off from that time until the next setpoint, and the setpoint before it holds its value up to the gap. This is how multi-pulse shots are

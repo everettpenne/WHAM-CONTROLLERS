@@ -1,6 +1,6 @@
-"""Tests for compensation/limiter_compensate.py on a simulated capacitor bank (no MDS, no hardware).
+"""Tests for analysis/compensation/limiter_compensate.py on a simulated capacitor bank (no MDS, no hardware).
 
-    python3 -m unittest discover -s compensation/tests
+    python3 -m unittest discover -s analysis/compensation/tests
 """
 import os
 import subprocess

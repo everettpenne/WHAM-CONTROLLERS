@@ -4,8 +4,8 @@ Typing a profile in by hand is where shots go wrong (2026-11-18: decimals droppe
 for 20018 Hz). The console's shot table therefore loads the profile from what the tools write, and the operator checks and
 sends it:
 
-  * the CSV written by compensation/ech_compensate.py (time_us, demand_kw, carrier_hz, duty_pct; an 'off' row is 0 Hz);
-  * the CSV written by compensation/limiter_compensate.py (time_us, carrier_hz, demand_duty*_pct, commanded_duty*_pct):
+  * the CSV written by analysis/compensation/ech_compensate.py (time_us, demand_kw, carrier_hz, duty_pct; an 'off' row is 0 Hz);
+  * the CSV written by analysis/compensation/limiter_compensate.py (time_us, carrier_hz, demand_duty*_pct, commanded_duty*_pct):
     the COMMANDED duty is what is uploaded, the demand only when the file has no commanded columns yet;
   * any CSV with a header naming a time, a frequency and a duty column (see _TIME, _FREQ below);
   * a block of SHOT:STEP lines, as printed in a logbook or a terminal ("SHOT:STEP <t_us> <hz> <duty> [<dutyV> <dutyW>]");
@@ -88,7 +88,7 @@ def _from_table(lines, header):
         raise ValueError("no time column: the header needs one of " + ", ".join(sorted(_TIME)))
     if fi is None:
         if "demand_kw" in header or "demand_hz" in header:
-            raise ValueError("this file has no frequencies yet (only the demand): run compensation/ech_compensate.py on it "
+            raise ValueError("this file has no frequencies yet (only the demand): run analysis/compensation/ech_compensate.py on it "
                              "first, and load the _iterN.csv it writes")
         raise ValueError("no frequency column: the header needs one of " + ", ".join(sorted(_FREQ)))
     di, note = _pick_duty(header)
